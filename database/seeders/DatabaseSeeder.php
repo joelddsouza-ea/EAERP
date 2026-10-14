@@ -12,8 +12,11 @@ class DatabaseSeeder extends Seeder
     public function run(): void
     {
         $this->call([
+            // Core data
             OrganizationSeeder::class,
             RolesAndPermissionsSeeder::class,
+
+            // Master data
             VehicleCategoriesSeeder::class,
             VehicleMakesSeeder::class,
             OilTypesSeeder::class,
@@ -21,7 +24,14 @@ class DatabaseSeeder extends Seeder
             ServiceAddonsSeeder::class,
             ChecklistTemplatesSeeder::class,
             TaxRatesSeeder::class,
+
+            // Users
             AdminUserSeeder::class,
+
+            // Workshop data
+            BaysSeeder::class,
+            CustomersVehiclesSeeder::class,
+            JobCardsSeeder::class,
         ]);
     }
 }

@@ -1,0 +1,729 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EAERP API Test Console</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: #1a1a2e;
+            color: #eee;
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        header {
+            background: #16213e;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        h1 {
+            color: #00d9ff;
+            font-size: 1.5rem;
+        }
+        .auth-status {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        .status-badge {
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 600;
+        }
+        .status-badge.connected {
+            background: #00c853;
+            color: #000;
+        }
+        .status-badge.disconnected {
+            background: #ff5252;
+            color: #fff;
+        }
+        .main-grid {
+            display: grid;
+            grid-template-columns: 300px 1fr;
+            gap: 20px;
+        }
+        .sidebar {
+            background: #16213e;
+            border-radius: 10px;
+            padding: 20px;
+            height: fit-content;
+            position: sticky;
+            top: 20px;
+        }
+        .sidebar h3 {
+            color: #00d9ff;
+            margin-bottom: 15px;
+            font-size: 1rem;
+        }
+        .endpoint-group {
+            margin-bottom: 20px;
+        }
+        .endpoint-group h4 {
+            color: #888;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 10px;
+        }
+        .endpoint-btn {
+            display: block;
+            width: 100%;
+            padding: 10px 15px;
+            margin-bottom: 5px;
+            background: #0f3460;
+            border: none;
+            border-radius: 5px;
+            color: #fff;
+            cursor: pointer;
+            text-align: left;
+            font-size: 0.9rem;
+            transition: all 0.2s;
+        }
+        .endpoint-btn:hover {
+            background: #1a5276;
+            transform: translateX(5px);
+        }
+        .endpoint-btn .method {
+            display: inline-block;
+            width: 50px;
+            font-size: 0.7rem;
+            font-weight: 700;
+            padding: 2px 5px;
+            border-radius: 3px;
+            margin-right: 8px;
+            text-align: center;
+        }
+        .method.get { background: #61affe; color: #000; }
+        .method.post { background: #49cc90; color: #000; }
+        .method.patch { background: #fca130; color: #000; }
+        .method.delete { background: #f93e3e; color: #fff; }
+        .content {
+            background: #16213e;
+            border-radius: 10px;
+            padding: 20px;
+        }
+        .login-form, .request-form {
+            margin-bottom: 20px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            color: #888;
+            font-size: 0.85rem;
+        }
+        .form-group input, .form-group textarea, .form-group select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #333;
+            border-radius: 5px;
+            background: #0f3460;
+            color: #fff;
+            font-size: 0.9rem;
+        }
+        .form-group textarea {
+            min-height: 150px;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 0.85rem;
+        }
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+        .btn {
+            padding: 10px 25px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+        .btn-primary {
+            background: #00d9ff;
+            color: #000;
+        }
+        .btn-primary:hover {
+            background: #00b8d9;
+        }
+        .btn-danger {
+            background: #ff5252;
+            color: #fff;
+        }
+        .btn-danger:hover {
+            background: #ff1744;
+        }
+        .btn-secondary {
+            background: #555;
+            color: #fff;
+        }
+        .response-section {
+            margin-top: 20px;
+        }
+        .response-section h3 {
+            color: #00d9ff;
+            margin-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .response-meta {
+            font-size: 0.8rem;
+            color: #888;
+        }
+        .response-meta .status-code {
+            padding: 3px 10px;
+            border-radius: 3px;
+            margin-left: 10px;
+        }
+        .status-code.success { background: #49cc90; color: #000; }
+        .status-code.error { background: #f93e3e; color: #fff; }
+        .response-body {
+            background: #0a0a15;
+            border-radius: 5px;
+            padding: 15px;
+            overflow-x: auto;
+            max-height: 500px;
+            overflow-y: auto;
+        }
+        .response-body pre {
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 0.85rem;
+            line-height: 1.5;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        .json-key { color: #f8c555; }
+        .json-string { color: #98c379; }
+        .json-number { color: #e5c07b; }
+        .json-boolean { color: #56b6c2; }
+        .json-null { color: #888; }
+        .tabs {
+            display: flex;
+            gap: 5px;
+            margin-bottom: 15px;
+        }
+        .tab {
+            padding: 8px 20px;
+            background: #0f3460;
+            border: none;
+            border-radius: 5px 5px 0 0;
+            color: #888;
+            cursor: pointer;
+            font-size: 0.85rem;
+        }
+        .tab.active {
+            background: #1a5276;
+            color: #fff;
+        }
+        .quick-actions {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+        }
+        .quick-btn {
+            padding: 5px 15px;
+            background: #0f3460;
+            border: 1px solid #333;
+            border-radius: 5px;
+            color: #888;
+            cursor: pointer;
+            font-size: 0.8rem;
+        }
+        .quick-btn:hover {
+            background: #1a5276;
+            color: #fff;
+        }
+        .user-info {
+            background: #0f3460;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        .user-info h4 {
+            color: #00d9ff;
+            margin-bottom: 10px;
+        }
+        .user-info p {
+            font-size: 0.85rem;
+            color: #888;
+            margin-bottom: 5px;
+        }
+        .user-info .roles {
+            display: flex;
+            gap: 5px;
+            flex-wrap: wrap;
+            margin-top: 10px;
+        }
+        .role-badge {
+            padding: 3px 10px;
+            background: #00d9ff;
+            color: #000;
+            border-radius: 10px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #888;
+        }
+        .loading::after {
+            content: '';
+            animation: dots 1.5s infinite;
+        }
+        @keyframes dots {
+            0%, 20% { content: '.'; }
+            40% { content: '..'; }
+            60%, 100% { content: '...'; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>EAERP API Test Console</h1>
+            <div class="auth-status">
+                <span id="userDisplay"></span>
+                <span id="statusBadge" class="status-badge disconnected">Not Authenticated</span>
+                <button id="logoutBtn" class="btn btn-danger" style="display:none" onclick="logout()">Logout</button>
+            </div>
+        </header>
+
+        <div class="main-grid">
+            <aside class="sidebar">
+                <h3>API Endpoints</h3>
+
+                <div class="endpoint-group">
+                    <h4>Authentication</h4>
+                    <button class="endpoint-btn" onclick="showLogin()">
+                        <span class="method post">POST</span> Login
+                    </button>
+                    <button class="endpoint-btn" onclick="callApi('GET', '/api/v1/auth/me')">
+                        <span class="method get">GET</span> Current User
+                    </button>
+                </div>
+
+                <div class="endpoint-group">
+                    <h4>Customers</h4>
+                    <button class="endpoint-btn" onclick="callApi('GET', '/api/v1/workshop/customers')">
+                        <span class="method get">GET</span> List Customers
+                    </button>
+                    <button class="endpoint-btn" onclick="showCreateForm('customer')">
+                        <span class="method post">POST</span> Create Customer
+                    </button>
+                </div>
+
+                <div class="endpoint-group">
+                    <h4>Vehicles</h4>
+                    <button class="endpoint-btn" onclick="callApi('GET', '/api/v1/workshop/vehicles')">
+                        <span class="method get">GET</span> List Vehicles
+                    </button>
+                    <button class="endpoint-btn" onclick="showCreateForm('vehicle')">
+                        <span class="method post">POST</span> Create Vehicle
+                    </button>
+                </div>
+
+                <div class="endpoint-group">
+                    <h4>Job Cards</h4>
+                    <button class="endpoint-btn" onclick="callApi('GET', '/api/v1/workshop/job-cards')">
+                        <span class="method get">GET</span> List Job Cards
+                    </button>
+                    <button class="endpoint-btn" onclick="showCreateForm('jobcard')">
+                        <span class="method post">POST</span> Create Job Card
+                    </button>
+                </div>
+
+                <div class="endpoint-group">
+                    <h4>Master Data</h4>
+                    <button class="endpoint-btn" onclick="callApi('GET', '/api/v1/workshop/service-packages')">
+                        <span class="method get">GET</span> Service Packages
+                    </button>
+                    <button class="endpoint-btn" onclick="callApi('GET', '/api/v1/workshop/vehicle-categories')">
+                        <span class="method get">GET</span> Vehicle Categories
+                    </button>
+                    <button class="endpoint-btn" onclick="callApi('GET', '/api/v1/workshop/vehicle-makes')">
+                        <span class="method get">GET</span> Vehicle Makes
+                    </button>
+                    <button class="endpoint-btn" onclick="callApi('GET', '/api/v1/workshop/oil-types')">
+                        <span class="method get">GET</span> Oil Types
+                    </button>
+                    <button class="endpoint-btn" onclick="callApi('GET', '/api/v1/workshop/bays')">
+                        <span class="method get">GET</span> Service Bays
+                    </button>
+                </div>
+
+                <div class="endpoint-group">
+                    <h4>User Admin</h4>
+                    <button class="endpoint-btn" onclick="callApi('GET', '/api/v1/user-admin/users')">
+                        <span class="method get">GET</span> List Users
+                    </button>
+                    <button class="endpoint-btn" onclick="callApi('GET', '/api/v1/user-admin/roles')">
+                        <span class="method get">GET</span> List Roles
+                    </button>
+                    <button class="endpoint-btn" onclick="callApi('GET', '/api/v1/user-admin/branches')">
+                        <span class="method get">GET</span> List Branches
+                    </button>
+                </div>
+
+                <div class="endpoint-group">
+                    <h4>Billing</h4>
+                    <button class="endpoint-btn" onclick="callApi('GET', '/api/v1/billing/invoices')">
+                        <span class="method get">GET</span> List Invoices
+                    </button>
+                    <button class="endpoint-btn" onclick="callApi('GET', '/api/v1/billing/payments')">
+                        <span class="method get">GET</span> List Payments
+                    </button>
+                </div>
+            </aside>
+
+            <main class="content">
+                <div id="loginSection" style="display:none">
+                    <h2 style="color:#00d9ff;margin-bottom:20px;">Login</h2>
+                    <div class="login-form">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Email</label>
+                                <select id="loginEmail" onchange="updatePassword()">
+                                    <option value="admin@expressautocare.com">admin@expressautocare.com (Owner)</option>
+                                    <option value="manager@expressautocare.com">manager@expressautocare.com (Manager)</option>
+                                    <option value="advisor@expressautocare.com">advisor@expressautocare.com (Service Advisor)</option>
+                                    <option value="tech1@expressautocare.com">tech1@expressautocare.com (Technician)</option>
+                                    <option value="backoffice@expressautocare.com">backoffice@expressautocare.com (Backoffice)</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Password</label>
+                                <input type="password" id="loginPassword" value="password">
+                            </div>
+                        </div>
+                        <button class="btn btn-primary" onclick="login()">Login</button>
+                    </div>
+                </div>
+
+                <div id="createFormSection" style="display:none">
+                    <h2 id="createFormTitle" style="color:#00d9ff;margin-bottom:20px;">Create</h2>
+                    <div class="request-form">
+                        <div class="form-group">
+                            <label>Request Body (JSON)</label>
+                            <textarea id="requestBody"></textarea>
+                        </div>
+                        <button class="btn btn-primary" id="submitCreateBtn">Create</button>
+                        <button class="btn btn-secondary" onclick="hideCreateForm()">Cancel</button>
+                    </div>
+                </div>
+
+                <div id="welcomeSection">
+                    <div style="text-align:center;padding:50px 20px;">
+                        <h2 style="color:#00d9ff;margin-bottom:20px;">Welcome to EAERP API Console</h2>
+                        <p style="color:#888;margin-bottom:30px;">Login to start testing the API endpoints</p>
+                        <button class="btn btn-primary" onclick="showLogin()">Login to Get Started</button>
+                    </div>
+                </div>
+
+                <div id="userInfoSection" style="display:none">
+                    <div class="user-info">
+                        <h4>Logged in as:</h4>
+                        <p><strong id="userName"></strong></p>
+                        <p id="userEmail"></p>
+                        <div class="roles" id="userRoles"></div>
+                    </div>
+                </div>
+
+                <div id="responseSection" class="response-section" style="display:none">
+                    <h3>
+                        Response
+                        <span class="response-meta">
+                            <span id="responseTime"></span>
+                            <span id="responseStatus" class="status-code"></span>
+                        </span>
+                    </h3>
+                    <div class="response-body">
+                        <pre id="responseBody"></pre>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = window.location.origin;
+        let authToken = localStorage.getItem('eaerp_token');
+        let currentUser = null;
+
+        // Check auth on load
+        document.addEventListener('DOMContentLoaded', () => {
+            if (authToken) {
+                checkAuth();
+            }
+        });
+
+        function updatePassword() {
+            document.getElementById('loginPassword').value = 'password';
+        }
+
+        async function checkAuth() {
+            try {
+                const response = await fetch(`${API_BASE}/api/v1/auth/me`, {
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`,
+                        'Accept': 'application/json'
+                    }
+                });
+                if (response.ok) {
+                    const data = await response.json();
+                    currentUser = data.data;
+                    updateAuthUI(true);
+                } else {
+                    logout();
+                }
+            } catch (e) {
+                logout();
+            }
+        }
+
+        function updateAuthUI(isAuthenticated) {
+            const statusBadge = document.getElementById('statusBadge');
+            const logoutBtn = document.getElementById('logoutBtn');
+            const userDisplay = document.getElementById('userDisplay');
+            const welcomeSection = document.getElementById('welcomeSection');
+            const userInfoSection = document.getElementById('userInfoSection');
+            const loginSection = document.getElementById('loginSection');
+
+            if (isAuthenticated && currentUser) {
+                statusBadge.textContent = 'Authenticated';
+                statusBadge.className = 'status-badge connected';
+                logoutBtn.style.display = 'block';
+                userDisplay.textContent = currentUser.name;
+                welcomeSection.style.display = 'none';
+                loginSection.style.display = 'none';
+                userInfoSection.style.display = 'block';
+
+                document.getElementById('userName').textContent = currentUser.name;
+                document.getElementById('userEmail').textContent = currentUser.email;
+
+                const rolesDiv = document.getElementById('userRoles');
+                rolesDiv.innerHTML = currentUser.roles.map(r =>
+                    `<span class="role-badge">${r}</span>`
+                ).join('');
+            } else {
+                statusBadge.textContent = 'Not Authenticated';
+                statusBadge.className = 'status-badge disconnected';
+                logoutBtn.style.display = 'none';
+                userDisplay.textContent = '';
+                welcomeSection.style.display = 'block';
+                userInfoSection.style.display = 'none';
+            }
+        }
+
+        function showLogin() {
+            document.getElementById('loginSection').style.display = 'block';
+            document.getElementById('welcomeSection').style.display = 'none';
+            document.getElementById('createFormSection').style.display = 'none';
+        }
+
+        async function login() {
+            const email = document.getElementById('loginEmail').value;
+            const password = document.getElementById('loginPassword').value;
+
+            const startTime = performance.now();
+            try {
+                const response = await fetch(`${API_BASE}/api/v1/auth/login`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify({ email, password })
+                });
+
+                const data = await response.json();
+                const endTime = performance.now();
+
+                showResponse(data, response.status, endTime - startTime);
+
+                if (response.ok && data.data?.token) {
+                    authToken = data.data.token;
+                    currentUser = data.data.user;
+                    localStorage.setItem('eaerp_token', authToken);
+                    updateAuthUI(true);
+                    document.getElementById('loginSection').style.display = 'none';
+                }
+            } catch (e) {
+                showResponse({ error: e.message }, 500, 0);
+            }
+        }
+
+        function logout() {
+            authToken = null;
+            currentUser = null;
+            localStorage.removeItem('eaerp_token');
+            updateAuthUI(false);
+            document.getElementById('responseSection').style.display = 'none';
+        }
+
+        async function callApi(method, endpoint, body = null) {
+            if (!authToken && !endpoint.includes('login')) {
+                showResponse({ error: 'Please login first' }, 401, 0);
+                return;
+            }
+
+            document.getElementById('loginSection').style.display = 'none';
+            document.getElementById('createFormSection').style.display = 'none';
+
+            const startTime = performance.now();
+            try {
+                const options = {
+                    method,
+                    headers: {
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/json'
+                    }
+                };
+
+                if (authToken) {
+                    options.headers['Authorization'] = `Bearer ${authToken}`;
+                }
+
+                if (body) {
+                    options.body = JSON.stringify(body);
+                }
+
+                const response = await fetch(`${API_BASE}${endpoint}`, options);
+                const data = await response.json();
+                const endTime = performance.now();
+
+                showResponse(data, response.status, endTime - startTime);
+            } catch (e) {
+                showResponse({ error: e.message }, 500, 0);
+            }
+        }
+
+        function showCreateForm(type) {
+            const section = document.getElementById('createFormSection');
+            const title = document.getElementById('createFormTitle');
+            const textarea = document.getElementById('requestBody');
+            const submitBtn = document.getElementById('submitCreateBtn');
+
+            section.style.display = 'block';
+            document.getElementById('loginSection').style.display = 'none';
+
+            const templates = {
+                customer: {
+                    title: 'Create Customer',
+                    endpoint: '/api/v1/workshop/customers',
+                    body: {
+                        name: "John Doe",
+                        phone: "9876543210",
+                        email: "john@example.com",
+                        address: "123 Main Street",
+                        city: "Mumbai",
+                        state: "Maharashtra",
+                        pincode: "400001",
+                        customer_type: "individual"
+                    }
+                },
+                vehicle: {
+                    title: 'Create Vehicle',
+                    endpoint: '/api/v1/workshop/vehicles',
+                    body: {
+                        customer_id: 1,
+                        make_id: 1,
+                        model_id: 1,
+                        category_id: 1,
+                        registration_no: "MH01AB1234",
+                        year: 2022,
+                        color: "White",
+                        fuel_type: "petrol"
+                    }
+                },
+                jobcard: {
+                    title: 'Create Job Card',
+                    endpoint: '/api/v1/workshop/job-cards',
+                    body: {
+                        customer_id: 1,
+                        vehicle_id: 1,
+                        package_id: 2,
+                        oil_type_id: 1,
+                        service_type: "scheduled",
+                        customer_concerns: "Regular service due",
+                        estimated_delivery: new Date(Date.now() + 86400000).toISOString().split('T')[0]
+                    }
+                }
+            };
+
+            const template = templates[type];
+            title.textContent = template.title;
+            textarea.value = JSON.stringify(template.body, null, 2);
+
+            submitBtn.onclick = () => {
+                try {
+                    const body = JSON.parse(textarea.value);
+                    callApi('POST', template.endpoint, body);
+                    section.style.display = 'none';
+                } catch (e) {
+                    alert('Invalid JSON: ' + e.message);
+                }
+            };
+        }
+
+        function hideCreateForm() {
+            document.getElementById('createFormSection').style.display = 'none';
+        }
+
+        function showResponse(data, status, time) {
+            const section = document.getElementById('responseSection');
+            const body = document.getElementById('responseBody');
+            const statusEl = document.getElementById('responseStatus');
+            const timeEl = document.getElementById('responseTime');
+
+            section.style.display = 'block';
+
+            statusEl.textContent = status;
+            statusEl.className = `status-code ${status >= 200 && status < 300 ? 'success' : 'error'}`;
+            timeEl.textContent = `${time.toFixed(0)}ms`;
+
+            body.innerHTML = syntaxHighlight(JSON.stringify(data, null, 2));
+        }
+
+        function syntaxHighlight(json) {
+            json = json.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            return json.replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g, function (match) {
+                let cls = 'json-number';
+                if (/^"/.test(match)) {
+                    if (/:$/.test(match)) {
+                        cls = 'json-key';
+                    } else {
+                        cls = 'json-string';
+                    }
+                } else if (/true|false/.test(match)) {
+                    cls = 'json-boolean';
+                } else if (/null/.test(match)) {
+                    cls = 'json-null';
+                }
+                return '<span class="' + cls + '">' + match + '</span>';
+            });
+        }
+    </script>
+</body>
+</html>

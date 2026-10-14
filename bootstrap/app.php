@@ -18,9 +18,8 @@ return Application::configure(basePath: dirname(__DIR__))
             'role' => \App\Core\Http\Middleware\CheckRole::class,
         ]);
 
-        $middleware->api(prepend: [
-            \Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful::class,
-        ]);
+        // Using pure token-based API authentication
+        // Add EnsureFrontendRequestsAreStateful back when building SPA with cookie-based auth
     })
     ->withExceptions(function (Exceptions $exceptions) {
         //
