@@ -200,6 +200,14 @@ class JobCard extends BranchScopedModel
     }
 
     /**
+     * Invoice raised for this job card.
+     */
+    public function invoice()
+    {
+        return $this->hasOne(\App\Modules\Billing\Models\Invoice::class);
+    }
+
+    /**
      * Check if status can transition to a new status.
      */
     public function canTransitionTo(string $newStatus): bool

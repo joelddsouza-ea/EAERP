@@ -8,13 +8,11 @@ use Illuminate\Support\Facades\Route;
 |--------------------------------------------------------------------------
 |
 | Here is where you can register web routes for your application.
+| The SPA catch-all route serves the Vue.js frontend for all non-API routes.
 |
 */
 
-Route::get('/', function () {
-    return response()->json([
-        'name' => 'EAERP - Car Workshop ERP',
-        'version' => '1.0.0',
-        'api_docs' => '/api/health',
-    ]);
-});
+// SPA catch-all route - serves the Vue.js frontend
+Route::get('/{any?}', function () {
+    return view('app');
+})->where('any', '^(?!api).*$');

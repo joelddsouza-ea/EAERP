@@ -27,6 +27,8 @@ class JobCardService
             $data['job_number'] = JobCard::generateJobNumber($data['branch_id']);
             $data['time_in'] = $data['time_in'] ?? now();
             $data['service_advisor_id'] = $data['service_advisor_id'] ?? auth()->id();
+            // Set explicitly: the DB default isn't loaded into the model, and logStatusChange needs it
+            $data['status'] = $data['status'] ?? 'draft';
 
             // Calculate package price if package selected
             if (!empty($data['package_id']) && !empty($data['vehicle_id'])) {

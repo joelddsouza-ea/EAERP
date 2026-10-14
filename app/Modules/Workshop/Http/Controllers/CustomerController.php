@@ -19,7 +19,7 @@ class CustomerController extends ApiController
      */
     public function index(Request $request): JsonResponse
     {
-        $query = Customer::with(['vehicles'])
+        $query = Customer::with(['vehicles.make', 'vehicles.model', 'vehicles.category'])
             ->withCount(['vehicles', 'jobCards'])
             ->quickSearch($request->search)
             ->when($request->customer_type, fn($q, $type) =>
@@ -54,7 +54,7 @@ class CustomerController extends ApiController
     public function show(Customer $customer): JsonResponse
     {
         return $this->success(
-            new CustomerResource($customer->load('vehicles'))
+            new CustomerResource($customer->load(['vehicles.make', 'vehicles.model', 'vehicles.category']))
         );
     }
 
@@ -123,7 +123,7 @@ class CustomerController extends ApiController
 
         $customers = Customer::where('phone', 'like', "%{$phone}%")
             ->orWhere('alt_phone', 'like', "%{$phone}%")
-            ->with('vehicles')
+            ->with(['vehicles.make', 'vehicles.model', 'vehicles.category'])
             ->limit(10)
             ->get();
 

@@ -3,6 +3,7 @@
 namespace App\Core\Services;
 
 use App\Core\Models\User;
+use App\Modules\Workshop\Models\Customer;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Log;
 
@@ -163,7 +164,7 @@ class NotificationService
      * Send job card status update notification.
      */
     public function notifyJobCardStatus(
-        User $customer,
+        Customer $customer,
         string $jobNumber,
         string $status,
         ?string $note = null
@@ -182,6 +183,18 @@ class NotificationService
             $message .= "\n\nNote: {$note}";
         }
 
-        $this->notifyUser($customer, "Vehicle Service Update - {$jobNumber}", $message);
+        // Customers aren't app users, so there's no push channel; reach them by SMS and email
+        if ($customer->phone) {
+            $this->sendSms($customer->phone, $message);
+        }
+
+        if ($customer->email) {
+            $this->sendEmail(
+                $customer->email,
+                "Vehicle Service Update - {$jobNumber}",
+                'emails.notification',
+                ['message' => $message, 'user' => $customer]
+            );
+        }
     }
 }
