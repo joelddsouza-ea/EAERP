@@ -1,0 +1,11 @@
+{
+    "name": "Billing",
+    "alias": "billing",
+    "description": "Billing Module - Manages invoices, payments, and financial transactions",
+    "version": "1.0.0",
+    "priority": 30,
+    "providers": [
+        "App\\Modules\\Billing\\Providers\\BillingServiceProvider"
+    ],
+    "dependencies": ["Workshop"]
+}

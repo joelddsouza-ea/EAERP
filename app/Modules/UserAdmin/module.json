@@ -1,0 +1,11 @@
+{
+    "name": "UserAdmin",
+    "alias": "user-admin",
+    "description": "User Administration Module - Manages users, roles, permissions, and branch assignments",
+    "version": "1.0.0",
+    "priority": 10,
+    "providers": [
+        "App\\Modules\\UserAdmin\\Providers\\UserAdminServiceProvider"
+    ],
+    "dependencies": []
+}

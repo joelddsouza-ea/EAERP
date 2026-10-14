@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(wc:*)",
+      "Bash(dir:*)",
+      "Bash(findstr:*)",
+      "Bash(file:*)",
+      "Bash(python3:*)",
+      "Bash(composer install:*)",
+      "Bash(where:*)",
+      "Bash(export PATH=\"$PATH:/c/php:/c/ProgramData/ComposerSetup/bin:/c/Users/JOEL/AppData/Roaming/Composer/vendor/bin\")",
+      "Bash(php:*)",
+      "Bash(export PATH=\"$PATH:/c/php\")",
+      "Bash(/c/ProgramData/ComposerSetup/bin/composer install:*)",
+      "Bash(export PATH=\"/c/php:/c/ProgramData/ComposerSetup/bin:$PATH\")",
+      "Bash(chmod:*)",
+      "Bash(mysqladmin:*)",
+      "Bash(ls:*)",
+      "Bash(curl:*)"
+    ]
+  }
+}

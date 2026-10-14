@@ -1,0 +1,11 @@
+{
+    "name": "Workshop",
+    "alias": "workshop",
+    "description": "Workshop Floor Management Module - Manages customers, vehicles, job cards, and service operations",
+    "version": "1.0.0",
+    "priority": 20,
+    "providers": [
+        "App\\Modules\\Workshop\\Providers\\WorkshopServiceProvider"
+    ],
+    "dependencies": ["UserAdmin"]
+}
