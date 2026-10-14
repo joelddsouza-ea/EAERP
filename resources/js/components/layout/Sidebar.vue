@@ -15,6 +15,7 @@ import {
   BuildingOfficeIcon,
   UserGroupIcon,
   WrenchScrewdriverIcon,
+  AdjustmentsHorizontalIcon,
 } from '@heroicons/vue/24/outline'
 
 const route = useRoute()
@@ -52,6 +53,9 @@ const navigation = computed<NavItem[]>(() => {
   }
   if (authStore.hasPermission('workshop.bays.view')) {
     items.push({ name: 'Bays', to: '/bays', icon: BuildingOfficeIcon })
+  }
+  if (authStore.hasPermission('workshop.job-sheet-masters.view')) {
+    items.push({ name: 'Job Sheet Masters', to: '/job-sheet-masters', icon: AdjustmentsHorizontalIcon })
   }
 
   // Billing items

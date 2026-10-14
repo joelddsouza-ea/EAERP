@@ -13,6 +13,7 @@ class ServicePackage extends BaseModel
         'description',
         'features',
         'home_service_available',
+        'send_customer_report',
         'is_active',
         'sort_order',
     ];
@@ -20,6 +21,7 @@ class ServicePackage extends BaseModel
     protected $casts = [
         'features' => 'array',
         'home_service_available' => 'boolean',
+        'send_customer_report' => 'boolean',
         'is_active' => 'boolean',
     ];
 

@@ -104,6 +104,9 @@ class RolesAndPermissionsSeeder extends Seeder
 
         // Assign permissions to roles
         $this->assignRolePermissions();
+
+        // Job-sheet / workflow permissions and the driver role
+        $this->call(Phase1WorkflowPermissionsSeeder::class);
     }
 
     protected function assignRolePermissions(): void
@@ -123,9 +126,9 @@ class RolesAndPermissionsSeeder extends Seeder
 
         // Service Advisor permissions
         $advisor = Role::where('slug', Role::SERVICE_ADVISOR)->first();
-        $advisorPerms = Permission::where('module', 'workshop')
-            ->orWhere('slug', 'like', 'billing.invoices.view')
-            ->orWhere('slug', 'like', 'billing.invoices.create')
+        $advisorPerms = Permission::where(fn ($q) => $q->where('module', 'workshop')
+                ->orWhereIn('slug', ['billing.invoices.view', 'billing.invoices.create']))
+            ->whereNotIn('slug', Phase1WorkflowPermissionsSeeder::MANAGER_ONLY)
             ->pluck('id');
         $advisor->permissions()->sync($advisorPerms);
 

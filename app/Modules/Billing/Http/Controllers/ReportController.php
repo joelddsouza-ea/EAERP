@@ -58,7 +58,7 @@ class ReportController extends ApiController
             // Jobs summary
             'jobs' => [
                 'in_progress' => JobCard::active()->count(),
-                'ready_for_billing' => JobCard::status('ready')
+                'ready_for_billing' => JobCard::status('ready_for_delivery')
                     ->whereDoesntHave('invoice', fn($q) => $q->whereNotIn('status', ['cancelled']))
                     ->count(),
             ],

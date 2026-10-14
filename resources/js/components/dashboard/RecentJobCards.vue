@@ -2,6 +2,7 @@
 import { RouterLink } from 'vue-router'
 import type { JobCard } from '@/api/types'
 import Badge from '@/components/ui/Badge.vue'
+import { statusLabel, statusVariant } from '@/constants/jobCardStatus'
 
 interface Props {
   jobCards: JobCard[]
@@ -12,27 +13,6 @@ withDefaults(defineProps<Props>(), {
   loading: false,
 })
 
-const statusVariants: Record<string, 'default' | 'success' | 'warning' | 'danger' | 'info' | 'purple'> = {
-  draft: 'default',
-  received: 'info',
-  in_progress: 'warning',
-  waiting_parts: 'danger',
-  qc: 'purple',
-  ready: 'success',
-  delivered: 'success',
-  cancelled: 'danger',
-}
-
-const statusLabels: Record<string, string> = {
-  draft: 'Draft',
-  received: 'Received',
-  in_progress: 'In Progress',
-  waiting_parts: 'Waiting Parts',
-  qc: 'QC',
-  ready: 'Ready',
-  delivered: 'Delivered',
-  cancelled: 'Cancelled',
-}
 </script>
 
 <template>
@@ -76,8 +56,8 @@ const statusLabels: Record<string, string> = {
                 {{ jobCard.vehicle?.registration_no }} - {{ jobCard.customer?.name }}
               </p>
             </div>
-            <Badge :variant="statusVariants[jobCard.status] || 'default'" size="sm">
-              {{ statusLabels[jobCard.status] || jobCard.status }}
+            <Badge :variant="statusVariant(jobCard.status)" size="sm">
+              {{ statusLabel(jobCard.status) }}
             </Badge>
           </div>
         </RouterLink>

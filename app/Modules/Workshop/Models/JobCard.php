@@ -4,6 +4,8 @@ namespace App\Modules\Workshop\Models;
 
 use App\Core\Models\BranchScopedModel;
 use App\Core\Models\User;
+use App\Modules\Workshop\Enums\JobCardStatus;
+use App\Modules\Workshop\Workflow\JobCardWorkflow;
 
 class JobCard extends BranchScopedModel
 {
@@ -18,6 +20,8 @@ class JobCard extends BranchScopedModel
         'service_advisor_id',
         'technician_id',
         'status',
+        'status_changed_at',
+        'cancel_reason',
         'service_type',
         'km_reading',
         'fuel_level',
@@ -54,6 +58,7 @@ class JobCard extends BranchScopedModel
         'work_completed_at' => 'datetime',
         'qc_completed_at' => 'datetime',
         'time_out' => 'datetime',
+        'status_changed_at' => 'datetime',
         'approved_at' => 'datetime',
         'customer_approved' => 'boolean',
         'estimated_amount' => 'decimal:2',
@@ -64,19 +69,6 @@ class JobCard extends BranchScopedModel
         'third_party_total' => 'decimal:2',
         'discount' => 'decimal:2',
         'total_amount' => 'decimal:2',
-    ];
-
-    /**
-     * Status workflow order.
-     */
-    public const STATUS_ORDER = [
-        'draft' => 0,
-        'received' => 1,
-        'in_progress' => 2,
-        'qc' => 3,
-        'ready' => 4,
-        'delivered' => 5,
-        'cancelled' => -1,
     ];
 
     /**
@@ -160,6 +152,14 @@ class JobCard extends BranchScopedModel
     }
 
     /**
+     * Job sheets (alias of checklists; used for scoped route binding of {sheet}).
+     */
+    public function sheets()
+    {
+        return $this->hasMany(JobCardChecklist::class);
+    }
+
+    /**
      * Photos.
      */
     public function photos()
@@ -200,6 +200,37 @@ class JobCard extends BranchScopedModel
     }
 
     /**
+     * Job-sheet activity media (photos/videos).
+     */
+    public function media()
+    {
+        return $this->hasMany(JobCardMedia::class);
+    }
+
+    public function observations()
+    {
+        return $this->hasMany(JobCardObservation::class)->orderBy('sort_order')->orderBy('id');
+    }
+
+    /**
+     * Customer-reported issues.
+     */
+    public function issues()
+    {
+        return $this->hasMany(JobCardIssue::class)->orderBy('sort_order')->orderBy('id');
+    }
+
+    public function additionalJobs()
+    {
+        return $this->hasMany(JobCardAdditionalJob::class)->orderBy('id');
+    }
+
+    public function insuranceDetail()
+    {
+        return $this->hasOne(JobCardInsuranceDetail::class);
+    }
+
+    /**
      * Invoice raised for this job card.
      */
     public function invoice()
@@ -208,24 +239,17 @@ class JobCard extends BranchScopedModel
     }
 
     /**
-     * Check if status can transition to a new status.
+     * Whether the workflow has an edge from the current status to the given one
+     * (permissions and guards are checked by JobCardStatusService).
      */
     public function canTransitionTo(string $newStatus): bool
     {
-        if ($this->status === 'cancelled') {
-            return false;
-        }
+        return app(JobCardWorkflow::class)->edge($this->status, $newStatus) !== null;
+    }
 
-        $currentOrder = self::STATUS_ORDER[$this->status] ?? -1;
-        $newOrder = self::STATUS_ORDER[$newStatus] ?? -1;
-
-        // Can always go to cancelled
-        if ($newStatus === 'cancelled') {
-            return $this->status !== 'delivered';
-        }
-
-        // Can only move forward in workflow (or stay same)
-        return $newOrder >= $currentOrder;
+    public function isClosed(): bool
+    {
+        return in_array($this->status, JobCardStatus::terminal(), true);
     }
 
     /**
@@ -284,7 +308,7 @@ class JobCard extends BranchScopedModel
      */
     public function scopeActive($query)
     {
-        return $query->whereNotIn('status', ['delivered', 'cancelled']);
+        return $query->whereNotIn('status', JobCardStatus::terminal());
     }
 
     /**

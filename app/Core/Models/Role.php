@@ -38,6 +38,7 @@ class Role extends BaseModel
     public const BODY_SHOP_ADVISOR = 'body-shop-advisor';
     public const BODY_SHOP_TECHNICIAN = 'body-shop-technician';
     public const SPARE_PARTS_COORDINATOR = 'spare-parts-coordinator';
+    public const DRIVER = 'driver';
 
     /**
      * Users relationship.

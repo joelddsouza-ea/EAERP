@@ -23,6 +23,7 @@ class DatabaseSeeder extends Seeder
             ServicePackagesSeeder::class,
             ServiceAddonsSeeder::class,
             ChecklistTemplatesSeeder::class,
+            JobSheetTemplatesSeeder::class,
             TaxRatesSeeder::class,
 
             // Users

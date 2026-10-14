@@ -20,8 +20,8 @@ class InvoiceService
      */
     public function createFromJobCard(JobCard $jobCard, array $options = []): Invoice
     {
-        if ($jobCard->status !== 'ready') {
-            throw new \InvalidArgumentException('Job card must be in ready status to create invoice');
+        if (!in_array($jobCard->status, \App\Modules\Workshop\Enums\JobCardStatus::invoiceable(), true)) {
+            throw new \InvalidArgumentException('Job card must be ready for delivery to create an invoice');
         }
 
         return DB::transaction(function () use ($jobCard, $options) {

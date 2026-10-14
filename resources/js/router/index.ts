@@ -16,6 +16,8 @@ const VehicleForm = () => import('@/views/workshop/VehicleForm.vue')
 const JobCardList = () => import('@/views/workshop/JobCardList.vue')
 const JobCardForm = () => import('@/views/workshop/JobCardForm.vue')
 const JobCardDetail = () => import('@/views/workshop/JobCardDetail.vue')
+const JobSheet = () => import('@/views/workshop/JobSheet.vue')
+const JobSheetMasters = () => import('@/views/workshop/masters/JobSheetMasters.vue')
 const BayList = () => import('@/views/workshop/BayList.vue')
 const MyJobs = () => import('@/views/workshop/MyJobs.vue')
 
@@ -140,10 +142,23 @@ const routes: RouteRecordRaw[] = [
         meta: { title: 'Job Card Details', permission: 'workshop.job-cards.view' },
       },
       {
+        path: 'job-cards/:id/sheet',
+        name: 'job-card-sheet',
+        component: JobSheet,
+        meta: { title: 'Job Sheet', permission: 'workshop.job-sheets.view' },
+      },
+      {
         path: 'job-cards/:id/edit',
         name: 'job-card-edit',
         component: JobCardForm,
         meta: { title: 'Edit Job Card', permission: 'workshop.job-cards.update' },
+      },
+
+      {
+        path: 'job-sheet-masters',
+        name: 'job-sheet-masters',
+        component: JobSheetMasters,
+        meta: { title: 'Job Sheet Masters', permission: 'workshop.job-sheet-masters.view' },
       },
 
       {

@@ -13,6 +13,8 @@ class JobCardResource extends JsonResource
             'id' => $this->id,
             'job_number' => $this->job_number,
             'status' => $this->status,
+            'status_changed_at' => $this->status_changed_at?->toIso8601String(),
+            'cancel_reason' => $this->cancel_reason,
             'service_type' => $this->service_type,
             'priority' => $this->priority,
 
@@ -26,9 +28,10 @@ class JobCardResource extends JsonResource
                 'id' => $this->vehicle->id,
                 'registration_no' => $this->vehicle->registration_no,
                 'full_name' => $this->vehicle->full_name,
-                'make' => $this->vehicle->make?->name,
-                'model' => $this->vehicle->model?->name,
-                'category' => $this->vehicle->category?->name,
+                // Objects, matching the vehicle and job card list endpoints
+                'make' => $this->vehicle->make?->only(['id', 'name']),
+                'model' => $this->vehicle->model?->only(['id', 'name']),
+                'category' => $this->vehicle->category?->only(['id', 'name']),
             ]),
 
             // Package & Service
@@ -105,6 +108,7 @@ class JobCardResource extends JsonResource
                     'from_status' => $h->from_status,
                     'to_status' => $h->to_status,
                     'notes' => $h->notes,
+                    'override' => (bool) ($h->meta['override'] ?? false),
                     'changed_by' => $h->changedBy?->name,
                     'changed_at' => $h->created_at->toIso8601String(),
                 ])

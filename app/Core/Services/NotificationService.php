@@ -170,10 +170,10 @@ class NotificationService
         ?string $note = null
     ): void {
         $statusMessages = [
-            'received' => "Your vehicle has been received at our workshop. Job Card: {$jobNumber}",
-            'in_progress' => "Work has started on your vehicle. Job Card: {$jobNumber}",
-            'qc' => "Your vehicle is undergoing quality check. Job Card: {$jobNumber}",
-            'ready' => "Your vehicle is ready for pickup! Job Card: {$jobNumber}",
+            'intake_in_progress' => "Your vehicle has been received at our workshop. Job Card: {$jobNumber}",
+            'work_in_progress' => "Work has started on your vehicle. Job Card: {$jobNumber}",
+            'post_work_trial' => "Your vehicle is undergoing a trial drive and quality check. Job Card: {$jobNumber}",
+            'ready_for_delivery' => "Your vehicle is ready for delivery! Job Card: {$jobNumber}",
             'delivered' => "Thank you for choosing us! Your vehicle (Job Card: {$jobNumber}) has been delivered.",
         ];
 

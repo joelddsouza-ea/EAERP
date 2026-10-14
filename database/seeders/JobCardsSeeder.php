@@ -20,6 +20,7 @@ use App\Modules\Workshop\Models\ChecklistTemplate;
 use App\Modules\Workshop\Models\ChecklistItem;
 use App\Modules\Workshop\Models\ChecklistSection;
 use App\Modules\Workshop\Models\ServiceAddon;
+use App\Modules\Workshop\Services\JobSheetService;
 use App\Core\Models\Branch;
 use App\Core\Models\User;
 use Carbon\Carbon;
@@ -42,7 +43,7 @@ class JobCardsSeeder extends Seeder
             return;
         }
 
-        $statuses = ['draft', 'received', 'in_progress', 'qc', 'ready', 'delivered'];
+        $statuses = ['intake_pending', 'intake_in_progress', 'work_in_progress', 'post_work_trial', 'ready_for_delivery', 'delivered'];
         $serviceTypes = ['scheduled', 'general_repair', 'ac_service', 'detailing'];
 
         $jobCardData = [
@@ -78,37 +79,37 @@ class JobCardsSeeder extends Seeder
                 'complaints' => 'Oil change and general checkup',
             ],
             [
-                'status' => 'ready',
+                'status' => 'ready_for_delivery',
                 'days_ago' => 1,
                 'service_type' => 'detailing',
                 'complaints' => 'Full service with detailing',
             ],
             [
-                'status' => 'qc',
+                'status' => 'post_work_trial',
                 'days_ago' => 0,
                 'service_type' => 'scheduled',
                 'complaints' => 'Regular service and brake check',
             ],
             [
-                'status' => 'in_progress',
+                'status' => 'work_in_progress',
                 'days_ago' => 0,
                 'service_type' => 'general_repair',
                 'complaints' => 'Engine noise and vibration',
             ],
             [
-                'status' => 'in_progress',
+                'status' => 'work_in_progress',
                 'days_ago' => 0,
                 'service_type' => 'scheduled',
                 'complaints' => 'Periodic maintenance',
             ],
             [
-                'status' => 'received',
+                'status' => 'intake_in_progress',
                 'days_ago' => 0,
                 'service_type' => 'scheduled',
                 'complaints' => 'Oil change required',
             ],
             [
-                'status' => 'draft',
+                'status' => 'intake_pending',
                 'days_ago' => 0,
                 'service_type' => 'scheduled',
                 'complaints' => 'Pre-purchase inspection',
@@ -137,13 +138,13 @@ class JobCardsSeeder extends Seeder
                 'package_id' => $package->id,
                 'oil_type_id' => $oilType->id,
                 'service_advisor_id' => $advisor->id,
-                'technician_id' => in_array($data['status'], ['in_progress', 'qc', 'ready', 'delivered']) ? $technician->id : null,
-                'bay_id' => in_array($data['status'], ['in_progress', 'qc', 'ready', 'delivered']) ? $bay?->id : null,
+                'technician_id' => in_array($data['status'], ['work_in_progress', 'post_work_trial', 'ready_for_delivery', 'delivered']) ? $technician->id : null,
+                'bay_id' => in_array($data['status'], ['work_in_progress', 'post_work_trial', 'ready_for_delivery', 'delivered']) ? $bay?->id : null,
                 'status' => $data['status'],
                 'service_type' => $data['service_type'],
                 'priority' => $index % 3 === 0 ? 'high' : ($index % 2 === 0 ? 'urgent' : 'normal'),
                 'customer_complaints' => $data['complaints'],
-                'advisor_observations' => in_array($data['status'], ['qc', 'ready', 'delivered']) ? 'All systems checked. ' . $this->getRandomObservation() : null,
+                'advisor_observations' => in_array($data['status'], ['post_work_trial', 'ready_for_delivery', 'delivered']) ? 'All systems checked. ' . $this->getRandomObservation() : null,
                 'time_in' => $timeIn,
                 'time_out' => $data['status'] === 'delivered' ? $timeIn->copy()->addHours(rand(3, 8)) : null,
                 'estimated_delivery' => $timeIn->copy()->addHours(rand(4, 24)),
@@ -170,7 +171,7 @@ class JobCardsSeeder extends Seeder
             }
 
             // Add checklist for in_progress and beyond
-            if (in_array($data['status'], ['in_progress', 'qc', 'ready', 'delivered'])) {
+            if (in_array($data['status'], ['work_in_progress', 'post_work_trial', 'ready_for_delivery', 'delivered'])) {
                 $this->addChecklists($jobCard, $package, $technician);
             }
         }
@@ -231,7 +232,7 @@ class JobCardsSeeder extends Seeder
 
     private function addStatusHistory(JobCard $jobCard, string $currentStatus, User $advisor, User $technician, Carbon $createdAt): void
     {
-        $statuses = ['draft', 'received', 'in_progress', 'qc', 'ready', 'delivered'];
+        $statuses = ['intake_pending', 'intake_in_progress', 'work_in_progress', 'post_work_trial', 'ready_for_delivery', 'delivered'];
         $currentIndex = array_search($currentStatus, $statuses);
 
         $time = $createdAt->copy();
@@ -260,7 +261,7 @@ class JobCardsSeeder extends Seeder
         ];
 
         $selectedParts = array_slice($parts, 0, rand(1, 3));
-        $statuses = ['requested', 'approved', 'issued', 'received'];
+        $statuses = ['requested', 'approved', 'issued', 'intake_in_progress'];
 
         foreach ($selectedParts as $part) {
             $status = $statuses[rand(0, 3)];
@@ -285,41 +286,35 @@ class JobCardsSeeder extends Seeder
 
     private function addChecklists(JobCard $jobCard, ServicePackage $package, User $technician): void
     {
-        $templates = ChecklistTemplate::where('package_id', $package->id)->get();
+        $sheets = app(JobSheetService::class)->instantiateFor($jobCard);
+        $workDone = in_array($jobCard->status, ['post_work_trial', 'wash_pending', 'ready_for_delivery', 'delivered'], true);
 
-        if ($templates->isEmpty()) {
-            $templates = ChecklistTemplate::limit(2)->get();
-        }
-
-        foreach ($templates as $template) {
-            $checklist = JobCardChecklist::create([
-                'job_card_id' => $jobCard->id,
-                'template_id' => $template->id,
-                'completed_by' => $technician->id,
-                'status' => in_array($jobCard->status, ['qc', 'ready', 'delivered']) ? 'completed' : 'in_progress',
-                'started_at' => $jobCard->time_in,
-                'completed_at' => in_array($jobCard->status, ['qc', 'ready', 'delivered']) ? now() : null,
-            ]);
-
-            // Get checklist items through sections
-            $sections = ChecklistSection::where('template_id', $template->id)->get();
-
-            foreach ($sections as $section) {
-                $items = ChecklistItem::where('section_id', $section->id)->get();
-
-                foreach ($items as $item) {
-                    $isCompleted = in_array($jobCard->status, ['qc', 'ready', 'delivered']) || rand(0, 1);
-
-                    JobCardChecklistItem::create([
-                        'job_card_checklist_id' => $checklist->id,
-                        'checklist_item_id' => $item->id,
-                        'is_completed' => $isCompleted,
-                        'remarks' => $isCompleted && rand(0, 2) === 0 ? 'OK' : null,
-                        'completed_by' => $isCompleted ? $technician->id : null,
-                        'completed_at' => $isCompleted ? now() : null,
-                    ]);
-                }
+        foreach ($sheets as $sheet) {
+            if (!$sheet->isWorkSheet()) {
+                continue;
             }
+
+            foreach ($sheet->items as $item) {
+                // Demo data has no media, so in-progress jobs only tick activities that need none
+                $done = $workDone || ($item->media_requirement === 'none' && rand(0, 1));
+                if (!$done) {
+                    continue;
+                }
+                $item->update([
+                    'status' => 'done',
+                    'is_completed' => true,
+                    'remarks' => rand(0, 2) === 0 ? 'OK' : null,
+                    'completed_by' => $technician->id,
+                    'completed_at' => now(),
+                ]);
+            }
+
+            $sheet->update([
+                'status' => $workDone ? 'completed' : 'in_progress',
+                'started_at' => $jobCard->time_in,
+                'completed_by' => $workDone ? $technician->id : null,
+                'completed_at' => $workDone ? now() : null,
+            ]);
         }
     }
 
@@ -342,11 +337,11 @@ class JobCardsSeeder extends Seeder
     private function getStatusNote(string $status): string
     {
         return match ($status) {
-            'draft' => 'Job card created',
-            'received' => 'Vehicle received at workshop',
-            'in_progress' => 'Work started by technician',
-            'qc' => 'Sent for quality check',
-            'ready' => 'Ready for delivery',
+            'intake_pending' => 'Job card created',
+            'intake_in_progress' => 'Vehicle received at workshop',
+            'work_in_progress' => 'Work started by technician',
+            'post_work_trial' => 'Sent for quality check',
+            'ready_for_delivery' => 'Ready for delivery',
             'delivered' => 'Vehicle delivered to customer',
             default => 'Status updated',
         };

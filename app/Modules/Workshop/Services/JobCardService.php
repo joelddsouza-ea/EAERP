@@ -4,17 +4,13 @@ namespace App\Modules\Workshop\Services;
 
 use App\Modules\Workshop\Models\JobCard;
 use App\Modules\Workshop\Models\JobCardStatusHistory;
-use App\Modules\Workshop\Models\JobCardChecklist;
-use App\Modules\Workshop\Models\JobCardChecklistItem;
-use App\Modules\Workshop\Models\ChecklistTemplate;
-use App\Modules\Workshop\Models\FollowUpCall;
-use App\Core\Services\NotificationService;
+use App\Modules\Workshop\Enums\JobCardStatus;
 use Illuminate\Support\Facades\DB;
 
 class JobCardService
 {
     public function __construct(
-        protected NotificationService $notificationService
+        protected JobSheetService $jobSheetService
     ) {}
 
     /**
@@ -28,7 +24,8 @@ class JobCardService
             $data['time_in'] = $data['time_in'] ?? now();
             $data['service_advisor_id'] = $data['service_advisor_id'] ?? auth()->id();
             // Set explicitly: the DB default isn't loaded into the model, and logStatusChange needs it
-            $data['status'] = $data['status'] ?? 'draft';
+            $data['status'] = $data['status'] ?? JobCardStatus::IntakePending->value;
+            $data['status_changed_at'] = now();
 
             // Calculate package price if package selected
             if (!empty($data['package_id']) && !empty($data['vehicle_id'])) {
@@ -41,11 +38,15 @@ class JobCardService
 
             $jobCard = JobCard::create($data);
 
-            // Initialize checklists from templates
-            $this->initializeChecklists($jobCard);
+            // Create the job sheets for this plan / service type
+            $this->jobSheetService->instantiateFor($jobCard);
 
-            // Log status change
-            $this->logStatusChange($jobCard, null, $jobCard->status);
+            JobCardStatusHistory::create([
+                'job_card_id' => $jobCard->id,
+                'from_status' => null,
+                'to_status' => $jobCard->status,
+                'changed_by' => auth()->id(),
+            ]);
 
             return $jobCard->load(['customer', 'vehicle', 'package', 'oilType']);
         });
@@ -56,9 +57,10 @@ class JobCardService
      */
     public function updateJobCard(JobCard $jobCard, array $data): JobCard
     {
-        return DB::transaction(function () use ($jobCard, $data) {
-            $oldStatus = $jobCard->status;
+        // Status changes go through JobCardStatusService
+        unset($data['status']);
 
+        return DB::transaction(function () use ($jobCard, $data) {
             $jobCard->update($data);
 
             // Recalculate totals if pricing changed
@@ -66,56 +68,13 @@ class JobCardService
                 $jobCard->calculateTotals();
             }
 
-            // Log status change if changed
-            if (isset($data['status']) && $data['status'] !== $oldStatus) {
-                $this->handleStatusChange($jobCard, $oldStatus, $data['status']);
+            // A plan or service-type change may bring in different job sheets
+            if ($jobCard->wasChanged(['package_id', 'service_type'])) {
+                $this->jobSheetService->sync($jobCard);
             }
 
             return $jobCard->fresh()->load(['customer', 'vehicle', 'package', 'oilType']);
         });
-    }
-
-    /**
-     * Change job card status.
-     */
-    public function changeStatus(JobCard $jobCard, string $newStatus, ?string $notes = null): JobCard
-    {
-        if (!$jobCard->canTransitionTo($newStatus)) {
-            throw new \InvalidArgumentException(
-                "Cannot transition from {$jobCard->status} to {$newStatus}"
-            );
-        }
-
-        $oldStatus = $jobCard->status;
-
-        DB::transaction(function () use ($jobCard, $oldStatus, $newStatus, $notes) {
-            $jobCard->status = $newStatus;
-
-            // Set timestamps based on status
-            switch ($newStatus) {
-                case 'received':
-                    $jobCard->time_in = $jobCard->time_in ?? now();
-                    break;
-                case 'in_progress':
-                    $jobCard->work_started_at = now();
-                    break;
-                case 'qc':
-                    $jobCard->work_completed_at = now();
-                    break;
-                case 'ready':
-                    $jobCard->qc_completed_at = now();
-                    break;
-                case 'delivered':
-                    $jobCard->time_out = now();
-                    break;
-            }
-
-            $jobCard->save();
-
-            $this->handleStatusChange($jobCard, $oldStatus, $newStatus, $notes);
-        });
-
-        return $jobCard->fresh();
     }
 
     /**
@@ -167,139 +126,6 @@ class JobCardService
     }
 
     /**
-     * Initialize checklists from templates.
-     */
-    protected function initializeChecklists(JobCard $jobCard): void
-    {
-        // Get templates for this package
-        $templates = ChecklistTemplate::where(function ($query) use ($jobCard) {
-            $query->where('package_id', $jobCard->package_id)
-                  ->orWhereNull('package_id'); // Generic templates
-        })
-        ->where('is_active', true)
-        ->with(['sections.items'])
-        ->get();
-
-        foreach ($templates as $template) {
-            $checklist = JobCardChecklist::create([
-                'job_card_id' => $jobCard->id,
-                'template_id' => $template->id,
-                'status' => 'pending',
-            ]);
-
-            // Create checklist items
-            foreach ($template->sections as $section) {
-                foreach ($section->items as $item) {
-                    if ($item->is_active) {
-                        JobCardChecklistItem::create([
-                            'job_card_checklist_id' => $checklist->id,
-                            'checklist_item_id' => $item->id,
-                            'is_completed' => false,
-                        ]);
-                    }
-                }
-            }
-        }
-    }
-
-    /**
-     * Handle status change side effects.
-     */
-    protected function handleStatusChange(
-        JobCard $jobCard,
-        ?string $fromStatus,
-        string $toStatus,
-        ?string $notes = null
-    ): void {
-        // Log status change
-        $this->logStatusChange($jobCard, $fromStatus, $toStatus, $notes);
-
-        // Send notifications based on status
-        switch ($toStatus) {
-            case 'received':
-                // Notify customer
-                $this->notificationService->notifyJobCardStatus(
-                    $jobCard->customer,
-                    $jobCard->job_number,
-                    'received'
-                );
-                break;
-
-            case 'in_progress':
-                // Notify customer
-                $this->notificationService->notifyJobCardStatus(
-                    $jobCard->customer,
-                    $jobCard->job_number,
-                    'in_progress'
-                );
-                break;
-
-            case 'ready':
-                // Notify customer vehicle is ready
-                $this->notificationService->notifyJobCardStatus(
-                    $jobCard->customer,
-                    $jobCard->job_number,
-                    'ready'
-                );
-                break;
-
-            case 'delivered':
-                // Schedule follow-up calls
-                $this->scheduleFollowUpCalls($jobCard);
-
-                // Notify customer
-                $this->notificationService->notifyJobCardStatus(
-                    $jobCard->customer,
-                    $jobCard->job_number,
-                    'delivered'
-                );
-                break;
-        }
-    }
-
-    /**
-     * Log status change.
-     */
-    protected function logStatusChange(
-        JobCard $jobCard,
-        ?string $fromStatus,
-        string $toStatus,
-        ?string $notes = null
-    ): void {
-        JobCardStatusHistory::create([
-            'job_card_id' => $jobCard->id,
-            'from_status' => $fromStatus,
-            'to_status' => $toStatus,
-            'notes' => $notes,
-            'changed_by' => auth()->id(),
-        ]);
-    }
-
-    /**
-     * Schedule follow-up calls after delivery.
-     */
-    protected function scheduleFollowUpCalls(JobCard $jobCard): void
-    {
-        // 2-day courtesy call
-        FollowUpCall::create([
-            'job_card_id' => $jobCard->id,
-            'customer_id' => $jobCard->customer_id,
-            'call_type' => 'courtesy_2day',
-            'status' => 'scheduled',
-            'scheduled_date' => now()->addDays(2)->toDateString(),
-        ]);
-
-        // 7-day feedback call
-        FollowUpCall::create([
-            'job_card_id' => $jobCard->id,
-            'customer_id' => $jobCard->customer_id,
-            'call_type' => 'feedback',
-            'status' => 'scheduled',
-            'scheduled_date' => now()->addDays(7)->toDateString(),
-        ]);
-    }
-
-    /**
      * Get technician workload.
      */
     public function getTechnicianWorkload(int $technicianId): array
@@ -310,8 +136,8 @@ class JobCardService
 
         return [
             'total_jobs' => $jobs->count(),
-            'in_progress' => $jobs->where('status', 'in_progress')->count(),
-            'pending_qc' => $jobs->where('status', 'qc')->count(),
+            'in_progress' => $jobs->where('status', JobCardStatus::WorkInProgress->value)->count(),
+            'pending_qc' => $jobs->where('status', JobCardStatus::PostWorkTrial->value)->count(),
             'jobs' => $jobs,
         ];
     }

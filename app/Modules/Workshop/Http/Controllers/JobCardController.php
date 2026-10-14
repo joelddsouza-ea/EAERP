@@ -16,6 +16,11 @@ use App\Modules\Workshop\Http\Requests\CreateJobCardRequest;
 use App\Modules\Workshop\Http\Requests\UpdateJobCardRequest;
 use App\Modules\Workshop\Http\Resources\JobCardResource;
 use App\Modules\Workshop\Services\JobCardService;
+use App\Modules\Workshop\Services\JobCardStatusService;
+use App\Modules\Workshop\Enums\JobCardStatus;
+use App\Modules\Workshop\Workflow\JobCardWorkflow;
+use App\Modules\Workshop\Workflow\TransitionBlockedException;
+use Illuminate\Validation\Rule;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -23,7 +28,9 @@ class JobCardController extends ApiController
 {
     public function __construct(
         protected JobCardService $jobCardService,
-        protected FileStorageService $fileStorage
+        protected FileStorageService $fileStorage,
+        protected JobCardStatusService $statusService,
+        protected JobCardWorkflow $workflow
     ) {}
 
     /**
@@ -122,8 +129,8 @@ class JobCardController extends ApiController
      */
     public function destroy(JobCard $jobCard): JsonResponse
     {
-        if (!in_array($jobCard->status, ['draft', 'cancelled'])) {
-            return $this->error('Only draft or cancelled job cards can be deleted', 400);
+        if (!in_array($jobCard->status, [JobCardStatus::IntakePending->value, JobCardStatus::Cancelled->value], true)) {
+            return $this->error('Only job cards awaiting intake or cancelled can be deleted', 400);
         }
 
         $jobCard->delete();
@@ -137,24 +144,35 @@ class JobCardController extends ApiController
     public function updateStatus(Request $request, JobCard $jobCard): JsonResponse
     {
         $request->validate([
-            'status' => 'required|string|in:draft,received,in_progress,qc,ready,delivered,cancelled',
+            'status' => ['required', Rule::enum(JobCardStatus::class)],
             'notes' => 'nullable|string|max:500',
+            'override' => 'sometimes|boolean',
         ]);
 
         try {
-            $jobCard = $this->jobCardService->changeStatus(
+            $jobCard = $this->statusService->change(
                 $jobCard,
                 $request->status,
-                $request->notes
+                $request->user(),
+                $request->notes,
+                $request->boolean('override')
             );
-
-            return $this->success(
-                new JobCardResource($jobCard),
-                'Status updated successfully'
-            );
-        } catch (\InvalidArgumentException $e) {
-            return $this->error($e->getMessage(), 400);
+        } catch (TransitionBlockedException $e) {
+            return $this->error($e->getMessage(), $e->status, $e->errors());
         }
+
+        return $this->success(
+            new JobCardResource($jobCard),
+            'Status updated successfully'
+        );
+    }
+
+    /**
+     * Next statuses available from the current one, with any checks blocking them.
+     */
+    public function transitions(Request $request, JobCard $jobCard): JsonResponse
+    {
+        return $this->success($this->workflow->transitionsFor($jobCard, $request->user()));
     }
 
     /**
@@ -163,7 +181,9 @@ class JobCardController extends ApiController
     public function assignTechnician(Request $request, JobCard $jobCard): JsonResponse
     {
         $request->validate([
-            'technician_id' => 'required|exists:users,id',
+            // Only users holding a technician role
+            'technician_id' => ['required', Rule::exists('user_roles', 'user_id')->whereIn('role_id',
+                \App\Core\Models\Role::whereIn('slug', ['technician', 'body-shop-technician'])->pluck('id')->all())],
         ]);
 
         $jobCard = $this->jobCardService->assignTechnician($jobCard, $request->technician_id);
@@ -551,8 +571,8 @@ class JobCardController extends ApiController
         $stats = [
             'jobs_in_progress' => JobCard::active()->count(),
             'jobs_today' => JobCard::today()->count(),
-            'pending_qc' => JobCard::status('qc')->count(),
-            'ready_for_delivery' => JobCard::status('ready')->count(),
+            'pending_qc' => JobCard::status([JobCardStatus::PostWorkTrial->value, JobCardStatus::WashPending->value])->count(),
+            'ready_for_delivery' => JobCard::status(JobCardStatus::ReadyForDelivery->value)->count(),
             'delivered_today' => JobCard::status('delivered')->whereDate('time_out', $today)->count(),
             'by_status' => JobCard::active()
                 ->selectRaw('status, count(*) as count')

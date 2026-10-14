@@ -3,11 +3,12 @@ import { computed } from 'vue'
 import { Doughnut } from 'vue-chartjs'
 import { Chart as ChartJS, ArcElement, Tooltip, Legend } from 'chart.js'
 import type { JobCardStatus } from '@/api/types'
+import { statusLabel, statusColor } from '@/constants/jobCardStatus'
 
 ChartJS.register(ArcElement, Tooltip, Legend)
 
 interface Props {
-  data: Record<JobCardStatus, number>
+  data: Partial<Record<JobCardStatus, number>>
   loading?: boolean
 }
 
@@ -15,27 +16,6 @@ const props = withDefaults(defineProps<Props>(), {
   loading: false,
 })
 
-const statusLabels: Record<string, string> = {
-  draft: 'Draft',
-  received: 'Received',
-  in_progress: 'In Progress',
-  waiting_parts: 'Waiting Parts',
-  qc: 'QC',
-  ready: 'Ready',
-  delivered: 'Delivered',
-  cancelled: 'Cancelled',
-}
-
-const statusColors: Record<string, string> = {
-  draft: '#6b7280',
-  received: '#3b82f6',
-  in_progress: '#f59e0b',
-  waiting_parts: '#ef4444',
-  qc: '#8b5cf6',
-  ready: '#10b981',
-  delivered: '#059669',
-  cancelled: '#dc2626',
-}
 
 const chartData = computed(() => {
   const labels: string[] = []
@@ -43,10 +23,10 @@ const chartData = computed(() => {
   const colors: string[] = []
 
   Object.entries(props.data).forEach(([status, count]) => {
-    if (count > 0) {
-      labels.push(statusLabels[status] || status)
+    if (count && count > 0) {
+      labels.push(statusLabel(status))
       values.push(count)
-      colors.push(statusColors[status] || '#9ca3af')
+      colors.push(statusColor(status))
     }
   })
 
@@ -81,7 +61,7 @@ const chartOptions = {
 }
 
 const total = computed(() => {
-  return Object.values(props.data).reduce((sum, count) => sum + count, 0)
+  return Object.values(props.data).reduce((sum: number, count) => sum + (count ?? 0), 0)
 })
 </script>
 

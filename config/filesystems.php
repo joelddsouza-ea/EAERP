@@ -52,6 +52,14 @@ return [
             'throw' => false,
         ],
 
+        // Job-sheet activity photos and videos (served via signed URLs)
+        'job_media' => [
+            'driver' => 'local',
+            'root' => storage_path('app/job_media'),
+            'visibility' => 'private',
+            'throw' => false,
+        ],
+
         'documents' => [
             'driver' => 'local',
             'root' => storage_path('app/documents'),

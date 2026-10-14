@@ -3,6 +3,7 @@
 namespace App\Modules\Workshop\Models;
 
 use App\Core\Models\BranchScopedModel;
+use App\Modules\Workshop\Enums\JobCardStatus;
 
 class Bay extends BranchScopedModel
 {
@@ -25,7 +26,7 @@ class Bay extends BranchScopedModel
     public function currentJobCards()
     {
         return $this->hasMany(JobCard::class)
-            ->whereNotIn('status', ['delivered', 'cancelled']);
+            ->whereNotIn('status', JobCardStatus::terminal());
     }
 
     /**

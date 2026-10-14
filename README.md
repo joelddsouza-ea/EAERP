@@ -44,6 +44,40 @@ A modular ERP system for Car Workshop Management built with Laravel 11.
    php artisan serve
    ```
 
+### Upload limits for job-sheet photos and videos
+
+Technicians attach photos (up to 10 MB) and videos (up to 50 MB, 60 seconds) to
+job-sheet activities. PHP's defaults (2 MB uploads) are too small; in `php.ini` set:
+
+```ini
+upload_max_filesize = 64M
+post_max_size = 70M
+max_execution_time = 120
+memory_limit = 256M
+```
+
+Behind nginx, also set `client_max_body_size 70m;`. Limits are configured in
+`config/workshop.php`. Files are stored privately in `storage/app/job_media` and
+served through short-lived signed URLs.
+
+### Existing job cards
+
+After upgrading, give active job cards the current job sheets (untouched legacy
+placeholder sheets are replaced; sheets with recorded work are kept):
+
+```bash
+php artisan workshop:attach-job-sheets --active --dry-run
+php artisan workshop:attach-job-sheets --active
+```
+
+## Testing
+
+Tests run against a separate MySQL database (`eaerp_testing`, see `phpunit.xml`):
+
+```bash
+php artisan test
+```
+
 ## Default Users
 
 After seeding, you can login with:

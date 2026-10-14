@@ -22,5 +22,11 @@ return Application::configure(basePath: dirname(__DIR__))
         // Add EnsureFrontendRequestsAreStateful back when building SPA with cookie-based auth
     })
     ->withExceptions(function (Exceptions $exceptions) {
-        //
+        $exceptions->render(function (\App\Modules\Workshop\Services\JobSheetException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+                'errors' => $e->errors,
+            ], $e->status);
+        });
     })->create();

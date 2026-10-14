@@ -202,17 +202,27 @@ export interface JobCard {
   qc_completed_at: string | null
   time_out: string | null
   items: JobCardItem[]
-  checklists?: JobCardChecklist[]
+  status_changed_at?: string | null
+  cancel_reason?: string | null
+  status_history?: StatusHistoryEntry[]
   created_at: string
   updated_at: string
 }
 
 export type JobCardStatus =
-  | 'draft'
-  | 'received'
-  | 'in_progress'
-  | 'qc'
-  | 'ready'
+  | 'pickup_scheduled'
+  | 'pickup_en_route'
+  | 'vehicle_collected'
+  | 'intake_pending'
+  | 'intake_in_progress'
+  | 'awaiting_approval'
+  | 'work_in_progress'
+  | 'awaiting_parts'
+  | 'post_work_trial'
+  | 'wash_pending'
+  | 'ready_for_delivery'
+  | 'invoiced'
+  | 'gate_pass_generated'
   | 'delivered'
   | 'cancelled'
 
@@ -232,23 +242,197 @@ export interface JobCardItem {
   notes: string | null
 }
 
-export interface JobCardChecklist {
+// ---- Job sheets ----
+
+export type SheetKind =
+  | 'service_activities'
+  | 'ac_service'
+  | 'general_repair'
+  | 'body_shop'
+  | 'observation_report'
+  | 'pre_delivery'
+
+export type MediaRequirement = 'none' | 'photo' | 'video' | 'photo_or_video'
+export type JobSheetItemStatus = 'pending' | 'done' | 'not_applicable' | 'not_done'
+export type SheetInputType = 'tick' | 'yes_no' | 'repair_replace' | 'panel_matrix' | 'text' | 'number' | 'select'
+
+export interface JobCardMedia {
   id: number
-  job_card_id: number
-  checklist_template_id: number
-  name: string
-  items: ChecklistItem[]
-  completed_at: string | null
-  completed_by: number | null
+  media_type: 'photo' | 'video'
+  url: string
+  thumbnail_url: string | null
+  mime: string
+  size_bytes: number
+  duration_seconds: number | string | null
+  description: string | null
+  customer_visible: boolean
+  uploaded_by: number | null
+  captured_at: string | null
 }
 
-export interface ChecklistItem {
+export interface PanelFlags {
+  repair: boolean
+  replace: boolean
+  partial_paint: boolean
+  full_paint: boolean
+}
+
+export interface JobSheetItem {
+  id: number
+  section_name: string | null
+  item_name: string | null
+  input_type: SheetInputType
+  status: JobSheetItemStatus
+  needs_attention: boolean
+  remarks: string | null
+  // yes_no: 'yes' | 'no'; repair_replace: { action }; panel_matrix: PanelFlags
+  value: string | { action: 'ok' | 'repair' | 'replace' } | PanelFlags | null
+  media_requirement: MediaRequirement
+  min_media_count: number
+  na_allowed: boolean
+  expected_answer: 'yes' | 'no' | null
+  is_required: boolean
+  is_adhoc: boolean
+  media_shortfall: string | null
+  media: JobCardMedia[]
+  completed_by?: { id: number; name: string } | null
+  completed_at: string | null
+}
+
+export interface SheetProblem {
+  item_id: number
+  item_name: string | null
+  section_name: string | null
+  code: string
+  message: string
+  sheet_id?: number
+  sheet_name?: string | null
+}
+
+export interface JobSheet {
+  id: number
+  template_id: number | null
+  sheet_kind: SheetKind
+  name: string | null
+  status: 'pending' | 'in_progress' | 'completed'
+  completion_rule: 'all_resolved' | 'all_answered' | 'optional'
+  filled_by: 'technician' | 'advisor'
+  has_issues_tab: boolean
+  has_observations: boolean
+  progress: { total: number; resolved: number; needs_media: number; not_done: number; needs_attention: number } | null
+  submittable: boolean
+  problems: SheetProblem[]
+  sections: { name: string; items: JobSheetItem[] }[]
+  started_at: string | null
+  completed_at: string | null
+  completed_by?: { id: number; name: string } | null
+  override: boolean
+  reopened_at: string | null
+  reopen_notes: string | null
+}
+
+export interface JobCardObservation {
+  id: number
+  job_card_id: number
+  source: 'manual' | 'activity' | 'pre_delivery'
+  source_item_id: number | null
+  text: string
+  customer_visible: boolean
+  created_by?: { id: number; name: string } | null
+  created_at: string
+}
+
+export interface JobCardIssue {
+  id: number
+  job_card_id: number
+  description: string
+  priority: 'critical' | 'high' | 'normal'
+  status: 'open' | 'in_progress' | 'resolved' | 'deferred'
+  resolution_notes: string | null
+  resolved_at: string | null
+  additional_jobs?: JobCardAdditionalJob[]
+}
+
+export interface JobCardAdditionalJob {
+  id: number
+  job_card_id: number
+  job_card_issue_id: number | null
+  description: string
+  parts_used: string | null
+  cost: number | string
+  done_by?: { id: number; name: string } | null
+  created_at: string
+}
+
+export interface GuardFailureInfo {
+  code: string
+  message: string
+  details: { items?: SheetProblem[]; fields?: string[]; issues?: { id: number; description: string }[] }
+}
+
+export interface StatusTransitionOption {
+  status: JobCardStatus
+  label: string
+  allowed: boolean
+  permitted: boolean
+  requires_notes: boolean
+  can_override: boolean
+  blocked_by: GuardFailureInfo[]
+}
+
+export interface StatusHistoryEntry {
+  from_status: JobCardStatus | null
+  to_status: JobCardStatus
+  notes: string | null
+  override: boolean
+  changed_by: string | null
+  changed_at: string
+}
+
+// ---- Job-sheet masters ----
+
+export interface ChecklistMasterItem {
+  id: number
+  section_id: number
+  code: string | null
+  item_name: string
+  description: string | null
+  input_type: SheetInputType
+  media_requirement: MediaRequirement
+  min_media_count: number
+  na_allowed: boolean
+  is_required: boolean
+  is_active: boolean
+  expected_answer: 'yes' | 'no' | null
+  applies_to_package_ids: number[] | null
+  source_marker: string | null
+  rules_customized_at: string | null
+  sort_order: number
+}
+
+export interface ChecklistMasterSection {
+  id: number
+  template_id: number
+  name: string
+  sort_order: number
+  items: ChecklistMasterItem[]
+}
+
+export interface ChecklistMasterTemplate {
   id: number
   name: string
-  is_checked: boolean
-  notes: string | null
-  checked_at: string | null
-  checked_by: number | null
+  slug: string
+  sheet_kind: SheetKind
+  service_type: string | null
+  applies_to_all: boolean
+  filled_by: 'technician' | 'advisor'
+  has_issues_tab: boolean
+  has_observations: boolean
+  is_active: boolean
+  sort_order: number
+  items_count?: number
+  packages: { id: number; name: string; slug: string }[]
+  sections?: ChecklistMasterSection[]
 }
 
 export interface Bay {

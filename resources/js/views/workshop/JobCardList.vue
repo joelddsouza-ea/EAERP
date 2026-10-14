@@ -15,6 +15,7 @@ import Select from '@/components/ui/Select.vue'
 import Badge from '@/components/ui/Badge.vue'
 import type { Column } from '@/components/ui/DataTable.vue'
 import { serviceTypeLabel } from '@/constants/serviceTypes'
+import { statusLabel, statusVariant, statusFilterOptions } from '@/constants/jobCardStatus'
 
 const router = useRouter()
 const branchStore = useBranchStore()
@@ -36,38 +37,7 @@ const columns: Column<JobCard>[] = [
   { key: 'total_amount', label: 'Amount', align: 'right' },
 ]
 
-const statusOptions = [
-  { value: '', label: 'All Status' },
-  { value: 'draft', label: 'Draft' },
-  { value: 'received', label: 'Received' },
-  { value: 'in_progress', label: 'In Progress' },
-  { value: 'qc', label: 'QC' },
-  { value: 'ready', label: 'Ready' },
-  { value: 'delivered', label: 'Delivered' },
-  { value: 'cancelled', label: 'Cancelled' },
-]
-
-const statusVariants: Record<string, 'default' | 'success' | 'warning' | 'danger' | 'info' | 'purple'> = {
-  draft: 'default',
-  received: 'info',
-  in_progress: 'warning',
-  waiting_parts: 'danger',
-  qc: 'purple',
-  ready: 'success',
-  delivered: 'success',
-  cancelled: 'danger',
-}
-
-const statusLabels: Record<string, string> = {
-  draft: 'Draft',
-  received: 'Received',
-  in_progress: 'In Progress',
-  waiting_parts: 'Waiting Parts',
-  qc: 'QC',
-  ready: 'Ready',
-  delivered: 'Delivered',
-  cancelled: 'Cancelled',
-}
+const statusOptions = [{ value: '', label: 'All Status' }, ...statusFilterOptions]
 
 function formatCurrency(amount: number | string): string {
   return new Intl.NumberFormat('en-IN', {
@@ -175,8 +145,8 @@ watch(() => branchStore.currentBranchId, fetchJobCards)
       </template>
 
       <template #cell-status="{ value }">
-        <Badge :variant="statusVariants[value] || 'default'" size="sm">
-          {{ statusLabels[value] || value }}
+        <Badge :variant="statusVariant(value)" size="sm">
+          {{ statusLabel(value) }}
         </Badge>
       </template>
 

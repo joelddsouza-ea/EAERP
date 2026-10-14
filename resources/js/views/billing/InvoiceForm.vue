@@ -32,8 +32,8 @@ async function createFromJobCard() {
     const jobCardRes = await jobCardsApi.get(jobCardId.value)
     const jobCard = jobCardRes.data.data
 
-    if (jobCard.status !== 'ready') {
-      toast.warning('Warning', 'Job card must be in "Ready" status to create an invoice.')
+    if (jobCard.status !== 'ready_for_delivery') {
+      toast.warning('Warning', 'Job card must be ready for delivery to create an invoice.')
       router.push(`/job-cards/${jobCardId.value}`)
       return
     }

@@ -182,6 +182,58 @@ class FileStorageService
     /**
      * Delete all photos for a job card.
      */
+    /**
+     * Store a job-sheet photo/video on the private job_media disk.
+     *
+     * The extension comes from the detected MIME type, not the client filename.
+     * Photos get a 400px JPEG thumbnail; videos use the browser-captured poster frame.
+     */
+    public function uploadJobSheetMedia(
+        UploadedFile $file,
+        int $jobCardId,
+        string $folder,
+        ?UploadedFile $poster = null
+    ): array {
+        $disk = 'job_media';
+        $directory = "job_cards/{$jobCardId}/{$folder}";
+        $name = (string) Str::uuid();
+        $extension = $file->guessExtension() ?: 'bin';
+
+        $path = $file->storeAs($directory, "{$name}.{$extension}", $disk);
+        $info = [
+            'disk' => $disk,
+            'path' => $path,
+            'thumbnail_path' => null,
+            'mime' => $file->getMimeType(),
+            'size' => $file->getSize(),
+            'width' => null,
+            'height' => null,
+        ];
+
+        $thumbSource = str_starts_with((string) $info['mime'], 'image/') ? $file : $poster;
+
+        if ($thumbSource) {
+            try {
+                $image = (new \Intervention\Image\ImageManager(new \Intervention\Image\Drivers\Gd\Driver()))
+                    ->read($thumbSource->getRealPath());
+
+                if ($thumbSource === $file) {
+                    $info['width'] = $image->width();
+                    $info['height'] = $image->height();
+                }
+
+                $thumbPath = "{$directory}/thumbs/{$name}.jpg";
+                Storage::disk($disk)->put($thumbPath, (string) $image->scaleDown(400, 400)->toJpeg(75));
+                $info['thumbnail_path'] = $thumbPath;
+            } catch (\Throwable $e) {
+                // HEIC and other formats GD can't decode still upload; they just have no thumbnail
+                report($e);
+            }
+        }
+
+        return $info;
+    }
+
     public function deleteJobCardPhotos(int $jobCardId): bool
     {
         $directory = "job_cards/{$jobCardId}";

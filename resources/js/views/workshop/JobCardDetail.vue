@@ -7,11 +7,13 @@ import {
   UserIcon,
   WrenchIcon,
   DocumentTextIcon,
+  ClipboardDocumentCheckIcon,
 } from '@heroicons/vue/20/solid'
 import { jobCardsApi, baysApi, techniciansApi } from '@/api/workshop.api'
+import { jobSheetsApi } from '@/api/jobSheets.api'
 import { usePermissions } from '@/composables/usePermissions'
 import { useToast } from '@/composables/useToast'
-import type { JobCard, Bay } from '@/api/types'
+import type { JobCard, Bay, JobSheet } from '@/api/types'
 import Card from '@/components/ui/Card.vue'
 import Button from '@/components/ui/Button.vue'
 import Badge from '@/components/ui/Badge.vue'
@@ -19,6 +21,9 @@ import Select from '@/components/ui/Select.vue'
 import Modal from '@/components/ui/Modal.vue'
 import Spinner from '@/components/ui/Spinner.vue'
 import { serviceTypeLabel } from '@/constants/serviceTypes'
+import { statusLabel, statusVariant } from '@/constants/jobCardStatus'
+import StatusActions from '@/components/jobcard/StatusActions.vue'
+import StatusTimeline from '@/components/jobcard/StatusTimeline.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -30,11 +35,8 @@ const jobCardId = Number(route.params.id)
 const loading = ref(true)
 const jobCard = ref<JobCard | null>(null)
 
-// Status update
-const showStatusModal = ref(false)
-const newStatus = ref('')
-const statusNotes = ref('')
-const updatingStatus = ref(false)
+// Job sheets (technician sheets, observation report, pre-delivery)
+const sheets = ref<JobSheet[]>([])
 
 // Technician assignment
 const showTechModal = ref(false)
@@ -47,37 +49,6 @@ const showBayModal = ref(false)
 const availableBays = ref<Bay[]>([])
 const selectedBayId = ref<number | null>(null)
 const assigningBay = ref(false)
-
-const statusOptions = [
-  { value: 'received', label: 'Received' },
-  { value: 'in_progress', label: 'In Progress' },
-  { value: 'qc', label: 'Quality Check' },
-  { value: 'ready', label: 'Ready for Delivery' },
-  { value: 'delivered', label: 'Delivered' },
-  { value: 'cancelled', label: 'Cancelled' },
-]
-
-const statusVariants: Record<string, 'default' | 'success' | 'warning' | 'danger' | 'info' | 'purple'> = {
-  draft: 'default',
-  received: 'info',
-  in_progress: 'warning',
-  waiting_parts: 'danger',
-  qc: 'purple',
-  ready: 'success',
-  delivered: 'success',
-  cancelled: 'danger',
-}
-
-const statusLabels: Record<string, string> = {
-  draft: 'Draft',
-  received: 'Received',
-  in_progress: 'In Progress',
-  waiting_parts: 'Waiting Parts',
-  qc: 'QC',
-  ready: 'Ready',
-  delivered: 'Delivered',
-  cancelled: 'Cancelled',
-}
 
 function formatCurrency(amount: number | string): string {
   return new Intl.NumberFormat('en-IN', {
@@ -95,35 +66,19 @@ function formatDate(dateString: string | null): string {
 async function fetchJobCard() {
   loading.value = true
   try {
-    const response = await jobCardsApi.get(jobCardId)
+    const [response, sheetsRes] = await Promise.all([
+      jobCardsApi.get(jobCardId),
+      can('workshop.job-sheets.view') || can('workshop.pre-delivery.view')
+        ? jobSheetsApi.list(jobCardId)
+        : Promise.resolve(null),
+    ])
     jobCard.value = response.data.data
+    sheets.value = sheetsRes?.data.data ?? []
   } catch (err) {
     toast.apiError(err)
     router.push('/job-cards')
   } finally {
     loading.value = false
-  }
-}
-
-async function openStatusModal() {
-  newStatus.value = jobCard.value?.status || ''
-  statusNotes.value = ''
-  showStatusModal.value = true
-}
-
-async function updateStatus() {
-  if (!newStatus.value) return
-
-  updatingStatus.value = true
-  try {
-    await jobCardsApi.updateStatus(jobCardId, newStatus.value, statusNotes.value)
-    toast.success('Status Updated', 'Job card status has been updated.')
-    await fetchJobCard()
-    showStatusModal.value = false
-  } catch (err) {
-    toast.apiError(err)
-  } finally {
-    updatingStatus.value = false
   }
 }
 
@@ -204,8 +159,8 @@ onMounted(fetchJobCard)
         <div>
           <div class="flex items-center gap-3">
             <h1 class="text-2xl font-bold text-gray-900">{{ jobCard.job_number }}</h1>
-            <Badge :variant="statusVariants[jobCard.status] || 'default'">
-              {{ statusLabels[jobCard.status] || jobCard.status }}
+            <Badge :variant="statusVariant(jobCard.status)">
+              {{ statusLabel(jobCard.status) }}
             </Badge>
           </div>
           <p class="text-gray-500 mt-1">
@@ -215,8 +170,13 @@ onMounted(fetchJobCard)
         </div>
 
         <div class="flex flex-wrap gap-2">
-          <Button v-if="can('workshop.job-cards.update')" variant="secondary" @click="openStatusModal">
-            Update Status
+          <Button
+            v-if="sheets.length"
+            variant="secondary"
+            @click="router.push(`/job-cards/${jobCard.id}/sheet`)"
+          >
+            <ClipboardDocumentCheckIcon class="h-4 w-4 mr-1" />
+            Job Sheet
           </Button>
           <Button v-if="can('workshop.job-cards.update')" @click="router.push(`/job-cards/${jobCard.id}/edit`)">
             <PencilIcon class="h-4 w-4 mr-1" />
@@ -279,6 +239,42 @@ onMounted(fetchJobCard)
             </dl>
           </Card>
 
+          <!-- Job sheets -->
+          <Card v-if="sheets.length">
+            <template #header>
+              <h3 class="text-lg font-semibold">Job Sheets</h3>
+            </template>
+
+            <ul class="divide-y divide-gray-100">
+              <li v-for="sheet in sheets" :key="sheet.id" class="py-3 first:pt-0 last:pb-0">
+                <RouterLink
+                  :to="`/job-cards/${jobCard.id}/sheet?sheet=${sheet.id}`"
+                  class="flex items-center justify-between gap-4 hover:bg-gray-50 -mx-2 px-2 py-1 rounded"
+                >
+                  <div class="min-w-0">
+                    <p class="text-sm font-medium text-gray-900 truncate">{{ sheet.name }}</p>
+                    <p class="text-xs text-gray-500">
+                      {{ sheet.progress?.resolved ?? 0 }} / {{ sheet.progress?.total ?? 0 }} done
+                      <span v-if="sheet.progress?.needs_attention" class="text-amber-600">
+                        · {{ sheet.progress.needs_attention }} need attention
+                      </span>
+                      <span v-if="sheet.override" class="text-amber-600"> · submitted with override</span>
+                    </p>
+                  </div>
+                  <Badge :variant="sheet.status === 'completed' ? 'success' : sheet.status === 'in_progress' ? 'warning' : 'default'" size="sm">
+                    {{ sheet.status === 'completed' ? 'Submitted' : sheet.status === 'in_progress' ? 'In progress' : 'Not started' }}
+                  </Badge>
+                </RouterLink>
+                <div v-if="sheet.progress && sheet.progress.total" class="mt-2 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                  <div
+                    class="h-full bg-primary-500"
+                    :style="{ width: `${Math.round((sheet.progress.resolved / sheet.progress.total) * 100)}%` }"
+                  />
+                </div>
+              </li>
+            </ul>
+          </Card>
+
           <!-- Items -->
           <Card :padding="false">
             <template #header>
@@ -315,6 +311,17 @@ onMounted(fetchJobCard)
 
         <!-- Sidebar -->
         <div class="space-y-6">
+          <!-- Status -->
+          <Card>
+            <template #header>
+              <h3 class="text-lg font-semibold">Next Step</h3>
+            </template>
+            <p v-if="jobCard.status === 'cancelled' && jobCard.cancel_reason" class="text-sm text-gray-600 mb-3">
+              Cancelled: {{ jobCard.cancel_reason }}
+            </p>
+            <StatusActions :job-card-id="jobCard.id" :status="jobCard.status" @changed="fetchJobCard" />
+          </Card>
+
           <!-- Summary -->
           <Card>
             <template #header>
@@ -387,35 +394,15 @@ onMounted(fetchJobCard)
               <h3 class="text-lg font-semibold">Timeline</h3>
             </template>
 
-            <dl class="space-y-3 text-sm">
-              <div class="flex justify-between">
-                <dt class="text-gray-500">Created</dt>
-                <dd>{{ formatDate(jobCard.created_at) }}</dd>
-              </div>
-              <div class="flex justify-between">
-                <dt class="text-gray-500">Received</dt>
-                <dd>{{ formatDate(jobCard.time_in) }}</dd>
-              </div>
-              <div class="flex justify-between">
-                <dt class="text-gray-500">Started</dt>
-                <dd>{{ formatDate(jobCard.work_started_at) }}</dd>
-              </div>
-              <div class="flex justify-between">
-                <dt class="text-gray-500">Completed</dt>
-                <dd>{{ formatDate(jobCard.work_completed_at) }}</dd>
-              </div>
-              <div class="flex justify-between">
-                <dt class="text-gray-500">Delivered</dt>
-                <dd>{{ formatDate(jobCard.time_out) }}</dd>
-              </div>
-            </dl>
+            <StatusTimeline v-if="jobCard.status_history?.length" :history="jobCard.status_history" />
+            <p v-else class="text-sm text-gray-500">Created {{ formatDate(jobCard.created_at) }}</p>
           </Card>
 
           <!-- Actions -->
           <Card>
             <div class="space-y-3">
               <Button
-                v-if="can('billing.invoices.create') && jobCard.status === 'ready'"
+                v-if="can('billing.invoices.create') && jobCard.status === 'ready_for_delivery'"
                 block
                 @click="router.push(`/invoices/create?job_card_id=${jobCard.id}`)"
               >
@@ -426,32 +413,6 @@ onMounted(fetchJobCard)
           </Card>
         </div>
       </div>
-
-      <!-- Status Modal -->
-      <Modal :open="showStatusModal" title="Update Status" @close="showStatusModal = false">
-        <div class="space-y-4">
-          <Select
-            v-model="newStatus"
-            label="New Status"
-            :options="statusOptions"
-            required
-          />
-          <div>
-            <label class="label">Notes (optional)</label>
-            <textarea
-              v-model="statusNotes"
-              class="input"
-              rows="3"
-              placeholder="Add any notes about this status change..."
-            />
-          </div>
-        </div>
-
-        <template #footer>
-          <Button variant="secondary" @click="showStatusModal = false">Cancel</Button>
-          <Button :loading="updatingStatus" @click="updateStatus">Update Status</Button>
-        </template>
-      </Modal>
 
       <!-- Technician Modal -->
       <Modal :open="showTechModal" title="Assign Technician" @close="showTechModal = false">

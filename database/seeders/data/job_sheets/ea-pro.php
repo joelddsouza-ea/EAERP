@@ -1,0 +1,73 @@
+<?php
+
+// PRO Service (45 Points) technician job sheet (PRO Service 45 Technician Job Sheet.xlsx).
+// Generated from the owner's paper job sheet; edit here or in the Job Sheet Masters screen.
+
+return [
+    'slug' => 'ea-pro-job-sheet',
+    'name' => 'PRO Service (45 Points) — Technician Job Sheet',
+    'sheet_kind' => 'service_activities',
+    'packages' => ['ea-pro'],
+    'service_type' => null,
+    'filled_by' => 'technician',
+    'has_issues_tab' => true,
+    'has_observations' => true,
+    'sort_order' => '10',
+    'sections' => [
+        'Engine Compartment' => [
+            ['Drain old engine oil completely', '***'],
+            ['Inspect drain plug & washer', ''],
+            ['Replace drain plug washer if needed', ''],
+            ['Replace oil filter', '***'],
+            ['Replace engine oil', '***'],
+            ['Clean air filter element', '***'],
+            ['Inspect air filter housing & seal', ''],
+            ['Clean spark plugs', 'NA Button ****'],
+            ['Check & adjust spark plug electrode gap', 'NA Button Direct'],
+            ['Top up brake fluid', '***'],
+            ['Top up clutch fluid (if applicable)', 'Direct & NA Button'],
+            ['Top up power steering fluid (if applicable)', 'Direct & NA Button'],
+            ['Top up gear oil (if required)', 'Direct & NA Button'],
+            ['Top up coolant', '***'],
+            ['Top up battery distilled water', 'Direct'],
+            ['Clean battery terminals', ''],
+            ['Battery load testing', '***'],
+            ['Top up wiper washer with screenwash', '***'],
+            ['Align wiper water nozzles', 'Direct'],
+        ],
+        'Cabin & Interior' => [
+            ['Clean cabin AC filter', ''],
+            ['Check AC cooling performance', ''],
+            ['Inspect all front lights', ''],
+            ['Inspect all rear lights & indicators', ''],
+            ['Check internal lights', ''],
+            ['Test all power switches', ''],
+        ],
+        'Wheels & Brakes' => [
+            ['Grease all wheel nuts & bolts', 'Direct'],
+            ['Clean front brake pads', '***'],
+            ['Lubricate front calliper pins', '***'],
+            ['Clean rear brake pads/liners', '***'],
+            ['Lubricate rear calliper pins', 'NA Button ***'],
+            ['Air bleed brake fluid lines', 'Direct'],
+            ['Adjust hand brake', 'Direct'],
+            ['Tyre cross rotation', 'Direct'],
+            ['Final wheel nuts torque', 'Direct'],
+            ['Check & inflate all tyre pressures', 'Direct'],
+        ],
+        'Final Checks' => [
+            ['Trial drive - engine performance', 'Direct'],
+            ['Trial drive - brake test', 'Direct'],
+            ['Final inspection post trial', 'Direct'],
+            ['Reset Service Light', 'Direct'],
+        ],
+        'Washing & Cleaning' => [
+            ['Vacuum Interior', 'Direct'],
+            ['Dashboard & door trims wipe', 'Direct'],
+            ['Dashboard & door trims polish', 'Direct'],
+            ['Body wash', 'Direct'],
+            ['Grease all door hinges', 'Direct'],
+            ['Grease boot hinges', 'Direct'],
+        ],
+    ],
+];

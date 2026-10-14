@@ -10,6 +10,7 @@ import Card from '@/components/ui/Card.vue'
 import Badge from '@/components/ui/Badge.vue'
 import Spinner from '@/components/ui/Spinner.vue'
 import Select from '@/components/ui/Select.vue'
+import { statusLabel, statusVariant } from '@/constants/jobCardStatus'
 
 const router = useRouter()
 const toast = useToast()
@@ -17,27 +18,14 @@ const authStore = useAuthStore()
 
 const loading = ref(true)
 const jobCards = ref<JobCard[]>([])
-const statusFilter = ref('in_progress')
+const statusFilter = ref('work_in_progress')
 
 const statusOptions = [
-  { value: 'in_progress', label: 'In Progress' },
-  { value: 'qc', label: 'Quality Check' },
-  { value: 'all', label: 'All Active' },
+  { value: 'work_in_progress', label: 'Work In Progress' },
+  { value: 'awaiting_parts', label: 'Awaiting Parts' },
+  { value: 'post_work_trial', label: 'Trial Drive / QA' },
+  { value: 'all', label: 'All' },
 ]
-
-const statusVariants: Record<string, 'default' | 'success' | 'warning' | 'danger' | 'info' | 'purple'> = {
-  in_progress: 'warning',
-  waiting_parts: 'danger',
-  qc: 'purple',
-  ready: 'success',
-}
-
-const statusLabels: Record<string, string> = {
-  in_progress: 'In Progress',
-  waiting_parts: 'Waiting Parts',
-  qc: 'QC',
-  ready: 'Ready',
-}
 
 const priorityColors: Record<string, string> = {
   low: 'text-gray-500',
@@ -61,7 +49,7 @@ async function fetchMyJobs() {
 }
 
 function handleJobClick(jobCard: JobCard) {
-  router.push(`/job-cards/${jobCard.id}`)
+  router.push(`/job-cards/${jobCard.id}/sheet`)
 }
 
 onMounted(fetchMyJobs)
@@ -113,8 +101,8 @@ onMounted(fetchMyJobs)
             <h3 class="text-lg font-semibold text-gray-900">{{ job.job_number }}</h3>
             <p class="text-sm text-gray-500">{{ job.vehicle?.registration_no }}</p>
           </div>
-          <Badge :variant="statusVariants[job.status] || 'default'" size="sm">
-            {{ statusLabels[job.status] || job.status }}
+          <Badge :variant="statusVariant(job.status)" size="sm">
+            {{ statusLabel(job.status) }}
           </Badge>
         </div>
 

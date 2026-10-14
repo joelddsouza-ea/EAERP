@@ -15,6 +15,7 @@ import type {
   VehicleMake,
   VehicleModel,
   VehicleCategory,
+  StatusTransitionOption,
 } from './types'
 
 // Customers
@@ -117,8 +118,17 @@ export const jobCardsApi = {
     return apiClient.delete(`/workshop/job-cards/${id}`)
   },
 
-  updateStatus(id: number, status: string, notes?: string) {
-    return apiClient.patch<ApiResponse<JobCard>>(`/workshop/job-cards/${id}/status`, { status, notes })
+  updateStatus(id: number, status: string, notes?: string, override = false) {
+    return apiClient.patch<ApiResponse<JobCard>>(`/workshop/job-cards/${id}/status`, {
+      status,
+      notes: notes || undefined,
+      override: override || undefined,
+    })
+  },
+
+  // Next statuses from the current one, with any checks blocking them
+  transitions(id: number) {
+    return apiClient.get<ApiResponse<StatusTransitionOption[]>>(`/workshop/job-cards/${id}/transitions`)
   },
 
   assignTechnician(id: number, technicianId: number) {

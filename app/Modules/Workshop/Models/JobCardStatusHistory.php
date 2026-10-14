@@ -14,7 +14,12 @@ class JobCardStatusHistory extends Model
         'from_status',
         'to_status',
         'notes',
+        'meta',
         'changed_by',
+    ];
+
+    protected $casts = [
+        'meta' => 'array',
     ];
 
     /**

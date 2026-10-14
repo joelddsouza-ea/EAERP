@@ -15,6 +15,7 @@ import {
   BuildingOfficeIcon,
   UserGroupIcon,
   WrenchScrewdriverIcon,
+  AdjustmentsHorizontalIcon,
 } from '@heroicons/vue/24/outline'
 import { useAuthStore } from '@/stores/auth.store'
 import { useUiStore } from '@/stores/ui.store'
@@ -47,6 +48,9 @@ const navigation = computed<NavItem[]>(() => {
   }
   if (authStore.hasPermission('workshop.bays.view')) {
     items.push({ name: 'Bays', to: '/bays', icon: BuildingOfficeIcon })
+  }
+  if (authStore.hasPermission('workshop.job-sheet-masters.view')) {
+    items.push({ name: 'Job Sheet Masters', to: '/job-sheet-masters', icon: AdjustmentsHorizontalIcon })
   }
   if (authStore.hasPermission('billing.invoices.view')) {
     items.push({ name: 'Invoices', to: '/invoices', icon: DocumentTextIcon })
