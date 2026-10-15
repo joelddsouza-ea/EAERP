@@ -52,6 +52,12 @@ class JobCard extends BranchScopedModel
         'intake_trial_notes',
         'intake_trial_by',
         'intake_trial_at',
+        'post_trial_result',
+        'post_trial_notes',
+        'post_trial_by',
+        'post_trial_at',
+        'wash_done_by',
+        'wash_done_at',
     ];
 
     protected $casts = [
@@ -63,6 +69,8 @@ class JobCard extends BranchScopedModel
         'qc_completed_at' => 'datetime',
         'time_out' => 'datetime',
         'intake_trial_at' => 'datetime',
+        'post_trial_at' => 'datetime',
+        'wash_done_at' => 'datetime',
         'status_changed_at' => 'datetime',
         'approved_at' => 'datetime',
         'customer_approved' => 'boolean',
@@ -218,6 +226,22 @@ class JobCard extends BranchScopedModel
     public function intakeMedia()
     {
         return $this->morphMany(JobCardMedia::class, 'attachable');
+    }
+
+    /**
+     * Everyone working on the job; the lead is also job_cards.technician_id.
+     */
+    public function technicians()
+    {
+        return $this->belongsToMany(User::class, 'job_card_technicians')
+            ->withPivot(['is_lead', 'assigned_by', 'assigned_at'])
+            ->orderByDesc('job_card_technicians.is_lead')
+            ->orderBy('job_card_technicians.id');
+    }
+
+    public function bayMoves()
+    {
+        return $this->hasMany(JobCardBayMove::class)->latest('moved_at')->latest('id');
     }
 
     public function intakeTrialBy()

@@ -83,17 +83,19 @@
             <tr class="subtotal"><td colspan="3">{{ $estimate['package_name'] }} — Package Total</td><td class="num">{{ number_format($estimate['package_price'], 2) }}</td></tr>
         @endif
 
-        @if(count($estimate['additional_lines']))
+        @php($extras = array_values(array_filter($estimate['additional_lines'], fn ($l) => $l['approval_status'] !== 'declined')))
+        @if(count($extras))
             <tr class="section"><td colspan="4">ADDITIONAL PARTS &amp; LABOUR — extra work over &amp; above the package</td></tr>
-            @foreach($estimate['additional_lines'] as $line)
-                <tr class="{{ $line['approval_status'] === 'declined' ? 'declined' : '' }}">
+            {{-- Work the customer did not approve is listed under Observations --}}
+            @foreach($extras as $line)
+                <tr>
                     <td>
                         {{ $line['description'] }}
                         @if($line['approval_status'] !== 'approved')<br><span class="tag">{{ $line['approval_label'] }}</span>@endif
                     </td>
                     <td class="num">{{ rtrim(rtrim(number_format($line['quantity'], 2), '0'), '.') }}</td>
                     <td class="num">{{ number_format($line['rate'], 2) }}</td>
-                    <td class="num">{{ $line['approval_status'] === 'declined' ? '—' : number_format($line['amount'], 2) }}</td>
+                    <td class="num">{{ number_format($line['amount'], 2) }}</td>
                 </tr>
             @endforeach
         @endif
@@ -106,7 +108,7 @@
                 <tr><td>Discount on Service Plan</td><td class="num">− {{ number_format($estimate['plan_discount'], 2) }}</td></tr>
             @endif
         @endif
-        @if(count($estimate['additional_lines']))
+        @if(count($extras))
             <tr><td>Additional Jobs Total</td><td class="num">{{ number_format($estimate['extras_subtotal'], 2) }}</td></tr>
             @if($estimate['extras_discount'] > 0)
                 <tr><td>Discount on Additional Jobs</td><td class="num">− {{ number_format($estimate['extras_discount'], 2) }}</td></tr>
@@ -127,14 +129,19 @@
         </div>
     @endif
 
-    @if(count($observations))
+    @if(count($estimate['observations']))
         <div class="box">
-            <b>Observations / Report:</b>
-            <ol style="margin:4px 0 0 16px; padding:0">
-                @foreach($observations as $o)
-                    <li>{{ $o->text }}@if($o->severity) <span class="muted">({{ ucfirst($o->severity) }})</span>@endif</li>
+            <b>Observations &amp; Recommendations:</b>
+            <table class="lines" style="margin-top:4px">
+                <tr><th style="width:24px">#</th><th>Observation</th><th style="width:38%">Remarks</th></tr>
+                @foreach($estimate['observations'] as $i => $o)
+                    <tr>
+                        <td>{{ $i + 1 }}</td>
+                        <td>{{ $o['text'] }}</td>
+                        <td>{{ $o['remark'] ?? '—' }}</td>
+                    </tr>
                 @endforeach
-            </ol>
+            </table>
         </div>
     @endif
 

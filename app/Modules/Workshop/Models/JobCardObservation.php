@@ -14,6 +14,10 @@ class JobCardObservation extends Model
     public const SOURCE_MANUAL = 'manual';
     public const SOURCE_ACTIVITY = 'activity';
     public const SOURCE_PRE_DELIVERY = 'pre_delivery';
+    /** A line the customer declined on the estimate */
+    public const SOURCE_ESTIMATE_DECLINED = 'estimate_declined';
+    /** An Additional Issues line the technician deferred */
+    public const SOURCE_ISSUE_DEFERRED = 'issue_deferred';
 
     public const SEVERITIES = ['minor', 'medium', 'major'];
 
@@ -24,6 +28,10 @@ class JobCardObservation extends Model
         'source_item_id',
         'text',
         'severity',
+        'remark_id',
+        'remark_days',
+        'estimate_line_key',
+        'job_card_issue_id',
         'sort_order',
         'customer_visible',
         'created_by',
@@ -41,6 +49,11 @@ class JobCardObservation extends Model
     public function sourceItem()
     {
         return $this->belongsTo(JobCardChecklistItem::class, 'source_item_id');
+    }
+
+    public function remark()
+    {
+        return $this->belongsTo(ObservationRemark::class, 'remark_id');
     }
 
     public function createdBy()

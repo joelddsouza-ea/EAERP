@@ -18,6 +18,9 @@ class JobCardMedia extends Model
     public const TYPE_PHOTO = 'photo';
     public const TYPE_VIDEO = 'video';
 
+    /** Photo/video of the new part after fitting (Additional Issues lines) */
+    public const TAG_FITTED_PART = 'fitted_part';
+
     protected $table = 'job_card_media';
 
     protected $fillable = [
@@ -25,6 +28,7 @@ class JobCardMedia extends Model
         'attachable_type',
         'attachable_id',
         'media_type',
+        'tag',
         'disk',
         'file_path',
         'thumbnail_path',

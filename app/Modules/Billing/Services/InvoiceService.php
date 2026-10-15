@@ -20,6 +20,19 @@ class InvoiceService
      */
     public function createFromJobCard(JobCard $jobCard, array $options = []): Invoice
     {
+        // A job's bill is the proforma made from its approved estimate (GST-inclusive prices)
+        try {
+            return app(BillingService::class)->createProforma($jobCard, auth()->user())->load(['items', 'customer', 'jobCard']);
+        } catch (BillingException $e) {
+            throw new \InvalidArgumentException($e->getMessage());
+        }
+    }
+
+    /**
+     * Pre-proforma invoicing from job card items (kept for reference; GST was added on top).
+     */
+    protected function legacyCreateFromJobCard(JobCard $jobCard, array $options = []): Invoice
+    {
         if (!in_array($jobCard->status, \App\Modules\Workshop\Enums\JobCardStatus::invoiceable(), true)) {
             throw new \InvalidArgumentException('Job card must be ready for delivery to create an invoice');
         }

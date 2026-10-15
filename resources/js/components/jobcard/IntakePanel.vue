@@ -170,7 +170,7 @@ defineExpose({ reload: load })
           </span>
         </p>
 
-        <MediaStrip :media="intake.media" :can-delete="canEdit" @delete="remove" />
+        <MediaStrip :media="intake.media" :can-delete="canEdit" :job-card-id="jobCardId" @delete="remove" />
 
         <div v-if="canEdit" class="mt-3 flex flex-wrap items-center gap-2">
           <input ref="photoInput" type="file" accept="image/*" capture="environment" multiple class="hidden" @change="onFileChosen" />

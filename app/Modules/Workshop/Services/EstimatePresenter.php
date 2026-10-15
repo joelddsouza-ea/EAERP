@@ -6,6 +6,7 @@ use App\Core\Support\IndianCurrency;
 use App\Modules\Workshop\Models\JobCardEstimate;
 use App\Modules\Workshop\Models\JobCardEstimateLine as Line;
 use App\Modules\Workshop\Models\JobCardMedia;
+use App\Modules\Workshop\Models\JobCardObservation;
 
 /**
  * Array shape of an estimate for the staff screens, the customer page and the PDF.
@@ -57,6 +58,20 @@ class EstimatePresenter
             'customer_viewed_at' => $estimate->customer_viewed_at?->toIso8601String(),
             'responded_at' => $estimate->responded_at?->toIso8601String(),
             'declined_label' => Line::DECLINED_LABEL,
+            // Observations & recommendations with their remarks; work the customer did not approve
+            // is listed here (not under Additional Parts & Labour)
+            'observations' => JobCardObservation::with('remark')
+                ->where('job_card_id', $estimate->job_card_id)
+                ->when($forCustomer, fn ($q) => $q->where('customer_visible', true))
+                ->orderBy('sort_order')->orderBy('id')
+                ->get()
+                ->map(fn (JobCardObservation $o) => [
+                    'id' => $o->id,
+                    'text' => $o->text,
+                    'source' => $o->source,
+                    'remark' => $o->remark?->text($o->remark_days),
+                    'estimate_line_key' => $o->estimate_line_key,
+                ])->all(),
             'comments' => $estimate->comments->map(fn ($c) => [
                 'id' => $c->id,
                 'author_type' => $c->author_type,

@@ -21,6 +21,12 @@ class JobCardResource extends JsonResource
             'vehicle_id' => $this->vehicle_id,
             'package_id' => $this->package_id,
             'oil_type_id' => $this->oil_type_id,
+            // The job sheet screen compares these with the logged-in user (view only for others)
+            'technician_id' => $this->technician_id,
+            // Lead + co-technicians: all may fill the job sheets
+            'technician_ids' => collect($this->relationLoaded('technicians') ? $this->technicians->pluck('id') : [])
+                ->push($this->technician_id)->filter()->unique()->values(),
+            'service_advisor_id' => $this->service_advisor_id,
 
             // Customer & Vehicle
             'customer' => $this->whenLoaded('customer', fn() => [

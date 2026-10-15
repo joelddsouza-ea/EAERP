@@ -32,6 +32,13 @@ class JobSheetItemResource extends JsonResource
             'media' => JobCardMediaResource::collection($this->whenLoaded('media')),
             'completed_by' => $this->whenLoaded('completedBy', fn () => $this->completedBy?->only(['id', 'name'])),
             'completed_at' => $this->completed_at?->toIso8601String(),
+            // QC spot check: revealed only once the point has been marked
+            'qc_evidence' => $this->qc_evidence_required && $this->qc_marked_at ? [
+                'required' => true,
+                'marked_at' => $this->qc_marked_at->toIso8601String(),
+                'deadline' => $this->qc_marked_at->copy()->addSeconds(\App\Modules\Workshop\Services\JobSheetService::QC_WINDOW_SECONDS)->toIso8601String(),
+                'satisfied' => $mediaLoaded && $this->media->isNotEmpty(),
+            ] : null,
         ];
     }
 }

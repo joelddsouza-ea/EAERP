@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onBeforeUnmount } from 'vue'
 import {
   CameraIcon,
   CheckIcon,
@@ -12,6 +12,7 @@ import { useToast } from '@/composables/useToast'
 import type { JobSheet, JobSheetItem, JobCardMedia, PanelFlags } from '@/api/types'
 import { acceptFor, mediaHint, prepareMedia } from './media'
 import MediaStrip from './MediaStrip.vue'
+import Modal from '@/components/ui/Modal.vue'
 
 interface Props {
   item: JobSheetItem
@@ -38,7 +39,8 @@ const remarksDraft = ref('')
 const pendingChange = ref<ItemUpdate | null>(null)
 
 const hint = computed(() => mediaHint(props.item))
-const needsMedia = computed(() => props.item.media_requirement !== 'none')
+// N/A removes the photo/video requirement
+const needsMedia = computed(() => props.item.media_requirement !== 'none' && props.item.status !== 'not_applicable')
 const mediaShort = computed(() => needsMedia.value && !!props.item.media_shortfall)
 
 const rowTone = computed(() => {
@@ -72,12 +74,82 @@ const panelFlags = computed<PanelFlags>(() => {
   }
 })
 
+// ---- Pre-delivery QC spot check: photo/video within 30 seconds of marking the point.
+// The camera opens straight away for what the master asks: photo, video, or a choice of both
+// (one file type per button; "image/*,video/*" makes phones open the gallery instead).
+const qcKinds = computed<('photo' | 'video')[]>(() =>
+  props.item.media_requirement === 'video' ? ['video'] : props.item.media_requirement === 'photo_or_video' ? ['photo', 'video'] : ['photo']
+)
+
+const qcOpen = ref(false)
+const qcSecondsLeft = ref(0)
+const qcUploading = ref(false)
+let qcTimer: ReturnType<typeof setInterval> | undefined
+
+function startQc(deadline: string) {
+  qcOpen.value = true
+  const tick = () => {
+    qcSecondsLeft.value = Math.max(0, Math.ceil((new Date(deadline).getTime() - Date.now()) / 1000))
+  }
+  tick()
+  clearInterval(qcTimer)
+  qcTimer = setInterval(tick, 250)
+}
+
+function closeQc() {
+  qcOpen.value = false
+  clearInterval(qcTimer)
+}
+
+async function onQcFile(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file) return
+  // The camera's capture time is what is checked (a gallery picture is older)
+  const capturedAt = new Date(file.lastModified || Date.now()).toISOString()
+  qcUploading.value = true
+  try {
+    const prepared = await prepareMedia(file)
+    const response = await jobSheetsApi.uploadMedia(
+      props.jobCardId, props.sheetId, props.item.id, prepared.file, prepared.fileName,
+      { poster: prepared.poster, duration_seconds: prepared.durationSeconds, captured_at: capturedAt }
+    )
+    emit('updated', {
+      ...props.item,
+      media: [...props.item.media, response.data.data.media],
+      qc_evidence: props.item.qc_evidence ? { ...props.item.qc_evidence, satisfied: true } : null,
+    })
+    toast.success('QC evidence saved')
+    closeQc()
+  } catch (err: any) {
+    if (err.response?.status === 422) {
+      // Too late: the answer was cleared on the server
+      emit('updated', { ...props.item, value: null, status: 'pending', qc_evidence: null })
+      toast.error('Too late', err.response.data.message)
+      closeQc()
+    } else {
+      toast.apiError(err)
+    }
+  } finally {
+    qcUploading.value = false
+  }
+}
+
+onBeforeUnmount(() => clearInterval(qcTimer))
+
 async function save(data: ItemUpdate) {
   saving.value = true
   try {
     const response = await jobSheetsApi.updateItem(props.jobCardId, props.sheetId, props.item.id, data)
-    emit('updated', response.data.data.item)
+    const updated = response.data.data.item
+    emit('updated', updated)
     emit('progress', response.data.data.progress)
+    // This point is a QC spot check: shoot the evidence now
+    if (updated.qc_evidence?.required && !updated.qc_evidence.satisfied) {
+      // The server's deadline (30 s after marking); fall back to 30 s from now
+      startQc(updated.qc_evidence.deadline ?? new Date(Date.now() + 30_000).toISOString())
+    }
     return true
   } catch (err: any) {
     const errors = err.response?.data?.errors
@@ -209,7 +281,7 @@ async function deleteMedia(media: JobCardMedia) {
           {{ item.item_name }}
           <span v-if="!item.is_required && item.input_type === 'tick'" class="text-xs font-normal text-gray-400">(optional)</span>
         </p>
-        <p v-if="hint && item.input_type === 'tick'" class="mt-0.5 text-xs" :class="mediaShort ? 'text-red-600' : 'text-green-700'">
+        <p v-if="hint && needsMedia && item.input_type === 'tick'" class="mt-0.5 text-xs" :class="mediaShort ? 'text-red-600' : 'text-green-700'">
           <CameraIcon class="inline h-3.5 w-3.5 -mt-0.5" />
           {{ mediaShort ? hint : `${hint.replace(' required', '')} added` }}
         </p>
@@ -243,7 +315,14 @@ async function deleteMedia(media: JobCardMedia) {
       </div>
     </div>
 
-    <MediaStrip v-if="item.media.length" class="mt-2" :media="item.media" :can-delete="!readonly" @delete="deleteMedia" />
+    <MediaStrip
+      v-if="item.media.length"
+      class="mt-2"
+      :media="item.media"
+      :can-delete="!readonly"
+      :job-card-id="item.expected_answer ? undefined : jobCardId"
+      @delete="deleteMedia"
+    />
 
     <!-- Controls by input type -->
     <div v-if="!readonly" class="mt-3 flex flex-wrap gap-2">
@@ -354,7 +433,7 @@ async function deleteMedia(media: JobCardMedia) {
         class="input"
         :placeholder="pendingChange?.status === 'not_done'
           ? 'Why couldn\'t this be done?'
-          : pendingChange?.needs_attention ? 'What needs attention? (goes to observations)' : 'Remark'"
+          : pendingChange?.needs_attention ? 'What needs attention? (added to Additional Issues)' : 'Remark'"
       />
       <div class="flex gap-2">
         <button
@@ -370,5 +449,37 @@ async function deleteMedia(media: JobCardMedia) {
         </button>
       </div>
     </div>
-  </div>
+  
+    <!-- QC spot check -->
+    <Modal :open="qcOpen" title="QC spot check" @close="closeQc">
+      <div class="text-center space-y-3">
+        <p class="text-sm text-gray-700">
+          Take {{ qcKinds.length > 1 ? 'a photo or video' : qcKinds[0] === 'video' ? 'a video' : 'a photo' }} of <b>{{ item.item_name }}</b> now, in the car.
+        </p>
+        <p class="text-4xl font-bold" :class="qcSecondsLeft > 3 ? 'text-gray-900' : 'text-red-600'">{{ qcSecondsLeft }}s</p>
+        <div class="flex flex-wrap justify-center gap-2">
+          <label
+            v-for="kind in qcKinds"
+            :key="kind"
+            class="inline-flex min-h-12 cursor-pointer items-center justify-center gap-2 rounded-lg px-5 text-base font-semibold text-white"
+            :class="qcSecondsLeft > 0 ? 'bg-primary-600' : 'bg-gray-400'"
+          >
+            <CameraIcon class="h-5 w-5" />
+            {{ qcUploading ? 'Uploading…' : kind === 'video' ? 'Record video' : 'Take photo' }}
+            <input
+              type="file"
+              :accept="kind === 'video' ? 'video/*' : 'image/*'"
+              capture="environment"
+              class="hidden"
+              :disabled="qcUploading"
+              @change="onQcFile"
+            />
+          </label>
+        </div>
+        <p v-if="qcSecondsLeft === 0 && !qcUploading" class="text-xs text-red-600">
+          Time is up: if the photo wasn't taken in time, mark the point again.
+        </p>
+      </div>
+    </Modal>
+</div>
 </template>

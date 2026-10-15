@@ -4,11 +4,13 @@ namespace Tests\Concerns;
 
 use App\Modules\Workshop\Models\JobCard;
 use App\Modules\Workshop\Models\JobCardMedia;
+use App\Modules\Workshop\Services\JobLifecycleService;
 use App\Modules\Workshop\Workflow\Guards\IntakeCaptured;
 
 /**
  * Records a finished intake (trial drive + minimum inventory media) without going
- * through uploads, for tests that are about later stages.
+ * through uploads, for tests that are about later stages. The job then moves on by
+ * itself, as after an upload (to Work In Progress when a technician is assigned).
  */
 trait CompletesIntake
 {
@@ -40,5 +42,7 @@ trait CompletesIntake
                 ]);
             }
         }
+
+        app(JobLifecycleService::class)->sync($job->fresh());
     }
 }

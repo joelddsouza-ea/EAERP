@@ -71,6 +71,50 @@ class StaffAlert extends Notification
         );
     }
 
+    public static function technicianNeedsParts(JobCard $jobCard, string $technician, array $partNames): self
+    {
+        return new self(
+            'technician_needs_parts',
+            "Technician needs parts — {$jobCard->job_number}",
+            "{$technician} sent: " . implode(', ', $partNames) . '. Review and send them to the spare parts coordinator.',
+            "/job-cards/{$jobCard->id}/estimate",
+            $jobCard->id,
+        );
+    }
+
+    public static function partsReceived(JobCard $jobCard, array $partNames, bool $forTechnician): self
+    {
+        return new self(
+            'parts_received',
+            "Parts arrived — {$jobCard->job_number}",
+            'Received: ' . implode(', ', $partNames) . ($forTechnician ? '. Fit them and carry on with the job sheet.' : '.'),
+            $forTechnician ? "/job-cards/{$jobCard->id}/sheet" : "/job-cards/{$jobCard->id}",
+            $jobCard->id,
+        );
+    }
+
+    public static function jobSheetSubmitted(JobCard $jobCard, string $sheetName, string $technician): self
+    {
+        return new self(
+            'job_sheet_submitted',
+            "Job sheet submitted — {$jobCard->job_number}",
+            "{$technician} submitted {$sheetName}.",
+            "/job-cards/{$jobCard->id}",
+            $jobCard->id,
+        );
+    }
+
+    public static function observationsSubmitted(JobCard $jobCard, string $technician, int $count): self
+    {
+        return new self(
+            'observations_submitted',
+            "Observations for the report — {$jobCard->job_number}",
+            "{$technician} submitted {$count} observation(s) for the customer's report. Check the remarks and release the report.",
+            "/job-cards/{$jobCard->id}/sheet",
+            $jobCard->id,
+        );
+    }
+
     public static function estimateAnswered(JobCard $jobCard, int $approved, int $declined, int $pending): self
     {
         $parts = array_filter([

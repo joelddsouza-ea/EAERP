@@ -44,6 +44,8 @@ const statusOptions = [
   { value: 'partial', label: 'Partially Paid' },
   { value: 'paid', label: 'Paid' },
   { value: 'cancelled', label: 'Cancelled' },
+  { value: 'approved', label: 'Proforma approved' },
+  { value: 'closed', label: 'Closed on proforma' },
 ]
 
 const statusVariants: Record<string, 'default' | 'success' | 'warning' | 'danger' | 'info'> = {
@@ -52,6 +54,10 @@ const statusVariants: Record<string, 'default' | 'success' | 'warning' | 'danger
   partial: 'warning',
   paid: 'success',
   cancelled: 'danger',
+  // Proforma (final bill of a job)
+  approved: 'info',
+  converted: 'default',
+  closed: 'success',
 }
 
 const statusLabels: Record<string, string> = {
@@ -60,6 +66,9 @@ const statusLabels: Record<string, string> = {
   partial: 'Partial',
   paid: 'Paid',
   cancelled: 'Cancelled',
+  approved: 'Proforma approved',
+  converted: 'Proforma → tax invoice',
+  closed: 'Closed on proforma',
 }
 
 function formatCurrency(amount: number | string): string {

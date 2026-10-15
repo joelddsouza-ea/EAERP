@@ -42,8 +42,9 @@ class JobCardController extends ApiController
             ->when($request->status, fn($q, $status) =>
                 $q->whereIn('status', (array) $status)
             )
+            // My Jobs: the lead technician or a co-technician
             ->when($request->technician_id, fn($q, $id) =>
-                $q->where('technician_id', $id)
+                $q->where(fn ($w) => $w->where('technician_id', $id)->orWhereHas('technicians', fn ($t) => $t->whereKey($id)))
             )
             ->when($request->service_type, fn($q, $type) =>
                 $q->where('service_type', $type)
@@ -103,6 +104,7 @@ class JobCardController extends ApiController
             'branch',
             'serviceAdvisor',
             'technician',
+            'technicians:id,name',
             'items',
             'addons',
             'statusHistory.changedBy',
@@ -172,7 +174,17 @@ class JobCardController extends ApiController
      */
     public function transitions(Request $request, JobCard $jobCard): JsonResponse
     {
-        return $this->success($this->workflow->transitionsFor($jobCard, $request->user()));
+        $stage = \App\Modules\Workshop\Models\WorkflowStage::for($jobCard->status);
+
+        return $this->success([
+            'options' => $this->workflow->transitionsFor($jobCard, $request->user()),
+            // What the job is waiting for before it moves on by itself
+            'stage' => [
+                'status' => $jobCard->status,
+                'waiting_for' => $stage?->waiting_for,
+                'sent_back' => $this->workflow->enteredBackwards($jobCard),
+            ],
+        ]);
     }
 
     /**

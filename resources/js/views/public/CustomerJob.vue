@@ -2,9 +2,10 @@
 /**
  * The customer's job page, opened from WhatsApp without logging in. Shows the job
  * status, the estimate (approve / decline each additional job, approve all,
- * comment), shared photos and videos, and the service report once released.
+ * comment), photos and videos section by section, the bill and the service report.
+ * It refreshes itself when anything changes, so the customer can keep it open.
  */
-import { ref, computed, onMounted, reactive } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, reactive } from 'vue'
 import { useRoute } from 'vue-router'
 import { format } from 'date-fns'
 import { CheckIcon, XMarkIcon, PhoneIcon, DocumentArrowDownIcon, PlayIcon } from '@heroicons/vue/20/solid'
@@ -28,6 +29,10 @@ const choices = reactive<Record<string, 'approved' | 'declined'>>({})
 
 const estimate = computed(() => page.value?.estimate ?? null)
 const lines = computed(() => estimate.value?.additional_lines ?? [])
+/** Additional work shown for approval; what was not approved is listed under Observations */
+const workLines = computed(() => lines.value.filter((l) => l.approval_status !== 'declined' || choices[l.line_key] === 'approved'))
+const declinedLine = (key: string | null) =>
+  key ? lines.value.find((l) => l.line_key === key && l.approval_status === 'declined' && choices[l.line_key] !== 'approved') ?? null : null
 const changed = computed(() =>
   lines.value.filter((l) => choices[l.line_key] && choices[l.line_key] !== l.approval_status)
 )
@@ -61,11 +66,11 @@ function choose(line: EstimateLine, decision: 'approved' | 'declined') {
 }
 
 function approveAll() {
-  for (const l of lines.value) choices[l.line_key] = 'approved'
+  for (const l of workLines.value) choices[l.line_key] = 'approved'
 }
 
 function declineAll() {
-  for (const l of lines.value) choices[l.line_key] = 'declined'
+  for (const l of workLines.value) choices[l.line_key] = 'declined'
 }
 
 function resetChoices() {
@@ -77,15 +82,53 @@ function errorMessage(err: any): string {
 }
 
 async function load() {
-  loading.value = true
+  loading.value = !page.value
   try {
     page.value = (await publicJobApi.get(token)).data.data
+    loadedAt = Date.now()
   } catch (err) {
-    error.value = errorMessage(err)
+    if (!page.value) error.value = errorMessage(err)
   } finally {
     loading.value = false
   }
 }
+
+// ---- refreshes itself: a cheap check every 20 s while the page is on screen, and when the
+// customer comes back to it. Unsaved approve/decline choices and the comment are kept.
+const POLL_MS = 20_000
+// Photo/video links expire after a while: reload fully every 15 minutes anyway
+const MAX_AGE_MS = 15 * 60_000
+const updatedNote = ref(false)
+let loadedAt = 0
+let pollTimer: ReturnType<typeof setInterval> | undefined
+
+async function checkForUpdates() {
+  if (document.visibilityState !== 'visible' || !page.value || saving.value) return
+  try {
+    const { version } = (await publicJobApi.version(token)).data.data
+    if (version !== page.value.version || Date.now() - loadedAt > MAX_AGE_MS) {
+      const changedContent = version !== page.value.version
+      await load()
+      if (changedContent) {
+        updatedNote.value = true
+        setTimeout(() => (updatedNote.value = false), 6000)
+      }
+    }
+  } catch {
+    // offline for a moment: try again next time
+  }
+}
+
+const onVisible = () => document.visibilityState === 'visible' && checkForUpdates()
+
+onMounted(() => {
+  pollTimer = setInterval(checkForUpdates, POLL_MS)
+  document.addEventListener('visibilitychange', onVisible)
+})
+onBeforeUnmount(() => {
+  clearInterval(pollTimer)
+  document.removeEventListener('visibilitychange', onVisible)
+})
 
 async function save() {
   const decisions: Decision[] = changed.value.map((l) => ({ line_key: l.line_key, decision: choices[l.line_key] }))
@@ -112,6 +155,9 @@ onMounted(load)
 
 <template>
   <div class="min-h-screen bg-gray-50 pb-28">
+    <div v-if="updatedNote" class="fixed top-3 inset-x-0 z-50 mx-auto w-max rounded-full bg-gray-900/90 px-4 py-1.5 text-sm text-white shadow">
+      Updated just now
+    </div>
     <div v-if="loading" class="flex justify-center pt-24 text-gray-500">Loading…</div>
 
     <div v-else-if="error" class="max-w-md mx-auto px-4 pt-24 text-center">
@@ -161,19 +207,19 @@ onMounted(load)
           </div>
 
           <!-- Additional jobs to approve -->
-          <div v-if="lines.length" class="px-4 py-3">
+          <div v-if="workLines.length" class="px-4 py-3">
             <div class="flex items-center justify-between mb-2">
               <h3 class="font-medium">Additional work</h3>
               <div v-if="page.decisions_open" class="flex gap-4">
                 <button
-                  v-if="lines.some((l) => statusOf(l) !== 'declined')"
+                  v-if="workLines.some((l) => statusOf(l) !== 'declined')"
                   class="text-sm text-gray-600 font-medium"
                   @click="declineAll"
                 >
                   Decline all
                 </button>
                 <button
-                  v-if="lines.some((l) => statusOf(l) !== 'approved')"
+                  v-if="workLines.some((l) => statusOf(l) !== 'approved')"
                   class="text-sm text-primary-600 font-medium"
                   @click="approveAll"
                 >
@@ -183,7 +229,7 @@ onMounted(load)
             </div>
 
             <ul class="space-y-3">
-              <li v-for="line in lines" :key="line.line_key" class="rounded-lg border p-3" :class="statusOf(line) === 'declined' ? 'border-gray-200 bg-gray-50' : statusOf(line) === 'approved' ? 'border-green-200 bg-green-50' : 'border-amber-200 bg-amber-50'">
+              <li v-for="line in workLines" :key="line.line_key" class="rounded-lg border p-3" :class="statusOf(line) === 'declined' ? 'border-gray-200 bg-gray-50' : statusOf(line) === 'approved' ? 'border-green-200 bg-green-50' : 'border-amber-200 bg-amber-50'">
                 <div class="flex justify-between gap-3">
                   <p class="font-medium text-gray-900">{{ line.description }}</p>
                   <p class="font-semibold shrink-0">{{ money(line.amount) }}</p>
@@ -235,6 +281,24 @@ onMounted(load)
             </p>
           </div>
 
+          <!-- Observations & recommendations (incl. work not approved), with remarks -->
+          <div v-if="estimate.observations?.length" class="px-4 py-3 border-t border-gray-100">
+            <h3 class="font-medium mb-2">Observations &amp; recommendations</h3>
+            <ol class="space-y-2">
+              <li v-for="(o, i) in estimate.observations" :key="o.id" class="rounded-lg border border-gray-200 p-3 text-sm">
+                <p class="text-gray-900">{{ i + 1 }}. {{ o.text }}</p>
+                <p v-if="o.remark" class="mt-0.5 text-xs font-medium text-amber-800">{{ o.remark }}</p>
+                <button
+                  v-if="page.decisions_open && declinedLine(o.estimate_line_key)"
+                  class="mt-2 inline-flex items-center gap-1 rounded-lg border border-green-600 px-3 py-1.5 text-xs font-medium text-green-700"
+                  @click="choose(declinedLine(o.estimate_line_key)!, 'approved')"
+                >
+                  <CheckIcon class="h-4 w-4" /> Approve this work after all ({{ money(declinedLine(o.estimate_line_key)!.amount) }})
+                </button>
+              </li>
+            </ol>
+          </div>
+
           <!-- Comments -->
           <div class="px-4 py-3 border-t border-gray-100">
             <ul v-if="estimate.comments.length" class="space-y-2 mb-3">
@@ -255,16 +319,44 @@ onMounted(load)
           The estimate will appear here once the workshop has prepared it.
         </section>
 
-        <!-- Photos & videos -->
-        <section v-if="page.media.length" class="rounded-xl bg-white shadow-sm border border-gray-200 p-4">
-          <h2 class="font-semibold mb-3">Photos &amp; videos</h2>
-          <div class="grid grid-cols-3 gap-2">
-            <a v-for="m in page.media" :key="m.id" :href="m.url" target="_blank" class="relative block aspect-square overflow-hidden rounded bg-gray-200">
-              <img v-if="m.thumbnail_url" :src="m.thumbnail_url" class="h-full w-full object-cover" :alt="m.description ?? ''" />
-              <span v-else class="flex h-full items-center justify-center text-xs text-gray-500">{{ m.media_type }}</span>
-              <PlayIcon v-if="m.media_type === 'video'" class="absolute inset-0 m-auto h-8 w-8 text-white drop-shadow" />
+        <!-- Photos & videos, section by section -->
+        <section v-if="page.gallery.length" class="rounded-xl bg-white shadow-sm border border-gray-200 p-4">
+          <h2 class="font-semibold mb-1">Photos &amp; videos</h2>
+          <p class="text-xs text-gray-500 mb-3">New ones appear here by themselves while this page is open.</p>
+          <details v-for="(area, ai) in page.gallery" :key="area.key" class="border-t border-gray-100 py-2" :open="ai === page.gallery.length - 1">
+            <summary class="cursor-pointer select-none font-medium text-gray-900">
+              {{ area.title }} <span class="text-sm font-normal text-gray-500">({{ area.count }})</span>
+            </summary>
+            <div v-for="(group, gi) in area.groups" :key="gi" class="mt-2">
+              <p v-if="group.title" class="text-sm font-medium text-gray-700 mb-1">{{ group.title }}</p>
+              <div class="grid grid-cols-3 gap-2">
+                <a v-for="m in group.items" :key="m.id" :href="m.url" target="_blank" class="block">
+                  <span class="relative block aspect-square overflow-hidden rounded bg-gray-200">
+                    <img v-if="m.thumbnail_url" :src="m.thumbnail_url" class="h-full w-full object-cover" :alt="m.caption ?? ''" loading="lazy" />
+                    <span v-else class="flex h-full items-center justify-center text-xs text-gray-500">{{ m.media_type }}</span>
+                    <PlayIcon v-if="m.media_type === 'video'" class="absolute inset-0 m-auto h-8 w-8 text-white drop-shadow" />
+                  </span>
+                  <span v-if="m.caption" class="mt-0.5 block text-[11px] leading-tight text-gray-600 line-clamp-2">{{ m.caption }}</span>
+                </a>
+              </div>
+            </div>
+          </details>
+        </section>
+
+        <!-- Final bill -->
+        <section v-if="page.bill" class="rounded-xl bg-white shadow-sm border border-gray-200 p-4">
+          <div class="flex items-center justify-between mb-2">
+            <h2 class="font-semibold">{{ page.bill.kind === 'tax' ? 'Tax invoice' : 'Bill' }} {{ page.bill.number }}</h2>
+            <a :href="publicJobApi.billPdfUrl(token)" target="_blank" class="text-sm text-primary-600 inline-flex items-center gap-1">
+              <DocumentArrowDownIcon class="h-4 w-4" /> PDF
             </a>
           </div>
+          <dl class="text-sm space-y-1">
+            <div class="flex justify-between"><dt class="text-gray-600">Total</dt><dd class="font-medium">Rs {{ page.bill.total.toLocaleString('en-IN') }}</dd></div>
+            <div class="flex justify-between"><dt class="text-gray-600">Paid</dt><dd>Rs {{ page.bill.paid.toLocaleString('en-IN') }}</dd></div>
+            <div class="flex justify-between font-semibold"><dt>Balance to pay</dt><dd>Rs {{ page.bill.balance.toLocaleString('en-IN') }}</dd></div>
+          </dl>
+          <p v-if="page.bill.gate_pass" class="mt-2 text-sm text-green-700">Gate pass {{ page.bill.gate_pass }} issued — your car is ready to collect.</p>
         </section>
 
         <!-- Service report -->

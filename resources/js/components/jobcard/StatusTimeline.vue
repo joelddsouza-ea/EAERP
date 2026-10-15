@@ -18,9 +18,9 @@ const entries = computed(() => {
     return {
       ...entry,
       duration: next ? formatDistanceStrict(new Date(entry.changed_at), new Date(next.changed_at)) : null,
-      // Moving back (QA fail, etc.) is worth highlighting
-      backwards: entry.from_status === 'post_work_trial' || entry.from_status === 'wash_pending'
-        ? entry.to_status === 'work_in_progress'
+      // Moving back (trial drive / QC failed, wash again) is worth highlighting
+      backwards: ['post_work_trial', 'wash_pending', 'qc_pending', 'ready_for_delivery'].includes(entry.from_status ?? '')
+        ? ['work_in_progress', 'wash_pending'].includes(entry.to_status)
         : false,
     }
   })

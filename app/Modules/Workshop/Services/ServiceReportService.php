@@ -8,7 +8,9 @@ use App\Modules\Workshop\Models\JobCard;
 use App\Modules\Workshop\Models\JobCardChecklistItem as Item;
 use App\Modules\Workshop\Models\JobCardEstimate;
 use App\Modules\Workshop\Models\JobCardEstimateLine as Line;
+use App\Modules\Workshop\Models\JobCardObservation;
 use App\Modules\Workshop\Models\JobCardReport;
+use App\Modules\Workshop\Models\ObservationRemark;
 
 /**
  * The customer service report: activities carried out, additional jobs done,
@@ -66,7 +68,7 @@ class ServiceReportService
     {
         $jobCard->loadMissing([
             'customer', 'vehicle.make', 'vehicle.model', 'package', 'serviceAdvisor:id,name',
-            'checklists.items', 'observations',
+            'checklists.items', 'observations.remark',
         ]);
         $settings = $this->settings($jobCard);
 
@@ -113,13 +115,27 @@ class ServiceReportService
             'additional_jobs' => $include('additional')
                 ? $additional->where('approval_status', Line::APPROVED)->map(fn (Line $l) => $l->description)->values()->all()
                 : [],
+            // Declined estimate lines are listed under "not approved" below, not twice
             'observations' => $include('observations')
                 ? $jobCard->observations
+                    ->where('source', '!=', JobCardObservation::SOURCE_ESTIMATE_DECLINED)
                     ->when($forCustomer, fn ($c) => $c->where('customer_visible', true))
-                    ->map(fn ($o) => ['text' => $o->text, 'severity' => $o->severity])->values()->all()
+                    ->map(fn ($o) => [
+                        'text' => $o->text,
+                        'severity' => $o->severity,
+                        'remark' => $o->remark?->text($o->remark_days),
+                    ])->values()->all()
                 : [],
             'not_approved' => $include('additional')
-                ? $additional->where('approval_status', Line::DECLINED)->map(fn (Line $l) => $l->description)->values()->all()
+                ? $additional->where('approval_status', Line::DECLINED)->map(function (Line $l) use ($jobCard) {
+                    // Advice chosen on the Observations tab (other than the default "Customer not approved")
+                    $observation = $jobCard->observations->firstWhere('estimate_line_key', $l->line_key);
+                    $remark = $observation?->remark;
+
+                    return $remark && $remark->code !== ObservationRemark::CUSTOMER_NOT_APPROVED
+                        ? "{$l->description} — {$remark->text($observation->remark_days)}"
+                        : $l->description;
+                })->values()->all()
                 : [],
             'not_approved_label' => Line::DECLINED_LABEL,
             'next_service_km' => $estimate?->next_service_km,

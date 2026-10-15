@@ -1,33 +1,31 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+/**
+ * Job card, laid out in the order the job progresses: what to do next, the car,
+ * who and where, intake, complaints, job sheets, estimate & customer, report, billing.
+ */
+import { ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { format } from 'date-fns'
-import {
-  PencilIcon,
-  UserIcon,
-  WrenchIcon,
-  DocumentTextIcon,
-  ClipboardDocumentCheckIcon,
-} from '@heroicons/vue/20/solid'
-import { jobCardsApi, baysApi, techniciansApi } from '@/api/workshop.api'
+import { PencilIcon, DocumentTextIcon, ClipboardDocumentCheckIcon } from '@heroicons/vue/20/solid'
+import { jobCardsApi } from '@/api/workshop.api'
 import { jobSheetsApi } from '@/api/jobSheets.api'
 import { usePermissions } from '@/composables/usePermissions'
 import { useToast } from '@/composables/useToast'
-import type { JobCard, Bay, JobSheet } from '@/api/types'
+import type { JobCard, JobSheet } from '@/api/types'
 import Card from '@/components/ui/Card.vue'
 import Button from '@/components/ui/Button.vue'
 import Badge from '@/components/ui/Badge.vue'
-import Select from '@/components/ui/Select.vue'
-import Modal from '@/components/ui/Modal.vue'
 import Spinner from '@/components/ui/Spinner.vue'
 import { jobServiceLabel } from '@/constants/serviceTypes'
 import { statusLabel, statusVariant } from '@/constants/jobCardStatus'
 import StatusActions from '@/components/jobcard/StatusActions.vue'
 import StatusTimeline from '@/components/jobcard/StatusTimeline.vue'
 import IntakePanel from '@/components/jobcard/IntakePanel.vue'
+import AssignmentsCard from '@/components/jobcard/AssignmentsCard.vue'
 import EstimateSummaryCard from '@/components/estimate/EstimateSummaryCard.vue'
 import CustomerChannelCard from '@/components/estimate/CustomerChannelCard.vue'
 import ServiceReportCard from '@/components/estimate/ServiceReportCard.vue'
+import JobBillingCard from '@/components/billing/JobBillingCard.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -43,26 +41,32 @@ const jobCard = ref<JobCard | null>(null)
 const estimateCard = ref<InstanceType<typeof EstimateSummaryCard> | null>(null)
 const channelCard = ref<InstanceType<typeof CustomerChannelCard> | null>(null)
 
+const billingCard = ref<InstanceType<typeof JobBillingCard> | null>(null)
+
 async function onStatusChanged() {
   await fetchJobCard()
   estimateCard.value?.reload()
   channelCard.value?.reload()
+  billingCard.value?.reload()
+}
+
+// Billing actions can move the job on (Invoiced, Gate Pass, Delivered) and prepare WhatsApp messages
+async function onBillingChanged() {
+  await fetchJobCard()
+  statusActions.value?.reload()
+  channelCard.value?.reload()
+}
+
+// Intake and assignments decide which moves are open: refresh the Next Step panel after them
+const statusActions = ref<InstanceType<typeof StatusActions> | null>(null)
+
+async function refreshAfterChange() {
+  await fetchJobCard()
+  statusActions.value?.reload()
 }
 
 // Job sheets (technician sheets, observation report, pre-delivery)
 const sheets = ref<JobSheet[]>([])
-
-// Technician assignment
-const showTechModal = ref(false)
-const technicians = ref<any[]>([])
-const selectedTechnicianId = ref<number | null>(null)
-const assigningTech = ref(false)
-
-// Bay assignment
-const showBayModal = ref(false)
-const availableBays = ref<Bay[]>([])
-const selectedBayId = ref<number | null>(null)
-const assigningBay = ref(false)
 
 function formatCurrency(amount: number | string): string {
   return new Intl.NumberFormat('en-IN', {
@@ -77,8 +81,10 @@ function formatDate(dateString: string | null): string {
   return format(new Date(dateString), 'dd MMM yyyy, h:mm a')
 }
 
+const complaintLines = (text: string | null) => (text ?? '').split(/\r?\n/).map((l) => l.trim()).filter(Boolean)
+
 async function fetchJobCard() {
-  loading.value = true
+  loading.value = !jobCard.value
   try {
     const [response, sheetsRes] = await Promise.all([
       jobCardsApi.get(jobCardId),
@@ -96,68 +102,6 @@ async function fetchJobCard() {
   }
 }
 
-async function openTechModal() {
-  try {
-    const response = await techniciansApi.available(jobCard.value?.branch_id)
-    technicians.value = response.data.data
-    selectedTechnicianId.value = jobCard.value?.technician_id || null
-    showTechModal.value = true
-  } catch (err) {
-    toast.apiError(err)
-  }
-}
-
-async function assignTechnician() {
-  if (!selectedTechnicianId.value) return
-
-  assigningTech.value = true
-  try {
-    await jobCardsApi.assignTechnician(jobCardId, selectedTechnicianId.value)
-    toast.success('Technician Assigned', 'Technician has been assigned to this job card.')
-    await fetchJobCard()
-    showTechModal.value = false
-  } catch (err) {
-    toast.apiError(err)
-  } finally {
-    assigningTech.value = false
-  }
-}
-
-async function openBayModal() {
-  try {
-    const response = await baysApi.available(jobCard.value?.branch_id)
-    availableBays.value = response.data.data
-    selectedBayId.value = jobCard.value?.bay_id || null
-    showBayModal.value = true
-  } catch (err) {
-    toast.apiError(err)
-  }
-}
-
-async function assignBay() {
-  if (!selectedBayId.value) return
-
-  assigningBay.value = true
-  try {
-    await jobCardsApi.assignBay(jobCardId, selectedBayId.value)
-    toast.success('Bay Assigned', 'Bay has been assigned to this job card.')
-    await fetchJobCard()
-    showBayModal.value = false
-  } catch (err) {
-    toast.apiError(err)
-  } finally {
-    assigningBay.value = false
-  }
-}
-
-const technicianOptions = computed(() =>
-  technicians.value.map((t) => ({ value: t.id, label: t.name }))
-)
-
-const bayOptions = computed(() =>
-  availableBays.value.map((b) => ({ value: b.id, label: b.name }))
-)
-
 onMounted(fetchJobCard)
 </script>
 
@@ -169,7 +113,7 @@ onMounted(fetchJobCard)
 
     <template v-else-if="jobCard">
       <!-- Header -->
-      <div class="flex flex-wrap items-center justify-between gap-4 mb-6">
+      <div class="flex flex-wrap items-center justify-between gap-4 mb-4">
         <div>
           <div class="flex items-center gap-3">
             <h1 class="text-2xl font-bold text-gray-900">{{ jobCard.job_number }}</h1>
@@ -189,19 +133,11 @@ onMounted(fetchJobCard)
         </div>
 
         <div class="flex flex-wrap gap-2">
-          <Button
-            v-if="sheets.length"
-            variant="secondary"
-            @click="router.push(`/job-cards/${jobCard.id}/sheet`)"
-          >
+          <Button v-if="sheets.length" variant="secondary" @click="router.push(`/job-cards/${jobCard.id}/sheet`)">
             <ClipboardDocumentCheckIcon class="h-4 w-4 mr-1" />
             Job Sheet
           </Button>
-          <Button
-            v-if="can('workshop.estimates.view')"
-            variant="secondary"
-            @click="router.push(`/job-cards/${jobCard.id}/estimate`)"
-          >
+          <Button v-if="can('workshop.estimates.view')" variant="secondary" @click="router.push(`/job-cards/${jobCard.id}/estimate`)">
             <DocumentTextIcon class="h-4 w-4 mr-1" />
             Estimate
           </Button>
@@ -212,16 +148,31 @@ onMounted(fetchJobCard)
         </div>
       </div>
 
+      <!-- 1. What to do next -->
+      <Card class="mb-6">
+        <div class="flex flex-wrap items-start gap-4">
+          <div class="min-w-[10rem]">
+            <h3 class="text-lg font-semibold">Next Step</h3>
+            <p v-if="jobCard.status === 'cancelled' && jobCard.cancel_reason" class="text-sm text-gray-600">
+              Cancelled: {{ jobCard.cancel_reason }}
+            </p>
+          </div>
+          <div class="flex-1 min-w-[16rem]">
+            <StatusActions ref="statusActions" :job-card-id="jobCard.id" :status="jobCard.status" @changed="onStatusChanged" />
+          </div>
+        </div>
+      </Card>
+
       <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <!-- Main Info -->
+        <!-- Main column, in the order the job progresses -->
         <div class="lg:col-span-2 space-y-6">
-          <!-- Customer & Vehicle -->
+          <!-- 2. Customer & vehicle -->
           <Card>
             <template #header>
               <h3 class="text-lg font-semibold">Customer & Vehicle</h3>
             </template>
 
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div>
                 <h4 class="text-sm font-medium text-gray-500 mb-2">Customer</h4>
                 <p class="font-medium">{{ jobCard.customer?.name }}</p>
@@ -234,42 +185,45 @@ onMounted(fetchJobCard)
                   {{ jobCard.vehicle?.make?.name }} {{ jobCard.vehicle?.model?.name }}
                   <span v-if="jobCard.vehicle?.year">({{ jobCard.vehicle.year }})</span>
                 </p>
+                <p v-if="jobCard.vehicle?.category" class="text-xs text-gray-500">{{ jobCard.vehicle.category.name }}</p>
+              </div>
+              <div>
+                <h4 class="text-sm font-medium text-gray-500 mb-2">Service Advisor</h4>
+                <p class="font-medium">{{ jobCard.service_advisor?.name || '-' }}</p>
+                <p class="text-sm text-gray-500">In: {{ formatDate(jobCard.time_in) }}</p>
               </div>
             </div>
           </Card>
 
-          <!-- Intake: trial drive + inventory photos/videos -->
-          <IntakePanel :job-card-id="jobCard.id" />
+          <!-- 3. Who and where -->
+          <AssignmentsCard :job-card-id="jobCard.id" @changed="refreshAfterChange" />
 
-          <!-- Complaint & Work -->
+          <!-- 4. Intake: trial drive + inventory photos/videos -->
+          <IntakePanel :job-card-id="jobCard.id" @changed="refreshAfterChange" />
+
+          <!-- 5. Complaints -->
           <Card>
             <template #header>
-              <h3 class="text-lg font-semibold">Work Details</h3>
+              <h3 class="text-lg font-semibold">Customer Complaints</h3>
             </template>
-
-            <dl class="space-y-4">
-              <div>
-                <dt class="text-sm font-medium text-gray-500">Customer Complaint</dt>
-                <dd class="mt-1 text-sm text-gray-900 whitespace-pre-wrap">
-                  {{ jobCard.customer_complaints || 'No complaint recorded' }}
-                </dd>
-              </div>
+            <ol v-if="complaintLines(jobCard.customer_complaints).length" class="list-decimal list-inside space-y-1 text-sm text-gray-900">
+              <li v-for="(line, i) in complaintLines(jobCard.customer_complaints)" :key="i">{{ line }}</li>
+            </ol>
+            <p v-else class="text-sm text-gray-500">No complaint recorded.</p>
+            <p class="mt-2 text-xs text-gray-500">Each complaint is a line under Additional Issues on the job sheet.</p>
+            <dl v-if="jobCard.advisor_observations || jobCard.internal_notes" class="mt-4 space-y-3">
               <div v-if="jobCard.advisor_observations">
                 <dt class="text-sm font-medium text-gray-500">Advisor Observations</dt>
-                <dd class="mt-1 text-sm text-gray-900 whitespace-pre-wrap">
-                  {{ jobCard.advisor_observations }}
-                </dd>
+                <dd class="mt-1 text-sm text-gray-900 whitespace-pre-wrap">{{ jobCard.advisor_observations }}</dd>
               </div>
               <div v-if="jobCard.internal_notes">
                 <dt class="text-sm font-medium text-gray-500">Internal Notes</dt>
-                <dd class="mt-1 text-sm text-gray-900 whitespace-pre-wrap">
-                  {{ jobCard.internal_notes }}
-                </dd>
+                <dd class="mt-1 text-sm text-gray-900 whitespace-pre-wrap">{{ jobCard.internal_notes }}</dd>
               </div>
             </dl>
           </Card>
 
-          <!-- Job sheets -->
+          <!-- 6. Job sheets progress -->
           <Card v-if="sheets.length">
             <template #header>
               <h3 class="text-lg font-semibold">Job Sheets</h3>
@@ -285,7 +239,8 @@ onMounted(fetchJobCard)
                     <p class="text-sm font-medium text-gray-900 truncate">{{ sheet.name }}</p>
                     <p class="text-xs text-gray-500">
                       {{ sheet.progress?.resolved ?? 0 }} / {{ sheet.progress?.total ?? 0 }} done
-                      <span v-if="sheet.progress?.needs_attention" class="text-amber-600">
+                      <!-- Flags still open; not shown once the sheet is submitted -->
+                      <span v-if="sheet.status !== 'completed' && sheet.progress?.needs_attention" class="text-amber-600">
                         · {{ sheet.progress.needs_attention }} need attention
                       </span>
                       <span v-if="sheet.override" class="text-amber-600"> · submitted with override</span>
@@ -297,15 +252,39 @@ onMounted(fetchJobCard)
                 </RouterLink>
                 <div v-if="sheet.progress && sheet.progress.total" class="mt-2 h-1.5 bg-gray-100 rounded-full overflow-hidden">
                   <div
-                    class="h-full bg-primary-500"
-                    :style="{ width: `${Math.round((sheet.progress.resolved / sheet.progress.total) * 100)}%` }"
+                    class="h-full"
+                    :class="sheet.status === 'completed' ? 'bg-green-500' : 'bg-primary-500'"
+                    :style="{ width: `${sheet.status === 'completed' ? 100 : Math.round((sheet.progress.resolved / sheet.progress.total) * 100)}%` }"
                   />
                 </div>
               </li>
             </ul>
           </Card>
 
-          <!-- Items -->
+          <!-- 7. Estimate & customer approval -->
+          <EstimateSummaryCard v-if="can('workshop.estimates.view')" ref="estimateCard" :job-card-id="jobCard.id" />
+
+          <!-- 8. Customer link & messages -->
+          <CustomerChannelCard
+            v-if="can('workshop.customer-links.manage')"
+            ref="channelCard"
+            :job-card-id="jobCard.id"
+            :can-remind="jobCard.status === 'awaiting_approval'"
+          />
+
+          <!-- 9. Service report -->
+          <ServiceReportCard v-if="can('workshop.reports.view')" :job-card-id="jobCard.id" />
+
+          <!-- 10. Payments, final bill, gate pass, vehicle out -->
+          <JobBillingCard
+            v-if="can('billing.invoices.view') || can('billing.payments.create')"
+            ref="billingCard"
+            :job-card-id="jobCard.id"
+            :job-status="jobCard.status"
+            @changed="onBillingChanged"
+          />
+
+          <!-- 11. Billing items -->
           <Card :padding="false">
             <template #header>
               <h3 class="text-lg font-semibold">Job Items</h3>
@@ -341,28 +320,6 @@ onMounted(fetchJobCard)
 
         <!-- Sidebar -->
         <div class="space-y-6">
-          <!-- Status -->
-          <Card>
-            <template #header>
-              <h3 class="text-lg font-semibold">Next Step</h3>
-            </template>
-            <p v-if="jobCard.status === 'cancelled' && jobCard.cancel_reason" class="text-sm text-gray-600 mb-3">
-              Cancelled: {{ jobCard.cancel_reason }}
-            </p>
-            <StatusActions :job-card-id="jobCard.id" :status="jobCard.status" @changed="onStatusChanged" />
-          </Card>
-
-          <EstimateSummaryCard v-if="can('workshop.estimates.view')" ref="estimateCard" :job-card-id="jobCard.id" />
-
-          <CustomerChannelCard
-            v-if="can('workshop.customer-links.manage')"
-            ref="channelCard"
-            :job-card-id="jobCard.id"
-            :can-remind="jobCard.status === 'awaiting_approval'"
-          />
-
-          <ServiceReportCard v-if="can('workshop.reports.view')" :job-card-id="jobCard.id" />
-
           <!-- Summary -->
           <Card>
             <template #header>
@@ -380,6 +337,14 @@ onMounted(fetchJobCard)
                   {{ jobCard.oil_type?.name ?? 'Not chosen' }}
                 </dd>
               </div>
+              <div class="flex justify-between">
+                <dt class="text-sm text-gray-500">Odometer</dt>
+                <dd class="text-sm font-medium">{{ jobCard.km_reading != null ? `${Number(jobCard.km_reading).toLocaleString('en-IN')} km` : '-' }}</dd>
+              </div>
+              <div class="flex justify-between">
+                <dt class="text-sm text-gray-500">Fuel</dt>
+                <dd class="text-sm font-medium capitalize">{{ jobCard.fuel_level?.replace('_', ' ') ?? '-' }}</dd>
+              </div>
               <div v-if="Number(jobCard.package_price) > 0" class="flex justify-between">
                 <dt class="text-sm text-gray-500">Package Price</dt>
                 <dd class="text-sm font-medium">{{ formatCurrency(jobCard.package_price ?? 0) }}</dd>
@@ -392,45 +357,9 @@ onMounted(fetchJobCard)
                 <dt class="text-sm text-gray-500">Total Amount</dt>
                 <dd class="text-sm font-medium">{{ formatCurrency(jobCard.total_amount) }}</dd>
               </div>
-            </dl>
-          </Card>
-
-          <!-- Assignments -->
-          <Card>
-            <template #header>
-              <h3 class="text-lg font-semibold">Assignments</h3>
-            </template>
-
-            <dl class="space-y-4">
-              <div>
-                <dt class="text-sm text-gray-500 mb-1">Service Advisor</dt>
-                <dd class="text-sm font-medium">
-                  {{ jobCard.service_advisor?.name || '-' }}
-                </dd>
-              </div>
-
-              <div>
-                <dt class="text-sm text-gray-500 mb-1">Technician</dt>
-                <dd class="flex items-center justify-between">
-                  <span class="text-sm font-medium">
-                    {{ jobCard.technician?.name || 'Not assigned' }}
-                  </span>
-                  <Button v-if="can('workshop.job-cards.update')" size="sm" variant="ghost" @click="openTechModal">
-                    <UserIcon class="h-4 w-4" />
-                  </Button>
-                </dd>
-              </div>
-
-              <div>
-                <dt class="text-sm text-gray-500 mb-1">Bay</dt>
-                <dd class="flex items-center justify-between">
-                  <span class="text-sm font-medium">
-                    {{ jobCard.bay?.name || 'Not assigned' }}
-                  </span>
-                  <Button v-if="can('workshop.job-cards.update')" size="sm" variant="ghost" @click="openBayModal">
-                    <WrenchIcon class="h-4 w-4" />
-                  </Button>
-                </dd>
+              <div v-if="jobCard.estimated_delivery" class="flex justify-between">
+                <dt class="text-sm text-gray-500">Promised</dt>
+                <dd class="text-sm font-medium">{{ formatDate(jobCard.estimated_delivery) }}</dd>
               </div>
             </dl>
           </Card>
@@ -444,56 +373,8 @@ onMounted(fetchJobCard)
             <StatusTimeline v-if="jobCard.status_history?.length" :history="jobCard.status_history" />
             <p v-else class="text-sm text-gray-500">Created {{ formatDate(jobCard.created_at) }}</p>
           </Card>
-
-          <!-- Actions -->
-          <Card>
-            <div class="space-y-3">
-              <Button
-                v-if="can('billing.invoices.create') && jobCard.status === 'ready_for_delivery'"
-                block
-                @click="router.push(`/invoices/create?job_card_id=${jobCard.id}`)"
-              >
-                <DocumentTextIcon class="h-4 w-4 mr-2" />
-                Create Invoice
-              </Button>
-            </div>
-          </Card>
         </div>
       </div>
-
-      <!-- Technician Modal -->
-      <Modal :open="showTechModal" title="Assign Technician" @close="showTechModal = false">
-        <Select
-          v-model="selectedTechnicianId"
-          label="Select Technician"
-          :options="technicianOptions"
-          placeholder="Choose a technician"
-        />
-
-        <template #footer>
-          <Button variant="secondary" @click="showTechModal = false">Cancel</Button>
-          <Button :loading="assigningTech" :disabled="!selectedTechnicianId" @click="assignTechnician">
-            Assign
-          </Button>
-        </template>
-      </Modal>
-
-      <!-- Bay Modal -->
-      <Modal :open="showBayModal" title="Assign Bay" @close="showBayModal = false">
-        <Select
-          v-model="selectedBayId"
-          label="Select Bay"
-          :options="bayOptions"
-          placeholder="Choose a bay"
-        />
-
-        <template #footer>
-          <Button variant="secondary" @click="showBayModal = false">Cancel</Button>
-          <Button :loading="assigningBay" :disabled="!selectedBayId" @click="assignBay">
-            Assign
-          </Button>
-        </template>
-      </Modal>
     </template>
   </div>
 </template>

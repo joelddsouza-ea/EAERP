@@ -1,13 +1,19 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
-import { ExclamationTriangleIcon } from '@heroicons/vue/20/solid'
+import { ExclamationTriangleIcon, ArrowPathIcon } from '@heroicons/vue/20/solid'
 import { jobCardsApi } from '@/api/workshop.api'
 import { useToast } from '@/composables/useToast'
-import type { GuardFailureInfo, StatusTransitionOption } from '@/api/types'
+import { usePermissions } from '@/composables/usePermissions'
+import type { GuardFailureInfo, StatusTransitionOption, StatusTransitions } from '@/api/types'
 import Button from '@/components/ui/Button.vue'
 import Modal from '@/components/ui/Modal.vue'
 import Textarea from '@/components/ui/Textarea.vue'
 
+/**
+ * Next step for a job. Most stages move by themselves (Job stages master); people
+ * record events here (QC result, send back, cancel). Owners/managers can still move
+ * a stuck job by hand, with a reason that is logged.
+ */
 interface Props {
   jobCardId: number
   // Re-fetch transitions whenever the job card's status changes
@@ -17,9 +23,12 @@ interface Props {
 const props = defineProps<Props>()
 const emit = defineEmits<{ changed: [] }>()
 const toast = useToast()
+const { can } = usePermissions()
 
 const options = ref<StatusTransitionOption[]>([])
+const stage = ref<StatusTransitions['stage'] | null>(null)
 const loading = ref(false)
+const showManual = ref(false)
 
 const selected = ref<StatusTransitionOption | null>(null)
 const notes = ref('')
@@ -27,22 +36,63 @@ const override = ref(false)
 const saving = ref(false)
 const serverBlocks = ref<GuardFailureInfo[]>([])
 
-// Forward moves first, cancel last; hide moves this user can't make at all
-const visible = computed(() =>
+const terminal = computed(() => ['delivered', 'cancelled'].includes(props.status))
+
+// Events people record (QC result, send back, moving on after a send-back), then cancel.
+// A failed trial drive is recorded below with its note instead.
+const events = computed(() =>
   options.value
-    .filter((o) => o.permitted)
+    .filter((o) => o.permitted && !o.manual && !(props.status === 'post_work_trial' && o.status === 'work_in_progress'))
     .sort((a, b) => Number(a.status === 'cancelled') - Number(b.status === 'cancelled'))
 )
+// Corrections for a stuck job: owner/manager only
+const manual = computed(() => options.value.filter((o) => o.permitted && o.manual))
 
-const blocked = computed(() => visible.value.filter((o) => !o.allowed && o.status !== 'cancelled'))
+const blocked = computed(() => events.value.filter((o) => !o.allowed && o.status !== 'cancelled'))
 
 const needsModal = (o: StatusTransitionOption) => o.requires_notes || !o.allowed || o.status === 'cancelled'
+
+const EVENT_LABELS: Record<string, string> = {
+  'wash_pending>work_in_progress': 'Send back to work',
+  'qc_pending>work_in_progress': 'QC failed — back to work',
+  'qc_pending>wash_pending': 'QC failed — wash again',
+  'ready_for_delivery>wash_pending': 'Send back to wash',
+}
+
+// ---- after the work: the advisor records the trial drive and the wash; the job moves on by itself
+const canRecord = computed(() => can('workshop.qc.update') || can('workshop.job-cards.change-status'))
+const recording = ref(false)
+const trialIssuesOpen = ref(false)
+const trialNotes = ref('')
+
+async function record(call: () => Promise<unknown>, message: string) {
+  recording.value = true
+  try {
+    await call()
+    toast.success(message)
+    trialIssuesOpen.value = false
+    emit('changed')
+  } catch (err) {
+    toast.apiError(err)
+  } finally {
+    recording.value = false
+  }
+}
+
+function buttonLabel(o: StatusTransitionOption) {
+  if (o.status === 'cancelled') return 'Cancel job'
+  if (o.manual) return o.label
+  return EVENT_LABELS[`${props.status}>${o.status}`] ?? `Move to ${o.label}`
+}
+
+const isBackward = (o: StatusTransitionOption) => (EVENT_LABELS[`${props.status}>${o.status}`] ?? '').includes('back')
 
 async function fetchTransitions() {
   loading.value = true
   try {
     const response = await jobCardsApi.transitions(props.jobCardId)
-    options.value = response.data.data
+    options.value = response.data.data.options
+    stage.value = response.data.data.stage
   } catch (err) {
     toast.apiError(err)
   } finally {
@@ -69,6 +119,7 @@ async function submit() {
     await jobCardsApi.updateStatus(props.jobCardId, option.status, notes.value, override.value)
     toast.success('Status Updated', `Moved to ${option.label}.`)
     selected.value = null
+    showManual.value = false
     emit('changed')
   } catch (err: any) {
     const guards = err.response?.data?.errors?.guards as GuardFailureInfo[] | undefined
@@ -92,36 +143,109 @@ const canSubmit = computed(() => {
   return true
 })
 
+const modalTitle = computed(() => {
+  const o = selected.value
+  if (!o) return ''
+  if (o.status === 'cancelled') return 'Cancel Job Card'
+  return o.manual ? `Move by hand to ${o.label}` : buttonLabel(o)
+})
+
+const notesLabel = computed(() => {
+  const o = selected.value
+  if (o?.status === 'cancelled') return 'Reason for cancelling'
+  if (o?.manual) return 'Why are you moving it by hand? (logged)'
+  return isBackward(o!) ? 'What needs fixing?' : 'Note'
+})
+
 watch(() => props.status, fetchTransitions, { immediate: true })
+
+// The page asks for fresh moves after intake or assignments change (guards depend on them)
+defineExpose({ reload: fetchTransitions })
 </script>
 
 <template>
   <div class="space-y-3">
-    <div v-if="visible.length" class="flex flex-wrap gap-2">
+    <!-- What the job is waiting for before it moves on by itself -->
+    <div v-if="!terminal && stage" class="rounded-lg bg-blue-50 border border-blue-100 p-3 text-sm">
+      <p class="flex items-center gap-1.5 font-medium text-blue-900">
+        <ArrowPathIcon class="h-4 w-4" />
+        {{ stage.sent_back ? 'Sent back — move it on below when the rework is done' : 'Moves on by itself' }}
+      </p>
+      <p v-if="stage.waiting_for && !stage.sent_back" class="mt-1 text-blue-800">Waiting for: {{ stage.waiting_for }}</p>
+    </div>
+
+    <!-- After the work: record the trial drive and the wash -->
+    <div v-if="canRecord && status === 'post_work_trial' && !stage?.sent_back" class="flex flex-wrap items-center gap-2">
+      <span class="text-sm font-medium text-gray-700">Post-service trial drive:</span>
+      <Button size="sm" :loading="recording" @click="record(() => jobCardsApi.postServiceTrial(jobCardId, 'ok'), 'Trial drive OK — off to wash')">
+        Trial drive OK
+      </Button>
+      <Button size="sm" variant="secondary" @click="trialNotes = ''; trialIssuesOpen = true">Issues found</Button>
+    </div>
+    <div v-if="canRecord && status === 'wash_pending'" class="flex flex-wrap items-center gap-2">
+      <Button size="sm" :loading="recording" @click="record(() => jobCardsApi.washDone(jobCardId), 'Washing done — final QC next')">
+        Washing done
+      </Button>
+    </div>
+    <p v-if="status === 'qc_pending'" class="text-sm text-gray-700">
+      Fill and submit the <b>pre-delivery QC checklist</b> (Job sheets section below): the car becomes Ready for Delivery and billing can start.
+    </p>
+
+    <div v-if="events.length" class="flex flex-wrap gap-2">
       <Button
-        v-for="option in visible"
+        v-for="option in events"
         :key="option.status"
-        :variant="option.status === 'cancelled' ? 'ghost' : option.allowed ? 'primary' : 'secondary'"
+        :variant="option.status === 'cancelled' ? 'ghost' : option.allowed ? (isBackward(option) ? 'secondary' : 'primary') : 'secondary'"
         size="sm"
         :loading="saving && selected?.status === option.status && !needsModal(option)"
         @click="choose(option)"
       >
         <ExclamationTriangleIcon v-if="!option.allowed && option.status !== 'cancelled'" class="h-4 w-4 mr-1 text-amber-500" />
-        {{ option.status === 'cancelled' ? 'Cancel job' : `Move to ${option.label}` }}
+        {{ buttonLabel(option) }}
       </Button>
     </div>
-    <p v-else-if="!loading" class="text-sm text-gray-500">No further status changes are available to you.</p>
 
-    <!-- Why forward moves are blocked -->
+    <!-- Why recorded events are blocked -->
     <div v-for="option in blocked" :key="`b-${option.status}`" class="rounded-lg bg-amber-50 border border-amber-200 p-3 text-sm">
-      <p class="font-medium text-amber-800">Before moving to {{ option.label }}:</p>
+      <p class="font-medium text-amber-800">Before "{{ buttonLabel(option) }}":</p>
       <ul class="mt-1 list-disc list-inside text-amber-700 space-y-0.5">
         <li v-for="g in option.blocked_by" :key="g.code">{{ g.message }}</li>
       </ul>
     </div>
 
-    <Modal :open="!!selected && needsModal(selected)" :title="selected?.status === 'cancelled' ? 'Cancel Job Card' : `Move to ${selected?.label}`" @close="selected = null">
+    <!-- Owner/manager: correct a stuck job -->
+    <div v-if="manual.length">
+      <button type="button" class="text-xs font-medium text-gray-500 hover:text-gray-800 underline" @click="showManual = !showManual">
+        {{ showManual ? 'Hide manual moves' : 'Move manually… (owner/manager)' }}
+      </button>
+      <div v-if="showManual" class="mt-2 flex flex-wrap gap-2">
+        <Button v-for="option in manual" :key="`m-${option.status}`" variant="secondary" size="sm" @click="choose(option)">
+          <ExclamationTriangleIcon v-if="!option.allowed" class="h-4 w-4 mr-1 text-amber-500" />
+          {{ option.label }}
+        </Button>
+      </div>
+    </div>
+
+    <Modal :open="trialIssuesOpen" title="Trial drive: issues found" @close="trialIssuesOpen = false">
+      <p class="text-sm text-gray-600 mb-3">The job goes back to the technician with your note.</p>
+      <Textarea v-model="trialNotes" label="What did the trial drive find?" required :rows="3" />
+      <template #footer>
+        <Button variant="secondary" @click="trialIssuesOpen = false">Cancel</Button>
+        <Button
+          :loading="recording"
+          :disabled="!trialNotes.trim()"
+          @click="record(() => jobCardsApi.postServiceTrial(jobCardId, 'issues', trialNotes), 'Sent back to work')"
+        >
+          Send back to work
+        </Button>
+      </template>
+    </Modal>
+
+    <Modal :open="!!selected && needsModal(selected)" :title="modalTitle" @close="selected = null">
       <div class="space-y-4">
+        <p v-if="selected?.manual" class="text-sm text-gray-600">
+          This stage is normally reached by itself. Moving it by hand is logged with your reason.
+        </p>
         <div v-if="modalBlocks.length" class="rounded-lg bg-amber-50 border border-amber-200 p-3 text-sm">
           <p class="font-medium text-amber-800">These checks have not passed:</p>
           <ul class="mt-1 space-y-2 text-amber-700">
@@ -138,15 +262,16 @@ watch(() => props.status, fetchTransitions, { immediate: true })
             <input v-model="override" type="checkbox" class="h-4 w-4 rounded border-gray-300" />
             Override these checks (logged with your note)
           </label>
-          <p v-else class="mt-2 text-xs text-amber-800">A manager can override these checks.</p>
+          <p v-else-if="!modalBlocks.some((g) => g.code === 'gate_pass_missing')" class="mt-2 text-xs text-amber-800">
+            A manager can override these checks.
+          </p>
         </div>
 
         <Textarea
           v-model="notes"
-          :label="selected?.status === 'cancelled' ? 'Reason for cancelling' : 'Note'"
+          :label="notesLabel"
           :required="selected?.requires_notes || override"
           :rows="3"
-          :placeholder="selected?.status === 'work_in_progress' ? 'What needs fixing?' : ''"
         />
       </div>
 

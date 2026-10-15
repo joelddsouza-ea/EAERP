@@ -20,6 +20,7 @@ use App\Modules\Workshop\Services\EstimatePresenter;
 use App\Modules\Workshop\Services\EstimateService;
 use App\Modules\Workshop\Services\LabourRateResolver;
 use App\Modules\Workshop\Services\PartsQuoteService;
+use App\Modules\Workshop\Services\ObservationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -37,6 +38,7 @@ class EstimateController extends ApiController
         protected EstimatePresenter $presenter,
         protected CustomerMessageService $messages,
         protected PartsQuoteService $parts,
+        protected ObservationService $observations,
     ) {}
 
     /**
@@ -158,6 +160,7 @@ class EstimateController extends ApiController
         $result = $this->estimates->send($estimate, $request->user());
         // A part line changed in this version goes back to waiting for the customer
         $this->parts->syncFromEstimate($jobCard, $result['estimate']);
+        $this->observations->syncDeclinedLines($jobCard, $result['estimate']);
 
         return $this->success([
             'estimate' => $this->presenter->present($result['estimate']),

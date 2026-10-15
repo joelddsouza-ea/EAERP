@@ -113,6 +113,9 @@ class RolesAndPermissionsSeeder extends Seeder
 
         // Parts pricing loop and suppliers
         $this->call(Phase2bPartsPermissionsSeeder::class);
+
+        // Final bill, payments, gate pass
+        $this->call(Phase3BillingPermissionsSeeder::class);
     }
 
     protected function assignRolePermissions(): void

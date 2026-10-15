@@ -5,6 +5,7 @@ namespace App\Modules\Workshop\Services;
 use App\Modules\Workshop\Models\ChecklistItem;
 use App\Modules\Workshop\Models\JobCardChecklist;
 use App\Modules\Workshop\Models\JobCardChecklistItem;
+use App\Modules\Workshop\Models\JobCardIssue;
 use App\Modules\Workshop\Models\JobCardMedia;
 
 /**
@@ -30,6 +31,11 @@ class JobSheetRuleEngine
      */
     public function mediaShortfall(JobCardChecklistItem $item): ?string
     {
+        // Not applicable to this car: nothing to photograph
+        if ($item->status === JobCardChecklistItem::STATUS_NOT_APPLICABLE) {
+            return null;
+        }
+
         $required = max(1, (int) $item->min_media_count);
         $media = $item->media;
 
@@ -66,13 +72,36 @@ class JobSheetRuleEngine
      */
     public function sheetProblems(JobCardChecklist $sheet, string $completionRule): array
     {
-        if ($completionRule === self::COMPLETION_OPTIONAL) {
-            return [];
+        // Rows answered with a choice (body-shop panels, repair/replace) still need the photos/videos
+        // the master asks for, whatever the sheet's completion rule
+        $problems = [];
+        foreach ($sheet->items as $item) {
+            if (in_array($item->input_type, ['tick', 'yes_no'], true) || !$this->isAnswered($item)) {
+                continue;
+            }
+            if ($shortfall = $this->mediaShortfall($item)) {
+                $problems[] = [
+                    'item_id' => $item->id,
+                    'item_name' => $item->item_name,
+                    'section_name' => $item->section_name,
+                    'code' => 'media_missing',
+                    'message' => ucfirst($shortfall),
+                ];
+            }
         }
 
-        $problems = [];
+        if ($completionRule === self::COMPLETION_OPTIONAL) {
+            return $problems;
+        }
+
+        $flagged = array_column($problems, 'item_id');
+        // Flagged activities whose Additional Issues line is closed were handled there
+        $handled = $this->closedLineItemIds($sheet->items);
 
         foreach ($sheet->items as $item) {
+            if (in_array($item->id, $flagged, true) || $handled->contains($item->id)) {
+                continue;
+            }
             $problem = $completionRule === self::COMPLETION_ALL_ANSWERED
                 ? $this->answerProblem($item)
                 : $this->activityProblem($item);
@@ -112,6 +141,23 @@ class JobSheetRuleEngine
     }
 
     /**
+     * A choice-type row counts as answered once something is selected (or it is marked done).
+     */
+    public function isAnswered(JobCardChecklistItem $item): bool
+    {
+        if ($item->status === JobCardChecklistItem::STATUS_DONE) {
+            return true;
+        }
+
+        // Panel / repair-replace choices are stored as flags in value_json
+        if (is_array($item->value_json) && collect($item->value_json)->contains(fn ($v) => !empty($v))) {
+            return true;
+        }
+
+        return $item->value !== null && $item->value !== '';
+    }
+
+    /**
      * Rule for yes/no checklists (pre-delivery): answered and matching the expected answer.
      */
     public function answerProblem(JobCardChecklistItem $item): ?array
@@ -128,6 +174,11 @@ class JobSheetRuleEngine
             return ['code' => 'failed_check', 'message' => 'Answered "' . $item->value . '" — needs fixing'];
         }
 
+        // QC spot check marked but its photo/video was never taken
+        if ($item->qc_evidence_required && $item->media->isEmpty()) {
+            return ['code' => 'qc_evidence_missing', 'message' => 'QC spot check: photo/video evidence needed'];
+        }
+
         return null;
     }
 
@@ -137,15 +188,44 @@ class JobSheetRuleEngine
     public function progress(JobCardChecklist $sheet): array
     {
         $items = $sheet->items;
-        $resolved = $items->filter(fn ($i) => $i->isResolved() && $this->mediaSatisfied($i))->count();
+        $handled = $this->closedLineItemIds($items);
+        $resolved = $items->filter(fn ($i) => $handled->contains($i->id) || ($i->isResolved() && $this->mediaSatisfied($i)))->count();
 
         return [
             'total' => $items->count(),
             'resolved' => $resolved,
             'needs_media' => $items->filter(fn ($i) => $i->status === JobCardChecklistItem::STATUS_DONE && !$this->mediaSatisfied($i))->count(),
             'not_done' => $items->where('status', JobCardChecklistItem::STATUS_NOT_DONE)->count(),
-            'needs_attention' => $items->where('needs_attention', true)->count(),
+            // A ⚠ flag counts while its Additional Issues line is still open
+            'needs_attention' => $this->openFlags($items),
         ];
+    }
+
+    private function openFlags($items): int
+    {
+        $flagged = $items->where('needs_attention', true)->pluck('id');
+
+        return $flagged->diff($this->closedLineItemIds($items))->count();
+    }
+
+    /**
+     * Flagged activities whose Additional Issues line is done, deferred, or declined by the customer.
+     */
+    public function closedLineItemIds($items): \Illuminate\Support\Collection
+    {
+        $flagged = $items->where('needs_attention', true)->pluck('id');
+        if ($flagged->isEmpty()) {
+            return collect();
+        }
+
+        $rules = app(IssueLineRules::class);
+
+        return JobCardIssue::whereIn('source_item_id', $flagged)
+            ->with(IssueLineRules::RELATIONS)
+            ->get()
+            ->filter(fn (JobCardIssue $line) => in_array($line->status, ['resolved', 'deferred'], true) || $rules->declinedByCustomer($line))
+            ->pluck('source_item_id')
+            ->values();
     }
 
     private function plural(int $count, string $singular, ?string $plural = null): string

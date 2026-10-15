@@ -7,6 +7,7 @@ use App\Core\Services\WhatsApp\ShareLinkChannel;
 use App\Core\Services\WhatsApp\WhatsAppChannel;
 use App\Modules\Workshop\Models\CustomerMessage;
 use App\Modules\Workshop\Models\JobCard;
+use App\Modules\Workshop\Models\WorkflowStage;
 
 /**
  * Builds customer messages from lang/en/customer_messages.php, logs them, and
@@ -22,17 +23,30 @@ class CustomerMessageService
 
     public function prepare(JobCard $jobCard, string $template, array $params = [], ?User $user = null): CustomerMessage
     {
+        return $this->prepareText($jobCard, $template, null, $params, $user);
+    }
+
+    /**
+     * A message from given text (e.g. a stage message the owner edited) instead of
+     * the language file. Placeholders as in the language file.
+     */
+    public function prepareText(JobCard $jobCard, string $template, ?string $text, array $params = [], ?User $user = null): CustomerMessage
+    {
         $jobCard->loadMissing(['customer', 'vehicle', 'branch.organization']);
         $customer = $jobCard->customer;
 
-        $body = __("customer_messages.{$template}", [
+        $replace = [
             'name' => $customer->name,
             'car' => $jobCard->vehicle?->registration_no ?? '',
             'job' => $jobCard->job_number,
             'workshop' => $jobCard->branch?->organization?->name ?? config('app.name'),
             'link' => $this->links->ensure($jobCard, $user)->url(),
             ...$params,
-        ]);
+        ];
+
+        $body = $text === null
+            ? __("customer_messages.{$template}", $replace)
+            : self::fill($text, $replace);
 
         $phone = ShareLinkChannel::normalizePhone($customer->whatsapp_phone ?: $customer->phone);
 
@@ -66,11 +80,54 @@ class CustomerMessageService
     /**
      * Message for a status the customer is told about (config customer_channel.status_templates).
      */
-    public function prepareForStatus(JobCard $jobCard, string $status, ?User $user = null): ?CustomerMessage
+    /**
+     * @param string|null $extra a line added at the end (e.g. new photos/videos), so one message goes, not two
+     */
+    public function prepareForStatus(JobCard $jobCard, string $status, ?User $user = null, ?string $extra = null): ?CustomerMessage
     {
-        $template = config("workshop.customer_channel.status_templates.{$status}");
+        $text = trim((string) WorkflowStage::for($status)?->message);
 
-        return $template ? $this->prepare($jobCard, $template, [], $user) : null;
+        if ($text === '') {
+            $template = config("workshop.customer_channel.status_templates.{$status}");
+            if (!$template) {
+                return null;
+            }
+            $text = trans("customer_messages.{$template}");
+        }
+
+        if ($extra) {
+            $text .= "\n" . $extra;
+        }
+
+        return $this->prepareText($jobCard, "stage:{$status}", $text, $this->billingParams($jobCard), $user);
+    }
+
+    /**
+     * :amount, :balance and :gate_pass for stage messages.
+     */
+    protected function billingParams(JobCard $jobCard): array
+    {
+        $summary = app(\App\Modules\Billing\Services\BillingService::class)->summary($jobCard);
+
+        return [
+            'amount' => number_format((float) ($summary['bill_total'] ?? 0), 0),
+            'balance' => number_format(max(0, (float) $summary['balance']), 0),
+            'gate_pass' => $summary['gate_pass']['number'] ?? '',
+        ];
+    }
+
+    /**
+     * Replace :placeholders (longest first, so :name never eats :name_x).
+     */
+    public static function fill(string $text, array $replace): string
+    {
+        uksort($replace, fn ($a, $b) => strlen($b) <=> strlen($a));
+
+        foreach ($replace as $key => $value) {
+            $text = str_replace(':' . $key, (string) $value, $text);
+        }
+
+        return $text;
     }
 
     public function shareUrl(CustomerMessage $message): ?string

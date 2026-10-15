@@ -12,7 +12,6 @@ use App\Modules\Workshop\Models\OilType;
 use App\Modules\Workshop\Models\PackageOilLitre;
 use App\Modules\Workshop\Models\PackagePricing;
 use App\Modules\Workshop\Models\SparePartRequest;
-use App\Modules\Workshop\Workflow\TransitionBlockedException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -254,26 +253,10 @@ class EstimateService
      */
     protected function moveForApproval(JobCard $jobCard, JobCardEstimate $estimate, User $user): ?string
     {
-        $awaiting = JobCardStatus::AwaitingApproval->value;
+        // Moves only into stages set to automatic in the Job stages master
+        $moved = app(JobLifecycleService::class)->sync($jobCard, 'estimate_sent');
 
-        if ($this->decisions->hasPending($estimate)) {
-            $from = [JobCardStatus::IntakeInProgress->value, JobCardStatus::WorkInProgress->value];
-            if (!in_array($jobCard->status, $from, true)) {
-                return null;
-            }
-
-            try {
-                $this->statusService->change($jobCard, $awaiting, $user, null, false, ['via' => 'estimate_sent']);
-
-                return $awaiting;
-            } catch (TransitionBlockedException) {
-                return null; // e.g. the status is disabled in config; the estimate is still sent
-            }
-        }
-
-        return $this->decisions->resumeWorkIfAnswered($jobCard, $estimate, 'estimate_sent')
-            ? JobCardStatus::WorkInProgress->value
-            : null;
+        return $moved ? $moved[0] : null;
     }
 
     protected function buildFirst(JobCard $jobCard, User $user): JobCardEstimate

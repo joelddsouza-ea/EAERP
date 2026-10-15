@@ -4,6 +4,8 @@ namespace App\Modules\Workshop\Http\Controllers;
 
 use App\Core\Http\Controllers\Api\ApiController;
 use App\Modules\Workshop\Models\JobCard;
+use App\Modules\Workshop\Models\JobCardAdditionalJob;
+use App\Modules\Workshop\Models\JobCardIssue;
 use App\Modules\Workshop\Models\JobCardEstimate;
 use App\Modules\Workshop\Models\SparePartQuote;
 use App\Modules\Workshop\Models\SparePartRequest;
@@ -30,8 +32,10 @@ class PartsDeskController extends ApiController
 
     public function forJobCard(JobCard $jobCard): JsonResponse
     {
+        // The technician's drafts reach the advisor only after "Submit to SA for Parts"
         $requests = $jobCard->sparePartRequests()
-            ->with(['quotes.supplier', 'requestedBy:id,name', 'quotedBy:id,name'])
+            ->whereNotIn('status', [SparePartRequest::DRAFT, SparePartRequest::CANCELLED])
+            ->with(['quotes.supplier', 'requestedBy:id,name', 'quotedBy:id,name', 'additionalJob:id,description', 'issue:id,description'])
             ->latest('id')
             ->get();
 
@@ -57,6 +61,84 @@ class PartsDeskController extends ApiController
     public function cancel(JobCard $jobCard, SparePartRequest $sparePartRequest): JsonResponse
     {
         return $this->success($this->parts->cancel($sparePartRequest), 'Price request cancelled');
+    }
+
+    /**
+     * Advisor sends parts the technician asked for to the spare parts coordinator.
+     */
+    public function forward(Request $request, JobCard $jobCard): JsonResponse
+    {
+        $data = $request->validate(['ids' => 'required|array|min:1', 'ids.*' => 'integer']);
+
+        $requests = $this->parts->forwardToCoordinator($jobCard, $data['ids'], $request->user());
+
+        return $this->success(['forwarded' => $requests->count()], 'Sent to the spare parts coordinator');
+    }
+
+    // ---- Technician side (job sheet) ----
+
+    public function addTechnicianPart(Request $request, JobCard $jobCard, JobCardAdditionalJob $additionalJob): JsonResponse
+    {
+        $this->assertTechnician($jobCard, $request);
+        $data = $request->validate([
+            'part_name' => 'required|string|max:255',
+            'part_number' => 'nullable|string|max:50',
+            'quantity' => 'nullable|numeric|min:0.01|max:9999',
+            'unit' => 'nullable|string|max:10',
+            'note' => 'nullable|string|max:1000',
+        ]);
+
+        return $this->created($this->parts->addTechnicianPart($jobCard, $additionalJob, $data, $request->user()), 'Part added');
+    }
+
+    public function addIssuePart(Request $request, JobCard $jobCard, JobCardIssue $issue): JsonResponse
+    {
+        $this->assertTechnician($jobCard, $request);
+        $data = $request->validate([
+            'part_name' => 'required|string|max:255',
+            'part_number' => 'nullable|string|max:50',
+            'quantity' => 'nullable|numeric|min:0.01|max:9999',
+            'unit' => 'nullable|string|max:10',
+            'note' => 'nullable|string|max:1000',
+        ]);
+
+        return $this->created($this->parts->addIssuePart($jobCard, $issue, $data, $request->user()), 'Part added');
+    }
+
+    /**
+     * The technician removes a part not yet sent to the advisor.
+     */
+    public function removeTechnicianPart(Request $request, JobCard $jobCard, SparePartRequest $sparePartRequest): JsonResponse
+    {
+        $this->assertTechnician($jobCard, $request);
+        if ($sparePartRequest->status !== SparePartRequest::DRAFT) {
+            return $this->validationError(['part' => ['This part has already been sent to the advisor.']]);
+        }
+
+        $sparePartRequest->delete();
+
+        return $this->success(null, 'Part removed');
+    }
+
+    /**
+     * "Submit to SA for Parts": the technician sends the listed parts to the advisor.
+     */
+    public function submitToAdvisor(Request $request, JobCard $jobCard): JsonResponse
+    {
+        $this->assertTechnician($jobCard, $request);
+
+        $sent = $this->parts->submitToAdvisor($jobCard, $request->user());
+
+        return $this->success(['submitted' => $sent->count()], 'Sent to the service advisor');
+    }
+
+    private function assertTechnician(JobCard $jobCard, Request $request): void
+    {
+        abort_unless(
+            app(\App\Modules\Workshop\Services\JobSheetService::class)->isAssignedTechnician($jobCard, $request->user()),
+            403,
+            'Only the technician assigned to this job can ask for parts from the job sheet.'
+        );
     }
 
     public function addToEstimate(Request $request, JobCard $jobCard, JobCardEstimate $estimate): JsonResponse
@@ -93,13 +175,24 @@ class PartsDeskController extends ApiController
      */
     public function desk(Request $request): JsonResponse
     {
-        $tab = $request->validate(['tab' => 'nullable|in:requests,procure'])['tab'] ?? 'requests';
+        $tab = $request->validate(['tab' => 'nullable|in:requests,procure,all'])['tab'] ?? 'requests';
 
-        $statuses = $tab === 'procure'
-            ? [SparePartRequest::APPROVED, SparePartRequest::ORDERED]
-            : [SparePartRequest::REQUESTED, SparePartRequest::QUOTED];
+        $statuses = match ($tab) {
+            // Approved, ordered, and received in the last 14 days (so arrivals don't vanish at once)
+            'procure' => [SparePartRequest::APPROVED, SparePartRequest::ORDERED, SparePartRequest::RECEIVED],
+            // Every part sent to the coordinator, whatever its stage
+            'all' => [
+                SparePartRequest::REQUESTED, SparePartRequest::QUOTED, SparePartRequest::APPROVED,
+                SparePartRequest::DECLINED, SparePartRequest::ORDERED, SparePartRequest::RECEIVED,
+            ],
+            default => [SparePartRequest::REQUESTED, SparePartRequest::QUOTED],
+        };
 
         $requests = SparePartRequest::whereIn('status', $statuses)
+            ->when($tab === 'procure', fn ($q) => $q->where(fn ($w) => $w
+                ->where('status', '!=', SparePartRequest::RECEIVED)
+                ->orWhere('received_at', '>=', now()->subDays(14))))
+            ->when($tab === 'all', fn ($q) => $q->where('updated_at', '>=', now()->subDays(60)))
             ->whereHas('jobCard')
             ->with([
                 'jobCard:id,job_number,vehicle_id,service_advisor_id,status',
@@ -169,6 +262,16 @@ class PartsDeskController extends ApiController
         return $this->success($this->parts->markOrdered($sparePartRequest, $request->user()), 'Marked as ordered');
     }
 
+    public function markReceived(Request $request, SparePartRequest $sparePartRequest): JsonResponse
+    {
+        $this->assertVisible($sparePartRequest);
+
+        return $this->success(
+            $this->parts->markReceived($sparePartRequest, $request->user()),
+            'Marked as received — the technician has been notified'
+        );
+    }
+
     // ---- Suppliers ----
 
     public function suppliers(): JsonResponse
@@ -230,6 +333,12 @@ class PartsDeskController extends ApiController
             'note' => $r->requested_note,
             'status' => $r->status,
             'estimate_line_key' => $r->estimate_line_key,
+            'job_card_additional_job_id' => $r->job_card_additional_job_id,
+            // The job sheet line the part is for (Additional Issues line, or an older additional job)
+            'additional_job' => ($r->relationLoaded('issue') ? $r->issue?->description : null)
+                ?? ($r->relationLoaded('additionalJob') ? $r->additionalJob?->description : null),
+            'job_card_issue_id' => $r->job_card_issue_id,
+            'received_at' => $r->received_at?->toIso8601String(),
             'requested_by' => $r->requestedBy?->name,
             'requested_at' => $r->requested_at?->toIso8601String(),
             'quoted_by' => $r->quotedBy?->name,

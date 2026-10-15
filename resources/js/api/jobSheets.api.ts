@@ -6,6 +6,7 @@ import type {
   JobSheetItemStatus,
   JobCardMedia,
   JobCardIssue,
+  ObservationRemark,
   JobCardAdditionalJob,
   JobCardObservation,
   ChecklistMasterTemplate,
@@ -112,11 +113,46 @@ export const jobCardIssuesApi = {
   createIssue(jobCardId: number, data: Partial<JobCardIssue>) {
     return apiClient.post<ApiResponse<JobCardIssue>>(`${jc(jobCardId)}/issues`, data)
   },
+  /** The technician's new line, sent with the photos/videos of the faulty part */
+  createIssueWithEvidence(jobCardId: number, form: FormData, onProgress?: (percent: number) => void) {
+    return apiClient.post<ApiResponse<JobCardIssue>>(`${jc(jobCardId)}/issues`, form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 300000,
+      onUploadProgress: (e) => {
+        if (onProgress && e.total) onProgress(Math.round((e.loaded / e.total) * 100))
+      },
+    })
+  },
   updateIssue(jobCardId: number, issueId: number, data: Partial<JobCardIssue>) {
     return apiClient.patch<ApiResponse<JobCardIssue>>(`${jc(jobCardId)}/issues/${issueId}`, data)
   },
   deleteIssue(jobCardId: number, issueId: number) {
     return apiClient.delete(`${jc(jobCardId)}/issues/${issueId}`)
+  },
+  /** Photo/video on a line; tag "fitted_part" for the new part after fitting */
+  uploadIssueMedia(jobCardId: number, issueId: number, form: FormData, onProgress?: (percent: number) => void) {
+    return apiClient.post<ApiResponse<JobCardIssue>>(`${jc(jobCardId)}/issues/${issueId}/media`, form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 300000,
+      onUploadProgress: (e) => {
+        if (onProgress && e.total) onProgress(Math.round((e.loaded / e.total) * 100))
+      },
+    })
+  },
+  deleteIssueMedia(jobCardId: number, issueId: number, mediaId: number) {
+    return apiClient.delete<ApiResponse<JobCardIssue>>(`${jc(jobCardId)}/issues/${issueId}/media/${mediaId}`)
+  },
+  addIssuePart(jobCardId: number, issueId: number, data: { part_name: string; part_number?: string | null; quantity?: number }) {
+    return apiClient.post<ApiResponse<{ id: number; part_name: string; part_number: string | null; quantity: number; status: string }>>(
+      `${jc(jobCardId)}/issues/${issueId}/parts`,
+      data
+    )
+  },
+  removePart(jobCardId: number, requestId: number) {
+    return apiClient.delete(`${jc(jobCardId)}/part-requests/${requestId}`)
+  },
+  remarks() {
+    return apiClient.get<ApiResponse<ObservationRemark[]>>('/workshop/observation-remarks')
   },
 
   additionalJobs(jobCardId: number) {
@@ -135,11 +171,15 @@ export const jobCardIssuesApi = {
   observations(jobCardId: number) {
     return apiClient.get<ApiResponse<JobCardObservation[]>>(`${jc(jobCardId)}/observations`)
   },
-  createObservation(jobCardId: number, text: string) {
-    return apiClient.post<ApiResponse<JobCardObservation>>(`${jc(jobCardId)}/observations`, { text })
+  createObservation(jobCardId: number, text: string, extra: { remark_id?: number | null; remark_days?: number | null } = {}) {
+    return apiClient.post<ApiResponse<JobCardObservation>>(`${jc(jobCardId)}/observations`, { text, ...extra })
   },
   updateObservation(jobCardId: number, observationId: number, data: Partial<JobCardObservation>) {
     return apiClient.patch<ApiResponse<JobCardObservation>>(`${jc(jobCardId)}/observations/${observationId}`, data)
+  },
+  /** "Submit for Report": the technician's observations go to the advisor */
+  submitObservations(jobCardId: number) {
+    return apiClient.post<ApiResponse<{ submitted: number }>>(`${jc(jobCardId)}/observations/submit`)
   },
   deleteObservation(jobCardId: number, observationId: number) {
     return apiClient.delete(`${jc(jobCardId)}/observations/${observationId}`)

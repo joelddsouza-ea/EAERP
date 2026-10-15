@@ -17,6 +17,9 @@ const toast = useToast()
 const customerId = computed(() => route.params.id ? Number(route.params.id) : null)
 const isEditing = computed(() => !!customerId.value)
 
+// After creating, stay here to add the customer's vehicle next
+const created = ref<{ id: number; name: string } | null>(null)
+
 const loading = ref(false)
 const saving = ref(false)
 const errors = ref<Record<string, string>>({})
@@ -97,8 +100,10 @@ async function handleSubmit() {
       await customersApi.update(customerId.value!, form.value)
       toast.success('Customer Updated', 'Customer details have been updated.')
     } else {
-      await customersApi.create(form.value)
-      toast.success('Customer Created', 'New customer has been added.')
+      const response = await customersApi.create(form.value)
+      toast.success('Customer Created', 'Now add the customer\'s vehicle.')
+      created.value = { id: response.data.data.id, name: response.data.data.name }
+      return
     }
     router.push('/customers')
   } catch (err: any) {
@@ -225,7 +230,12 @@ onMounted(fetchCustomer)
         </div>
 
         <template #footer>
-          <div class="flex gap-3">
+          <div v-if="created" class="flex flex-wrap items-center gap-3">
+            <p class="text-sm text-green-700 mr-auto">{{ created.name }} has been saved.</p>
+            <Button type="button" variant="secondary" @click="router.push('/customers')">Done</Button>
+            <Button type="button" @click="router.push(`/vehicles/create?customer_id=${created.id}`)">Add Vehicle</Button>
+          </div>
+          <div v-else class="flex gap-3">
             <Button type="button" variant="secondary" @click="router.back()">
               Cancel
             </Button>

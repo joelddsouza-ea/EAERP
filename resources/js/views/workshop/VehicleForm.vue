@@ -17,6 +17,9 @@ const toast = useToast()
 
 const vehicleId = computed(() => (route.params.id ? Number(route.params.id) : null))
 const isEditing = computed(() => !!vehicleId.value)
+
+// After creating, stay here to open a job card for this car next
+const created = ref<{ id: number; customer_id: number; registration_no: string } | null>(null)
 const preselectedCustomerId = computed(() =>
   route.query.customer_id ? Number(route.query.customer_id) : null
 )
@@ -83,11 +86,11 @@ async function onMakeChange(value: string | number | null) {
   await fetchModels(form.value.make_id)
 }
 
-// Default the category from the chosen model when none is set
+// The car class comes from the model (Price Masters › Car classes & models); it can still be changed
 function onModelChange(value: string | number | null) {
   form.value.model_id = value ? Number(value) : null
   const model = models.value.find((m) => m.id === form.value.model_id)
-  if (model?.default_category_id && !form.value.category_id) {
+  if (model?.default_category_id) {
     form.value.category_id = model.default_category_id
   }
 }
@@ -211,8 +214,14 @@ async function handleSubmit() {
       await vehiclesApi.update(vehicleId.value!, form.value)
       toast.success('Vehicle Updated', 'Vehicle details have been updated.')
     } else {
-      await vehiclesApi.create(form.value)
-      toast.success('Vehicle Created', 'New vehicle has been added.')
+      const response = await vehiclesApi.create(form.value)
+      toast.success('Vehicle Created', 'You can open a job card for it now.')
+      created.value = {
+        id: response.data.data.id,
+        customer_id: response.data.data.customer_id,
+        registration_no: response.data.data.registration_no,
+      }
+      return
     }
     router.push('/vehicles')
   } catch (err: any) {
@@ -326,8 +335,8 @@ watch(customerSearch, (value) => {
 
           <Select
             v-model="form.category_id"
-            label="Category"
-            placeholder="Select category"
+            label="Car Class"
+            placeholder="Picked from the model, or choose"
             :options="categoryOptions"
             :error="errors.category_id"
           />
@@ -410,7 +419,17 @@ watch(customerSearch, (value) => {
         </div>
 
         <template #footer>
-          <div class="flex gap-3">
+          <div v-if="created" class="flex flex-wrap items-center gap-3">
+            <p class="text-sm text-green-700 mr-auto">{{ created.registration_no }} has been saved.</p>
+            <Button type="button" variant="secondary" @click="router.push('/vehicles')">Done</Button>
+            <Button
+              type="button"
+              @click="router.push(`/job-cards/create?customer_id=${created.customer_id}&vehicle_id=${created.id}`)"
+            >
+              Create Job Card
+            </Button>
+          </div>
+          <div v-else class="flex gap-3">
             <Button type="button" variant="secondary" @click="router.back()">
               Cancel
             </Button>

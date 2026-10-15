@@ -22,15 +22,12 @@ class CustomerDocumentService
 
     public function estimatePdf(JobCard $jobCard, JobCardEstimate $estimate, bool $forCustomer = false)
     {
-        $jobCard->loadMissing(['customer', 'vehicle.make', 'vehicle.model', 'observations']);
+        $jobCard->loadMissing(['customer', 'vehicle.make', 'vehicle.model']);
 
         return $this->export->toPdf('exports.estimate', [
             'company' => $this->company($jobCard),
             'jobCard' => $jobCard,
             'estimate' => $this->presenter->present($estimate, $forCustomer),
-            'observations' => $jobCard->observations
-                ->when($forCustomer, fn ($c) => $c->where('customer_visible', true))
-                ->values(),
         ], 'estimate-' . $jobCard->job_number . '-v' . $estimate->version, options: self::PDF_OPTIONS);
     }
 
@@ -45,7 +42,7 @@ class CustomerDocumentService
     /**
      * Letterhead: organisation name with the branch's address and phone when set.
      */
-    protected function company(JobCard $jobCard): array
+    public function company(JobCard $jobCard): array
     {
         $jobCard->loadMissing('branch.organization');
         $branch = $jobCard->branch;

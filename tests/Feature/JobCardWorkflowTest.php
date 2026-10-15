@@ -95,6 +95,8 @@ class JobCardWorkflowTest extends TestCase
             ->value('oil_type_id');
 
         $id = $this->as($this->advisor)->postJson('/api/v1/workshop/job-cards', [
+            'km_reading' => 12000,
+            'fuel_level' => 'half',
             'customer_id' => $this->customerId,
             'vehicle_id' => $this->vehicleId,
             'package_id' => $packageId,
@@ -111,17 +113,21 @@ class JobCardWorkflowTest extends TestCase
     }
 
     /**
-     * Intake done, technician assigned, work started.
+     * Intake done, technician assigned: work starts by itself.
      */
     private function jobInProgress(string $plan = 'ea-refresh'): JobCard
     {
         $job = $this->createJob($plan);
-        $this->moveTo($job, 'intake_in_progress', $this->advisor)->assertOk();
         $job->update(['km_reading' => 12000, 'fuel_level' => 'half', 'technician_id' => $this->tech->id]);
         $this->completeIntake($job, $this->advisor->id);
-        $this->moveTo($job, 'work_in_progress', $this->advisor)->assertOk();
+        $this->assertSame('work_in_progress', $job->fresh()->status);
 
         return $job->fresh();
+    }
+
+    private function submitSheet(JobCard $job, JobCardChecklist $sheet, User $user)
+    {
+        return $this->as($user)->postJson("/api/v1/workshop/job-cards/{$job->id}/job-sheets/{$sheet->id}/submit");
     }
 
     private function workSheet(JobCard $job): JobCardChecklist
@@ -183,9 +189,15 @@ class JobCardWorkflowTest extends TestCase
     public function test_work_needs_intake_details_and_a_technician(): void
     {
         $job = $this->createJob();
-        $this->moveTo($job, 'intake_in_progress', $this->advisor)->assertOk();
 
-        $codes = collect($this->moveTo($job, 'work_in_progress', $this->advisor)->assertStatus(422)->json('errors.guards'))->pluck('code');
+        // The first intake action starts intake by itself
+        $this->as($this->advisor)->putJson("/api/v1/workshop/job-cards/{$job->id}/intake/trial", ['status' => 'done'])->assertOk();
+        $this->assertSame('intake_in_progress', $job->fresh()->status);
+
+        // Work starts by itself; by hand only an owner/manager, with a reason, and the checks still apply
+        $this->moveTo($job, 'work_in_progress', $this->advisor)->assertForbidden();
+        $this->moveTo($job, 'work_in_progress', $this->owner)->assertStatus(422);
+        $codes = collect($this->moveTo($job, 'work_in_progress', $this->owner, ['notes' => 'Stuck'])->assertStatus(422)->json('errors.guards'))->pluck('code');
 
         $this->assertEqualsCanonicalizing(['intake_incomplete', 'technician_missing'], $codes->all());
     }
@@ -240,7 +252,7 @@ class JobCardWorkflowTest extends TestCase
         $this->as($this->tech)->patchJson($this->itemUrl($job, $naAllowed), ['status' => 'not_applicable'])->assertOk();
     }
 
-    public function test_attention_flag_needs_remarks_and_creates_an_observation(): void
+    public function test_attention_flag_needs_remarks_and_adds_an_additional_issues_line(): void
     {
         $job = $this->jobInProgress();
         $item = $this->workSheet($job)->items()->firstOrFail();
@@ -248,10 +260,15 @@ class JobCardWorkflowTest extends TestCase
         $this->as($this->tech)->patchJson($this->itemUrl($job, $item), ['needs_attention' => true])->assertStatus(422);
         $this->as($this->tech)->patchJson($this->itemUrl($job, $item), ['needs_attention' => true, 'remarks' => 'Leak at seal'])->assertOk();
 
-        $this->assertDatabaseHas('job_card_observations', ['job_card_id' => $job->id, 'source' => 'activity', 'source_item_id' => $item->id]);
+        // Work to do, not an observation: it goes through evidence → parts → estimate like any other line
+        $this->assertDatabaseHas('job_card_issues', [
+            'job_card_id' => $job->id, 'source' => 'activity', 'source_item_id' => $item->id,
+            'description' => "{$item->item_name}: Leak at seal",
+        ]);
+        $this->assertDatabaseMissing('job_card_observations', ['source_item_id' => $item->id]);
 
         $this->as($this->tech)->patchJson($this->itemUrl($job, $item), ['needs_attention' => false])->assertOk();
-        $this->assertDatabaseMissing('job_card_observations', ['source_item_id' => $item->id]);
+        $this->assertDatabaseMissing('job_card_issues', ['source_item_id' => $item->id]);
     }
 
     public function test_technicians_only_work_on_their_own_jobs(): void
@@ -286,17 +303,20 @@ class JobCardWorkflowTest extends TestCase
         $this->get(substr($url, 0, -4) . 'abcd')->assertForbidden();
     }
 
-    public function test_trial_drive_is_blocked_until_the_job_sheet_is_complete(): void
+    public function test_submitting_the_job_sheet_moves_the_car_to_the_trial_drive(): void
     {
         $job = $this->jobInProgress();
+        $sheet = $this->workSheet($job);
 
-        $this->moveTo($job, 'post_work_trial', $this->tech)->assertStatus(422)
-            ->assertJsonPath('errors.guards.0.code', 'job_sheet_incomplete');
+        $this->submitSheet($job, $sheet, $this->tech)->assertStatus(422);
+        $this->assertSame('work_in_progress', $job->fresh()->status);
 
         $this->completeWorkSheet($job);
+        $this->assertSame('work_in_progress', $job->fresh()->status);
 
-        $this->moveTo($job, 'post_work_trial', $this->tech)->assertOk();
-        $this->assertSame('completed', $this->workSheet($job)->status);
+        $this->submitSheet($job, $sheet, $this->tech)->assertOk();
+        $this->assertSame('post_work_trial', $job->fresh()->status);
+        $this->assertSame('auto', $job->statusHistory()->latest('id')->first()->meta['via']);
     }
 
     public function test_not_done_activity_blocks_submission_unless_a_manager_overrides(): void
@@ -330,39 +350,77 @@ class JobCardWorkflowTest extends TestCase
     public function test_full_workflow_from_intake_to_delivery(): void
     {
         $job = $this->jobInProgress();
+        $estimate = $this->as($this->advisor)->postJson("/api/v1/workshop/job-cards/{$job->id}/estimates")->assertOk()->json('data');
+        $this->as($this->advisor)->postJson("/api/v1/workshop/job-cards/{$job->id}/estimates/{$estimate['id']}/send")->assertOk();
+        // Nothing to approve: work goes on
+        $this->assertSame('work_in_progress', $job->fresh()->status);
+
         $this->completeWorkSheet($job);
+        $this->submitSheet($job, $this->workSheet($job), $this->tech)->assertOk();
+        $this->assertSame('post_work_trial', $job->fresh()->status);
+
+        // Post-service trial drive: issues found send it back to work by themselves (with the note)
+        $post = "/api/v1/workshop/job-cards/{$job->id}/post-service";
+        $this->as($this->advisor)->postJson("{$post}/trial", ['result' => 'issues'])->assertStatus(422);
+        $this->as($this->advisor)->postJson("{$post}/trial", ['result' => 'issues', 'notes' => 'Wiper nozzle misaligned'])->assertOk();
+        $this->assertSame('work_in_progress', $job->fresh()->status);
+        // Sent back: the system waits; people move it on when the rework is done
+        $this->as($this->tech)->getJson("/api/v1/workshop/job-cards/{$job->id}/transitions")->assertJsonPath('data.stage.sent_back', true);
         $this->moveTo($job, 'post_work_trial', $this->tech)->assertOk();
 
-        // QA fail sends it back and needs a note
-        $this->moveTo($job, 'work_in_progress', $this->advisor)->assertStatus(422);
-        $this->moveTo($job, 'work_in_progress', $this->advisor, ['notes' => 'Wiper nozzle misaligned'])->assertOk();
-        $this->moveTo($job, 'post_work_trial', $this->tech)->assertOk();
-        $this->moveTo($job, 'wash_pending', $this->advisor)->assertOk();
-
-        // Pre-delivery: technicians can't answer; every answer must match
+        // Trial OK → wash; washing done → final QC (each by itself)
+        $this->as($this->advisor)->postJson("{$post}/wash")->assertStatus(422);
+        $this->as($this->advisor)->postJson("{$post}/trial", ['result' => 'ok'])->assertOk();
+        $this->assertSame('wash_pending', $job->fresh()->status);
         $pre = JobCardChecklist::where('job_card_id', $job->id)->where('sheet_kind', 'pre_delivery')->firstOrFail();
         $first = $pre->items()->firstOrFail();
+        // QC only after the wash
+        $this->as($this->advisor)->patchJson($this->itemUrl($job, $first), ['value' => 'yes'])->assertStatus(422);
+        $this->as($this->advisor)->postJson("{$post}/wash")->assertOk();
+        $this->assertSame('qc_pending', $job->fresh()->status);
+
+        // Final QC (pre-delivery): technicians can't answer; every answer must match
         $this->as($this->tech)->patchJson($this->itemUrl($job, $first), ['value' => 'yes'])->assertForbidden();
-        $this->moveTo($job, 'ready_for_delivery', $this->advisor)->assertStatus(422);
+        $this->submitSheet($job, $pre, $this->advisor)->assertStatus(422);
         foreach ($pre->items as $item) {
-            $this->as($this->advisor)->patchJson($this->itemUrl($job, $item), ['value' => $item->expected_answer])->assertOk();
+            $answered = $this->as($this->advisor)->patchJson($this->itemUrl($job, $item), ['value' => $item->expected_answer])
+                ->assertOk()->json('data.item');
+            // QC spot check: the point asks for a photo/video shot straight away
+            if ($answered['qc_evidence'] ?? null) {
+                $this->as($this->advisor)->post($this->itemUrl($job, $item, '/media'), [
+                    'file' => UploadedFile::fake()->image('qc.jpg', 200, 150),
+                    'captured_at' => now()->toIso8601String(),
+                ])->assertCreated();
+            }
         }
-        $this->moveTo($job, 'ready_for_delivery', $this->advisor)->assertOk();
+        $this->assertSame(3, $pre->items()->where('qc_evidence_required', true)->count());
+        $this->submitSheet($job, $pre, $this->advisor)->assertOk();
+        $this->assertSame('ready_for_delivery', $job->fresh()->status);
 
-        // Invoiced and gate pass are disabled in Phase 1, so delivery follows directly
-        $next = collect($this->as($this->advisor)->getJson("/api/v1/workshop/job-cards/{$job->id}/transitions")->json('data'))->pluck('status');
-        $this->assertContains('delivered', $next->all());
-        $this->assertNotContains('invoiced', $next->all());
+        // Bill approved by back office → Invoiced; paid in full → gate pass; vehicle out → delivered
+        $billing = "/api/v1/workshop/job-cards/{$job->id}/billing";
+        $bill = $this->as($this->owner)->postJson("{$billing}/proforma")->assertCreated()->json('data.bill');
+        $this->as($this->owner)->postJson("{$billing}/bills/{$bill['id']}/approve")->assertOk();
+        $this->assertSame('invoiced', $job->fresh()->status);
 
-        $this->as($this->owner)->postJson("/api/v1/billing/invoices/from-job-card/{$job->id}")->assertCreated();
-        $this->moveTo($job, 'delivered', $this->advisor)->assertOk();
+        // No gate pass, no delivery (not even by override)
+        $this->moveTo($job, 'delivered', $this->owner, ['override' => true, 'notes' => 'x'])->assertStatus(422);
+        $this->as($this->advisor)->postJson("{$billing}/gate-pass/vehicle-out")->assertStatus(422);
+
+        $this->as($this->advisor)->postJson("{$billing}/payments", ['amount' => $bill['total'], 'method' => 'upi'])->assertCreated()
+            ->assertJsonPath('data.gate_pass.override', false);
+        $this->assertSame('gate_pass_generated', $job->fresh()->status);
+
+        $this->as($this->advisor)->postJson("{$billing}/gate-pass/vehicle-out")->assertOk();
 
         $job->refresh();
+        $this->assertSame('delivered', $job->status);
         $this->assertNotNull($job->work_started_at);
         $this->assertNotNull($job->time_out);
         $this->assertSame(2, $job->followUpCalls()->count());
         $this->assertSame(
-            ['intake_pending', 'intake_in_progress', 'work_in_progress', 'post_work_trial', 'work_in_progress', 'post_work_trial', 'wash_pending', 'ready_for_delivery', 'delivered'],
+            ['intake_pending', 'intake_in_progress', 'work_in_progress', 'post_work_trial', 'work_in_progress', 'post_work_trial',
+             'wash_pending', 'qc_pending', 'ready_for_delivery', 'invoiced', 'gate_pass_generated', 'delivered'],
             $job->statusHistory()->orderBy('id')->pluck('to_status')->all()
         );
     }

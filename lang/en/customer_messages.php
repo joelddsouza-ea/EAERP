@@ -24,7 +24,13 @@ return [
 
     'thank_you' => "Thank you for choosing :workshop, :name! We hope you are happy with the service on your car :car.\nYour job details remain available here: :link",
 
+    'payment_received' => "Hello :name, we have received Rs :amount for your car :car (Job :job). Receipt :receipt.\nBalance to pay: Rs :balance\n:link",
+
+    // New photos/videos since the last message (on its own, or added to a stage message)
+    'gallery_update' => "Hello :name, new photos/videos of your car :car have been added (Job :job).\n:gallery\nOpen or refresh your page to see them: :link",
+
     // Fragments
+    'gallery_line' => 'New photos/videos — :sections. Your page updates by itself; refresh it if it is already open.',
     'pending_some' => ':count additional item(s) need your approval.',
     'pending_none' => 'No approval needed.',
     'decision_line' => '- :description (Rs :amount): :decision',

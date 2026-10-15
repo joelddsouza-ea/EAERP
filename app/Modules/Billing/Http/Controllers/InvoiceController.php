@@ -212,6 +212,10 @@ class InvoiceController extends ApiController
      */
     public function downloadPdf(Invoice $invoice)
     {
+        if ($invoice->job_card_id) {
+            return app(\App\Modules\Billing\Services\BillingDocuments::class)->billPdf($invoice);
+        }
+
         $invoice->load(['items', 'customer', 'jobCard.vehicle', 'branch']);
 
         return $this->exportService->generateInvoicePdf([

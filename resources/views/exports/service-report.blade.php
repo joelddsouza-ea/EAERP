@@ -76,7 +76,7 @@
             @foreach($report['observations'] as $i => $o)
                 <tr>
                     <td style="width:24px">{{ $i + 1 }}</td>
-                    <td>{{ $o['text'] }}</td>
+                    <td>{{ $o['text'] }}@if(!empty($o['remark']))<br><i>{{ $o['remark'] }}</i>@endif</td>
                     <td style="width:70px" class="sev-{{ $o['severity'] }}">{{ $o['severity'] ? ucfirst($o['severity']) : '' }}</td>
                 </tr>
             @endforeach

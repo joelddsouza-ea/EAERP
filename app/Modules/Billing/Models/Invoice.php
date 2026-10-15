@@ -7,13 +7,34 @@ use App\Core\Models\User;
 use App\Modules\Workshop\Models\Customer;
 use App\Modules\Workshop\Models\JobCard;
 
+/**
+ * A bill. A job's final bill starts as a proforma (the final estimate the customer
+ * pays against), which is either converted into a tax invoice or closed as it is.
+ */
 class Invoice extends BranchScopedModel
 {
+    public const KIND_PROFORMA = 'proforma';
+    public const KIND_TAX = 'tax';
+
+    // Proforma life cycle
+    public const DRAFT = 'draft';
+    public const APPROVED = 'approved';
+    public const CONVERTED = 'converted';
+    public const CLOSED = 'closed';
+    // Tax invoice (payment state)
+    public const ISSUED = 'issued';
+    public const PARTIAL = 'partial';
+    public const PAID = 'paid';
+    public const CANCELLED = 'cancelled';
+
     protected $fillable = [
         'branch_id',
         'job_card_id',
         'customer_id',
         'invoice_number',
+        'kind',
+        'proforma_id',
+        'estimate_id',
         'invoice_date',
         'due_date',
         'subtotal',
@@ -29,6 +50,7 @@ class Invoice extends BranchScopedModel
         'balance_amount',
         'status',
         'place_of_supply',
+        'customer_gstin',
         'is_igst',
         'notes',
         'terms',
@@ -36,6 +58,11 @@ class Invoice extends BranchScopedModel
         'issued_at',
         'cancelled_at',
         'cancellation_reason',
+        'approved_by',
+        'approved_at',
+        'closed_by',
+        'closed_at',
+        'close_note',
     ];
 
     protected $casts = [
@@ -54,85 +81,103 @@ class Invoice extends BranchScopedModel
         'is_igst' => 'boolean',
         'issued_at' => 'datetime',
         'cancelled_at' => 'datetime',
+        'approved_at' => 'datetime',
+        'closed_at' => 'datetime',
     ];
 
-    /**
-     * Job card.
-     */
     public function jobCard()
     {
         return $this->belongsTo(JobCard::class);
     }
 
-    /**
-     * Customer.
-     */
     public function customer()
     {
         return $this->belongsTo(Customer::class);
     }
 
-    /**
-     * Created by user.
-     */
     public function createdBy()
     {
         return $this->belongsTo(User::class, 'created_by');
     }
 
-    /**
-     * Invoice items.
-     */
-    public function items()
+    public function approvedBy()
     {
-        return $this->hasMany(InvoiceItem::class);
+        return $this->belongsTo(User::class, 'approved_by');
     }
 
-    /**
-     * Payments.
-     */
+    public function items()
+    {
+        return $this->hasMany(InvoiceItem::class)->orderBy('sort_order')->orderBy('id');
+    }
+
     public function payments()
     {
         return $this->hasMany(Payment::class);
     }
 
-    /**
-     * Credit notes.
-     */
     public function creditNotes()
     {
         return $this->hasMany(CreditNote::class);
     }
 
-    /**
-     * Generate invoice number.
-     */
-    public static function generateInvoiceNumber(int $branchId): string
+    public function proforma()
     {
-        $prefix = 'INV';
-        $date = now()->format('ymd');
-        $branchCode = str_pad($branchId, 2, '0', STR_PAD_LEFT);
+        return $this->belongsTo(self::class, 'proforma_id');
+    }
 
-        $lastInvoice = static::where('invoice_number', 'like', "{$prefix}{$date}{$branchCode}%")
-            ->orderBy('invoice_number', 'desc')
-            ->first();
+    public function taxInvoice()
+    {
+        return $this->hasOne(self::class, 'proforma_id');
+    }
 
-        if ($lastInvoice) {
-            $lastSeq = (int) substr($lastInvoice->invoice_number, -4);
-            $seq = str_pad($lastSeq + 1, 4, '0', STR_PAD_LEFT);
-        } else {
-            $seq = '0001';
-        }
-
-        return "{$prefix}{$date}{$branchCode}{$seq}";
+    public function isProforma(): bool
+    {
+        return $this->kind === self::KIND_PROFORMA;
     }
 
     /**
-     * Calculate totals.
+     * Lines can still be added or removed: a proforma until it is converted or closed.
+     */
+    public function isEditable(): bool
+    {
+        return $this->isProforma()
+            ? in_array($this->status, [self::DRAFT, self::APPROVED], true)
+            : $this->status === self::DRAFT;
+    }
+
+    /**
+     * The bill the customer is asked to pay: an approved proforma or a tax invoice.
+     */
+    public function isPayable(): bool
+    {
+        return $this->isProforma()
+            ? in_array($this->status, [self::APPROVED, self::CLOSED], true)
+            : in_array($this->status, [self::ISSUED, self::PARTIAL, self::PAID], true);
+    }
+
+    public static function generateInvoiceNumber(int $branchId, string $prefix = 'INV'): string
+    {
+        $date = now()->format('ymd');
+        $branchCode = str_pad($branchId, 2, '0', STR_PAD_LEFT);
+
+        $lastInvoice = static::withoutGlobalScopes()
+            ->withTrashed()
+            ->where('invoice_number', 'like', "{$prefix}{$date}{$branchCode}%")
+            ->orderBy('invoice_number', 'desc')
+            ->first();
+
+        $seq = $lastInvoice ? (int) substr($lastInvoice->invoice_number, -4) + 1 : 1;
+
+        return $prefix . $date . $branchCode . str_pad($seq, 4, '0', STR_PAD_LEFT);
+    }
+
+    /**
+     * Totals from the lines. Inclusive lines already hold their GST, exclusive lines
+     * add it; the bill total is rounded to the rupee.
      */
     public function calculateTotals(): void
     {
-        $items = $this->items;
+        $items = $this->items()->get();
 
         $this->subtotal = $items->sum('taxable_amount') + $items->sum('discount');
         $this->taxable_amount = $items->sum('taxable_amount');
@@ -148,48 +193,56 @@ class Invoice extends BranchScopedModel
         }
 
         $this->total_tax = $this->cgst + $this->sgst + $this->igst;
-        $this->total_amount = $this->taxable_amount + $this->total_tax - $this->discount;
-        $this->balance_amount = $this->total_amount - $this->paid_amount;
+        $this->total_amount = round((float) $this->taxable_amount + (float) $this->total_tax - (float) $this->discount);
+        $this->balance_amount = (float) $this->total_amount - (float) $this->paid_amount;
 
         $this->save();
     }
 
     /**
-     * Update payment status.
+     * Difference between the rounded total and the line sums.
+     */
+    public function roundOff(): float
+    {
+        return round((float) $this->total_amount - ((float) $this->taxable_amount + (float) $this->total_tax - (float) $this->discount), 2);
+    }
+
+    /**
+     * Paid so far. A job's bill counts every payment taken on the job (advance,
+     * during work and final); a stand-alone invoice its own payments.
      */
     public function updatePaymentStatus(): void
     {
-        $this->paid_amount = $this->payments()->where('status', 'completed')->sum('amount');
-        $this->balance_amount = $this->total_amount - $this->paid_amount;
+        $payments = $this->job_card_id
+            ? Payment::withoutGlobalScopes()->where('job_card_id', $this->job_card_id)
+            : $this->payments();
 
-        if ($this->balance_amount <= 0) {
-            $this->status = 'paid';
-        } elseif ($this->paid_amount > 0) {
-            $this->status = 'partial';
+        $this->paid_amount = $payments->where('status', 'completed')->sum('amount');
+        $this->balance_amount = (float) $this->total_amount - (float) $this->paid_amount;
+
+        // A tax invoice's status is its payment state; a proforma keeps its life-cycle status
+        if (!$this->isProforma() && in_array($this->status, [self::ISSUED, self::PARTIAL, self::PAID], true)) {
+            $this->status = $this->balance_amount <= 0 ? self::PAID : ((float) $this->paid_amount > 0 ? self::PARTIAL : self::ISSUED);
         }
 
         $this->save();
     }
 
-    /**
-     * Scope by status.
-     */
     public function scopeStatus($query, string|array $status)
     {
         return $query->whereIn('status', (array) $status);
     }
 
     /**
-     * Scope to unpaid invoices.
+     * Bills with money still to collect.
      */
     public function scopeUnpaid($query)
     {
-        return $query->whereIn('status', ['issued', 'partial']);
+        return $query->where(fn ($q) => $q
+            ->whereIn('status', [self::ISSUED, self::PARTIAL])
+            ->orWhere(fn ($q) => $q->where('kind', self::KIND_PROFORMA)->where('status', self::APPROVED)->where('balance_amount', '>', 0)));
     }
 
-    /**
-     * Scope for date range.
-     */
     public function scopeDateRange($query, $from, $to)
     {
         return $query->whereBetween('invoice_date', [$from, $to]);

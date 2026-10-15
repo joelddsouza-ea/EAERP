@@ -2,6 +2,7 @@
 
 use Illuminate\Support\Facades\Route;
 use App\Modules\Billing\Http\Controllers\InvoiceController;
+use App\Modules\Billing\Http\Controllers\JobBillingController;
 use App\Modules\Billing\Http\Controllers\PaymentController;
 use App\Modules\Billing\Http\Controllers\ReportController;
 
@@ -33,3 +34,38 @@ Route::prefix('v1/billing')->middleware(['auth:sanctum', 'branch.context'])->gro
     // Dashboard
     Route::get('dashboard', [ReportController::class, 'dashboard']);
 });
+
+// A job's Billing & Delivery: payments, proforma → tax invoice / close, gate pass, vehicle out.
+// job.lifecycle moves the job on (Invoiced, Gate Pass Generated, Delivered) after each change.
+Route::prefix('v1/workshop/job-cards/{jobCard}/billing')
+    ->middleware(['auth:sanctum', 'branch.context', 'job.lifecycle'])
+    ->group(function () {
+        Route::middleware('permission:billing.invoices.view|billing.payments.create')->group(function () {
+            Route::get('/', [JobBillingController::class, 'show']);
+            Route::get('bills/{invoice}/pdf', [JobBillingController::class, 'billPdf']);
+            Route::get('payments/{payment}/receipt', [JobBillingController::class, 'receiptPdf']);
+            Route::get('gate-pass/pdf', [JobBillingController::class, 'gatePassPdf']);
+        });
+
+        Route::post('payments', [JobBillingController::class, 'recordPayment'])->middleware('permission:billing.payments.create');
+
+        Route::middleware('permission:billing.proforma.manage')->group(function () {
+            Route::post('proforma', [JobBillingController::class, 'createProforma']);
+            Route::post('bills/{invoice}/refresh', [JobBillingController::class, 'refreshProforma']);
+            Route::delete('bills/{invoice}', [JobBillingController::class, 'discardProforma']);
+            Route::post('bills/{invoice}/items', [JobBillingController::class, 'addItem']);
+            Route::patch('bills/{invoice}/items/{item}', [JobBillingController::class, 'updateItem']);
+            Route::delete('bills/{invoice}/items/{item}', [JobBillingController::class, 'removeItem']);
+        });
+
+        Route::middleware('permission:billing.proforma.approve')->group(function () {
+            Route::post('bills/{invoice}/approve', [JobBillingController::class, 'approve']);
+            Route::post('bills/{invoice}/convert', [JobBillingController::class, 'convert']);
+            Route::post('bills/{invoice}/close', [JobBillingController::class, 'close']);
+        });
+
+        Route::post('gate-pass/override', [JobBillingController::class, 'overrideGatePass'])
+            ->middleware('permission:workshop.job-cards.override-guards');
+        Route::post('gate-pass/vehicle-out', [JobBillingController::class, 'vehicleOut'])
+            ->middleware('permission:workshop.job-cards.change-status|billing.payments.create');
+    });

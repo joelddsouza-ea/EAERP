@@ -23,10 +23,11 @@ class VehicleCategoriesSeeder extends Seeder
         $priceList = require database_path('seeders/data/pricing/price_list.php');
 
         foreach ($priceList['categories'] as $category) {
-            VehicleCategory::updateOrCreate(
-                ['slug' => $category['slug']],
-                [...$category, 'description' => $descriptions[$category['slug']] ?? null, 'is_active' => true]
-            );
+            $row = VehicleCategory::firstOrNew(['slug' => $category['slug']]);
+            // Classes edited in Price Masters › Car classes are kept
+            if (!$row->customized_at) {
+                $row->fill([...$category, 'description' => $descriptions[$category['slug']] ?? null, 'is_active' => true])->save();
+            }
         }
 
         // Merged into "Prem. Hatch / Sedan / Compact SUV" (see 2026_10_16_000001 migration)

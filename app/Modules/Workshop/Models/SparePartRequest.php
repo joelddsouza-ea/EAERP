@@ -13,6 +13,10 @@ use Illuminate\Database\Eloquent\Model;
  */
 class SparePartRequest extends Model
 {
+    /** Technician is still listing it on the job sheet */
+    public const DRAFT = 'draft';
+    /** Technician sent it to the advisor ("Submit to SA for Parts"); the advisor forwards it */
+    public const PROPOSED = 'proposed';
     public const REQUESTED = 'requested';
     public const QUOTED = 'quoted';
     public const APPROVED = 'approved';
@@ -35,6 +39,10 @@ class SparePartRequest extends Model
         'selected_quote_id',
         'ordered_by',
         'ordered_at',
+        'job_card_additional_job_id',
+        'job_card_issue_id',
+        'forwarded_by',
+        'forwarded_at',
         'part_name',
         'part_number',
         'quantity',
@@ -63,6 +71,7 @@ class SparePartRequest extends Model
         'issued_at' => 'datetime',
         'received_at' => 'datetime',
         'quoted_at' => 'datetime',
+        'forwarded_at' => 'datetime',
         'ordered_at' => 'datetime',
     ];
 
@@ -79,6 +88,21 @@ class SparePartRequest extends Model
     public function quotedBy()
     {
         return $this->belongsTo(User::class, 'quoted_by');
+    }
+
+    public function issue()
+    {
+        return $this->belongsTo(JobCardIssue::class, 'job_card_issue_id');
+    }
+
+    public function additionalJob()
+    {
+        return $this->belongsTo(JobCardAdditionalJob::class, 'job_card_additional_job_id');
+    }
+
+    public function forwardedBy()
+    {
+        return $this->belongsTo(User::class, 'forwarded_by');
     }
 
     public function orderedBy()

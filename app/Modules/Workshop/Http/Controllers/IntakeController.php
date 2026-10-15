@@ -9,6 +9,7 @@ use App\Modules\Workshop\Http\Controllers\Concerns\ValidatesMediaUpload;
 use App\Modules\Workshop\Http\Resources\JobCardMediaResource;
 use App\Modules\Workshop\Models\JobCard;
 use App\Modules\Workshop\Models\JobCardMedia;
+use App\Modules\Workshop\Services\IssueLineRules;
 use App\Modules\Workshop\Services\JobSheetService;
 use App\Modules\Workshop\Workflow\Guards\IntakeCaptured;
 use Illuminate\Http\JsonResponse;
@@ -134,29 +135,43 @@ class IntakeController extends ApiController
     }
 
     /**
-     * Owner/manager setting: minimum intake photos and videos.
+     * Owner/manager settings: minimum intake photos/videos, and the photos/videos an
+     * Additional Issues line needs (problem evidence, fitted new part).
      */
     public function updateRequirements(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'min_photos' => 'required|integer|min:0|max:30',
-            'min_videos' => 'required|integer|min:0|max:10',
+            'min_photos' => 'sometimes|required|integer|min:0|max:30',
+            'min_videos' => 'sometimes|required|integer|min:0|max:10',
+            'issue_min_problem_media' => 'sometimes|required|integer|min:0|max:10',
+            'issue_min_fitted_media' => 'sometimes|required|integer|min:0|max:10',
         ]);
 
-        WorkshopSettings::set('intake.min_photos', $data['min_photos']);
-        WorkshopSettings::set('intake.min_videos', $data['min_videos']);
+        $keys = [
+            'min_photos' => 'intake.min_photos',
+            'min_videos' => 'intake.min_videos',
+            'issue_min_problem_media' => 'issues.min_problem_media',
+            'issue_min_fitted_media' => 'issues.min_fitted_media',
+        ];
+        foreach ($data as $field => $value) {
+            WorkshopSettings::set($keys[$field], (int) $value);
+        }
 
-        return $this->success([
-            'min_photos' => IntakeCaptured::minPhotos(),
-            'min_videos' => IntakeCaptured::minVideos(),
-        ], 'Intake requirements saved');
+        return $this->success($this->settings(), 'Settings saved');
     }
 
     public function requirements(): JsonResponse
     {
-        return $this->success([
+        return $this->success($this->settings());
+    }
+
+    private function settings(): array
+    {
+        return [
             'min_photos' => IntakeCaptured::minPhotos(),
             'min_videos' => IntakeCaptured::minVideos(),
-        ]);
+            'issue_min_problem_media' => IssueLineRules::minProblemMedia(),
+            'issue_min_fitted_media' => IssueLineRules::minFittedMedia(),
+        ];
     }
 }

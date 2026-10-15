@@ -2,7 +2,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { ArrowUpIcon, ArrowDownIcon, PlusIcon } from '@heroicons/vue/20/solid'
 import { jobSheetMastersApi } from '@/api/jobSheets.api'
-import { intakeApi } from '@/api/estimates.api'
+import { intakeApi, type JobSheetMediaSettings } from '@/api/estimates.api'
 import { masterDataApi } from '@/api/workshop.api'
 import { usePermissions } from '@/composables/usePermissions'
 import { useToast } from '@/composables/useToast'
@@ -11,6 +11,11 @@ import Card from '@/components/ui/Card.vue'
 import Badge from '@/components/ui/Badge.vue'
 import Button from '@/components/ui/Button.vue'
 import Spinner from '@/components/ui/Spinner.vue'
+import UnsavedChangesBar from '@/components/ui/UnsavedChangesBar.vue'
+import { usePendingChanges } from '@/composables/usePendingChanges'
+import apiClient from '@/api/client'
+import type { ObservationRemark, WorkflowStageRow } from '@/api/types'
+import { workflowStagesApi } from '@/api/billing.api'
 
 const { can } = usePermissions()
 const toast = useToast()
@@ -85,37 +90,139 @@ async function select(template: ChecklistMasterTemplate) {
   }
 }
 
-async function updateItem(section: ChecklistMasterSection, item: ChecklistMasterItem, data: Partial<ChecklistMasterItem>) {
-  savingItemId.value = item.id
-  const before = { ...item }
+// ---- edits are held on screen and saved together ("Save changes", with a confirmation)
+
+const pending = usePendingChanges()
+const savingAll = ref(false)
+
+function isChanged(item: ChecklistMasterItem, field: string): boolean {
+  return pending.isChanged(`item:${item.id}:${field}`)
+}
+
+function updateItem(section: ChecklistMasterSection, item: ChecklistMasterItem, data: Partial<ChecklistMasterItem>) {
   Object.assign(item, data)
-  try {
-    const response = await jobSheetMastersApi.updateItem(section.id, item.id, data)
-    Object.assign(item, response.data.data)
-  } catch (err) {
-    Object.assign(item, before)
-    toast.apiError(err)
-  } finally {
-    savingItemId.value = null
+  for (const [field, val] of Object.entries(data)) {
+    pending.queue(`item:${item.id}:${field}`, `${item.item_name}: ${field.replace(/_/g, ' ')} → ${val ?? '—'}`, () =>
+      jobSheetMastersApi.updateItem(section.id, item.id, { [field]: val } as Partial<ChecklistMasterItem>)
+    )
   }
 }
 
-async function move(section: ChecklistMasterSection, index: number, delta: number) {
+function move(section: ChecklistMasterSection, index: number, delta: number) {
   const target = index + delta
   if (target < 0 || target >= section.items.length) return
   const items = [...section.items]
   ;[items[index], items[target]] = [items[target], items[index]]
   section.items = items
+  // Saves the order as it is on screen when "Save changes" is pressed
+  pending.queue(`section:${section.id}:order`, `${section.name}: new activity order`, () =>
+    jobSheetMastersApi.reorderItems(section.id, section.items.map((i) => i.id))
+  )
+}
+
+async function saveAll() {
+  savingAll.value = true
+  const { saved, errors } = await pending.saveAll()
+  savingAll.value = false
+  if (errors.length) {
+    toast.apiError(errors[0])
+    toast.error('Some changes were not saved', `${saved} saved, ${errors.length} still pending.`)
+  } else {
+    toast.success('Saved', `${saved} change${saved === 1 ? '' : 's'} saved.`)
+  }
+  await reloadAll()
+}
+
+async function discardAll() {
+  pending.clear()
+  await reloadAll()
+}
+
+async function reloadAll() {
+  await Promise.all([
+    selected.value ? select(selected.value) : Promise.resolve(),
+    loadIntakeRequirements(),
+    loadRemarks(),
+    loadStages(),
+  ])
+}
+
+// ---- job stages: automatic moves and the customer's WhatsApp message per stage
+
+const stages = ref<WorkflowStageRow[]>([])
+const placeholders = ref<string[]>([])
+
+const NOTIFY_OPTIONS = [
+  { value: 'off', label: 'No message' },
+  { value: 'first_entry', label: 'First time only' },
+  { value: 'always', label: 'Every time' },
+] as const
+
+async function loadStages() {
   try {
-    await jobSheetMastersApi.reorderItems(section.id, items.map((i) => i.id))
+    const data = (await workflowStagesApi.list()).data.data
+    stages.value = data.stages
+    placeholders.value = data.placeholders
+  } catch {
+    stages.value = []
+  }
+}
+
+/** One queued change per stage, sending the row as it is on screen (message and on/off are checked together) */
+function updateStage(stage: WorkflowStageRow, data: Partial<WorkflowStageRow>) {
+  Object.assign(stage, data)
+  pending.queue(`stage:${stage.id}`, `Job stage "${stage.label}"`, () =>
+    workflowStagesApi.update(stage.id, {
+      auto: stage.auto,
+      waiting_for: stage.waiting_for,
+      notify_customer: stage.notify_customer,
+      message: stage.message,
+      gallery_update: stage.gallery_update,
+    })
+  )
+}
+
+// ---- observation remarks (master list)
+
+const remarks = ref<ObservationRemark[]>([])
+const newRemark = ref('')
+
+async function loadRemarks() {
+  try {
+    remarks.value = (await apiClient.get('/workshop/job-sheet-masters/observation-remarks')).data.data
+  } catch {
+    remarks.value = []
+  }
+}
+
+function updateRemark(remark: ObservationRemark, data: Partial<ObservationRemark>) {
+  Object.assign(remark, data)
+  for (const [field, val] of Object.entries(data)) {
+    pending.queue(`remark:${remark.id}:${field}`, `Remark "${remark.label}": ${field.replace(/_/g, ' ')} → ${val}`, () =>
+      apiClient.put(`/workshop/job-sheet-masters/observation-remarks/${remark.id}`, { [field]: val })
+    )
+  }
+}
+
+async function addRemark() {
+  const label = newRemark.value.trim()
+  if (!label) return
+  if (!window.confirm(`Add the remark "${label}"?`)) return
+  try {
+    await apiClient.post('/workshop/job-sheet-masters/observation-remarks', { label })
+    newRemark.value = ''
+    remarks.value = (await apiClient.get('/workshop/job-sheet-masters/observation-remarks')).data.data
+    toast.success('Remark added')
   } catch (err) {
     toast.apiError(err)
   }
 }
 
+
 async function addItem(section: ChecklistMasterSection) {
   const name = newItemNames.value[section.id]?.trim()
   if (!name || !selected.value) return
+  if (!window.confirm(`Add "${name}" to ${section.name}?`)) return
   try {
     const inputType = section.items[0]?.input_type ?? 'tick'
     const response = await jobSheetMastersApi.createItem(section.id, { item_name: name, input_type: inputType })
@@ -128,6 +235,7 @@ async function addItem(section: ChecklistMasterSection) {
 
 async function addSection() {
   if (!selected.value || !newSectionName.value.trim()) return
+  if (!window.confirm(`Add the section "${newSectionName.value.trim()}"?`)) return
   try {
     const response = await jobSheetMastersApi.createSection(selected.value.id, newSectionName.value.trim())
     selected.value.sections = [...(selected.value.sections ?? []), { ...response.data.data, items: [] }]
@@ -152,6 +260,7 @@ function startPlanEdit() {
 
 async function savePlans() {
   if (!selected.value) return
+  if (!window.confirm('Save the plans this job sheet is used for?')) return
   try {
     const response = await jobSheetMastersApi.updateTemplate(selected.value.id, { package_ids: planSelection.value })
     selected.value.packages = response.data.data.packages
@@ -164,7 +273,7 @@ async function savePlans() {
 
 // ---- intake minimums (inventory photos / videos before work starts)
 
-const intakeReq = ref<{ min_photos: number; min_videos: number } | null>(null)
+const intakeReq = ref<JobSheetMediaSettings | null>(null)
 
 async function loadIntakeRequirements() {
   try {
@@ -174,23 +283,23 @@ async function loadIntakeRequirements() {
   }
 }
 
-async function saveIntakeRequirements() {
+/** Queued like the other edits; sends the values on screen when saved */
+function saveIntakeRequirements(label = 'Intake / Additional Issues photo & video minimums') {
   if (!intakeReq.value) return
-  try {
-    intakeReq.value = (
-      await intakeApi.setRequirements({
-        min_photos: Number(intakeReq.value.min_photos) || 0,
-        min_videos: Number(intakeReq.value.min_videos) || 0,
-      })
-    ).data.data
-    toast.success('Intake requirements saved')
-  } catch (err) {
-    toast.apiError(err)
-  }
+  pending.queue('settings:media-minimums', label, () => {
+    const r = intakeReq.value!
+    return intakeApi.setRequirements({
+      min_photos: Number(r.min_photos) || 0,
+      min_videos: Number(r.min_videos) || 0,
+      issue_min_problem_media: Number(r.issue_min_problem_media) || 0,
+      issue_min_fitted_media: Number(r.issue_min_fitted_media) || 0,
+    })
+  })
 }
 
 async function toggleTemplateActive() {
   if (!selected.value) return
+  if (!window.confirm(`${selected.value.is_active ? 'Deactivate' : 'Activate'} "${selected.value.name}"?`)) return
   try {
     const response = await jobSheetMastersApi.updateTemplate(selected.value.id, { is_active: !selected.value.is_active })
     selected.value.is_active = response.data.data.is_active
@@ -203,6 +312,8 @@ async function toggleTemplateActive() {
 onMounted(async () => {
   await loadTemplates()
   loadIntakeRequirements()
+  loadRemarks()
+  loadStages()
   try {
     plans.value = (await masterDataApi.servicePackages()).data.data
   } catch {
@@ -230,7 +341,7 @@ onMounted(async () => {
           max="30"
           class="w-16 rounded border-gray-300 px-1 py-0.5 text-right text-sm disabled:bg-gray-50"
           :disabled="!canEdit"
-          @change="saveIntakeRequirements"
+          @change="saveIntakeRequirements()"
         />
         <span>photos and</span>
         <input
@@ -240,7 +351,7 @@ onMounted(async () => {
           max="10"
           class="w-16 rounded border-gray-300 px-1 py-0.5 text-right text-sm disabled:bg-gray-50"
           :disabled="!canEdit"
-          @change="saveIntakeRequirements"
+          @change="saveIntakeRequirements()"
         />
         <span>videos before work can start, plus the advisor's trial drive.</span>
       </div>
@@ -321,6 +432,34 @@ onMounted(async () => {
             </div>
           </Card>
 
+          <Card v-if="selected.sheet_kind === 'general_repair' && intakeReq">
+            <h3 class="text-base font-semibold mb-2">Additional Issues lines — photos / videos</h3>
+            <div class="flex flex-wrap items-center gap-3 text-sm">
+              <span>A problem the technician finds needs at least</span>
+              <input
+                v-model.number="intakeReq.issue_min_problem_media"
+                type="number"
+                min="0"
+                max="10"
+                class="w-16 rounded border-gray-300 px-1 py-0.5 text-right text-sm disabled:bg-gray-50"
+                :disabled="!canEdit"
+                @change="saveIntakeRequirements()"
+              />
+              <span>photo(s)/video(s); a line whose parts were approved needs</span>
+              <input
+                v-model.number="intakeReq.issue_min_fitted_media"
+                type="number"
+                min="0"
+                max="10"
+                class="w-16 rounded border-gray-300 px-1 py-0.5 text-right text-sm disabled:bg-gray-50"
+                :disabled="!canEdit"
+                @change="saveIntakeRequirements()"
+              />
+              <span>of the fitted new part before it is done.</span>
+            </div>
+            <p class="mt-2 text-xs text-gray-500">These lines appear on every job sheet's Additional Issues tab (customer complaints + technician findings).</p>
+          </Card>
+
           <Card v-for="section in selected.sections" :key="section.id" :padding="false">
             <template #header>
               <h3 class="text-base font-semibold">{{ section.name }}</h3>
@@ -331,8 +470,8 @@ onMounted(async () => {
                 <thead class="bg-gray-50">
                   <tr>
                     <th class="px-4 py-2 text-left font-medium text-gray-500">Activity</th>
-                    <th v-if="section.items[0]?.input_type === 'tick'" class="px-3 py-2 text-left font-medium text-gray-500">Photo / video</th>
-                    <th v-if="section.items[0]?.input_type === 'tick'" class="px-3 py-2 text-center font-medium text-gray-500">Min</th>
+                    <th v-if="section.items[0]?.input_type !== 'yes_no'" class="px-3 py-2 text-left font-medium text-gray-500">Photo / video</th>
+                    <th v-if="section.items[0]?.input_type !== 'yes_no'" class="px-3 py-2 text-center font-medium text-gray-500">Min</th>
                     <th v-if="section.items[0]?.input_type === 'tick'" class="px-3 py-2 text-center font-medium text-gray-500">N/A</th>
                     <th v-if="section.items[0]?.input_type === 'yes_no'" class="px-3 py-2 text-left font-medium text-gray-500">Passing answer</th>
                     <th class="px-3 py-2 text-center font-medium text-gray-500">Required</th>
@@ -359,11 +498,12 @@ onMounted(async () => {
                         <template v-if="item.rules_customized_at"> · edited</template>
                       </p>
                     </td>
-                    <template v-if="item.input_type === 'tick'">
+                    <template v-if="item.input_type !== 'yes_no'">
                       <td class="px-3 py-2">
                         <select
                           :value="item.media_requirement"
                           class="input py-1"
+                          :class="isChanged(item, 'media_requirement') ? 'border-amber-400 bg-amber-50' : ''"
                           :disabled="!canEdit"
                           @change="updateItem(section, item, { media_requirement: ($event.target as HTMLSelectElement).value as MediaRequirement })"
                         >
@@ -381,7 +521,7 @@ onMounted(async () => {
                           @change="updateItem(section, item, { min_media_count: Number(($event.target as HTMLInputElement).value) || 1 })"
                         />
                       </td>
-                      <td class="px-3 py-2 text-center">
+                      <td v-if="item.input_type === 'tick'" class="px-3 py-2 text-center">
                         <input
                           type="checkbox"
                           class="h-4 w-4 rounded border-gray-300"
@@ -459,5 +599,111 @@ onMounted(async () => {
         </template>
       </div>
     </div>
+
+    <!-- Remarks for observations (on the report) -->
+    <Card class="mt-6" :padding="false">
+      <template #header>
+        <h3 class="text-base font-semibold">Observation remarks</h3>
+        <p class="text-xs text-gray-500">Chosen per observation on the job sheet and printed on the report. Use “_” for a number of days, e.g. “Fix within _ days”.</p>
+      </template>
+      <table class="min-w-full divide-y divide-gray-200 text-sm">
+        <thead class="bg-gray-50">
+          <tr>
+            <th class="px-4 py-2 text-left font-medium text-gray-500">Remark</th>
+            <th class="px-3 py-2 text-center font-medium text-gray-500">Asks for days</th>
+            <th class="px-3 py-2 text-center font-medium text-gray-500">Active</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-100">
+          <tr v-for="r in remarks" :key="r.id" :class="r.is_active ? '' : 'opacity-50'">
+            <td class="px-4 py-2">
+              <input
+                v-if="canEdit"
+                :value="r.label"
+                class="input py-1"
+                :class="pending.isChanged(`remark:${r.id}:label`) ? 'border-amber-400 bg-amber-50' : ''"
+                @change="updateRemark(r, { label: ($event.target as HTMLInputElement).value.trim() })"
+              />
+              <span v-else>{{ r.label }}</span>
+            </td>
+            <td class="px-3 py-2 text-center">
+              <input type="checkbox" class="h-4 w-4 rounded border-gray-300" :checked="r.needs_days" :disabled="!canEdit"
+                @change="updateRemark(r, { needs_days: ($event.target as HTMLInputElement).checked })" />
+            </td>
+            <td class="px-3 py-2 text-center">
+              <input type="checkbox" class="h-4 w-4 rounded border-gray-300" :checked="r.is_active" :disabled="!canEdit"
+                @change="updateRemark(r, { is_active: ($event.target as HTMLInputElement).checked })" />
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <template v-if="canEdit" #footer>
+        <form class="flex gap-2" @submit.prevent="addRemark">
+          <input v-model="newRemark" class="input flex-1" placeholder="New remark, e.g. Replace within _ km" />
+          <Button type="submit" size="sm" variant="secondary" :disabled="!newRemark.trim()">
+            <PlusIcon class="h-4 w-4 mr-1" /> Add remark
+          </Button>
+        </form>
+      </template>
+    </Card>
+
+    <!-- Job stages: what moves a job on by itself, and the WhatsApp message on each stage -->
+    <Card v-if="stages.length" class="mt-6" :padding="false">
+      <template #header>
+        <h3 class="text-base font-semibold">Job stages &amp; customer messages</h3>
+        <p class="text-xs text-gray-500">
+          Stages marked automatic are entered by the system as soon as what the previous stage waits for has happened.
+          Switch one to manual and the advisor moves it on as before. Owners and managers can always move a stuck job by hand, with a reason.
+          Message placeholders: {{ placeholders.join(' ') }}.
+          Photos and videos appear on the customer's page by themselves (final-QC evidence stays internal); the page refreshes itself,
+          so tick only the stages where the customer should get a WhatsApp nudge to look.
+        </p>
+      </template>
+      <div class="divide-y divide-gray-100">
+        <div v-for="stage in stages" :key="stage.id" class="p-4 grid grid-cols-1 lg:grid-cols-12 gap-3 text-sm"
+          :class="pending.isChanged(`stage:${stage.id}`) ? 'bg-amber-50' : ''">
+          <div class="lg:col-span-3">
+            <p class="font-medium text-gray-900">{{ stage.label }}</p>
+            <label v-if="stage.auto_capable" class="mt-1 flex items-center gap-2 text-gray-700">
+              <input type="checkbox" class="h-4 w-4 rounded border-gray-300" :checked="stage.auto" :disabled="!canEdit"
+                @change="updateStage(stage, { auto: ($event.target as HTMLInputElement).checked })" />
+              Entered automatically
+            </label>
+            <p v-else class="mt-1 text-xs text-gray-500">{{ stage.entered_by }}</p>
+          </div>
+          <div class="lg:col-span-4">
+            <label class="block text-xs text-gray-500 mb-1">Waits for (shown on the job card)</label>
+            <textarea :value="stage.waiting_for ?? ''" rows="2" class="input w-full py-1 text-sm" :disabled="!canEdit"
+              @change="updateStage(stage, { waiting_for: ($event.target as HTMLTextAreaElement).value.trim() || null })" />
+          </div>
+          <div class="lg:col-span-5">
+            <div class="flex items-center gap-2 mb-1">
+              <label class="text-xs text-gray-500">WhatsApp to customer</label>
+              <select :value="stage.notify_customer" class="input py-0.5 text-xs w-auto" :disabled="!canEdit"
+                @change="updateStage(stage, { notify_customer: ($event.target as HTMLSelectElement).value as WorkflowStageRow['notify_customer'] })">
+                <option v-for="o in NOTIFY_OPTIONS" :key="o.value" :value="o.value">{{ o.label }}</option>
+              </select>
+            </div>
+            <textarea :value="stage.message ?? ''" rows="3" class="input w-full py-1 text-sm font-mono"
+              :class="stage.notify_customer === 'off' ? 'opacity-60' : ''" :disabled="!canEdit"
+              placeholder="Hello :name, ..."
+              @change="updateStage(stage, { message: ($event.target as HTMLTextAreaElement).value.trim() || null })" />
+            <label class="mt-1 flex items-start gap-2 text-xs text-gray-700">
+              <input type="checkbox" class="mt-0.5 h-4 w-4 rounded border-gray-300" :checked="stage.gallery_update" :disabled="!canEdit"
+                @change="updateStage(stage, { gallery_update: ($event.target as HTMLInputElement).checked })" />
+              <span>Tell the customer about new photos/videos here (all sections since the last update, in one line — added to this stage's message, or sent alone if this stage has none)</span>
+            </label>
+          </div>
+        </div>
+      </div>
+    </Card>
+
+    <UnsavedChangesBar
+      :count="pending.count.value"
+      :labels="pending.labels.value"
+      :saving="savingAll"
+      @save="saveAll"
+      @discard="discardAll"
+    />
   </div>
 </template>

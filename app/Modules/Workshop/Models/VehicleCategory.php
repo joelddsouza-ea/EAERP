@@ -12,10 +12,12 @@ class VehicleCategory extends BaseModel
         'description',
         'sort_order',
         'is_active',
+        'customized_at',
     ];
 
     protected $casts = [
         'is_active' => 'boolean',
+        'customized_at' => 'datetime',
     ];
 
     /**

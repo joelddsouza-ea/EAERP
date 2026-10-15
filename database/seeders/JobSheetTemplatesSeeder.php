@@ -44,6 +44,9 @@ class JobSheetTemplatesSeeder extends Seeder
 
             ChecklistTemplate::whereIn('slug', self::LEGACY_SLUGS)->update(['is_active' => false]);
         });
+
+        // Remarks for observations (Customer not approved, Fix at next service, ...)
+        $this->call(ObservationRemarksSeeder::class);
     }
 
     private function seedSheet(array $data, array $packageIds, string $starDefault): void

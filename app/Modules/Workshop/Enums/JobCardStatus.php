@@ -20,6 +20,7 @@ enum JobCardStatus: string
     case AwaitingParts = 'awaiting_parts';
     case PostWorkTrial = 'post_work_trial';
     case WashPending = 'wash_pending';
+    case QcPending = 'qc_pending';
     case ReadyForDelivery = 'ready_for_delivery';
     case Invoiced = 'invoiced';
     case GatePassGenerated = 'gate_pass_generated';
@@ -37,8 +38,9 @@ enum JobCardStatus: string
             self::AwaitingApproval => 'Awaiting Approval',
             self::WorkInProgress => 'Work In Progress',
             self::AwaitingParts => 'Awaiting Parts',
-            self::PostWorkTrial => 'Trial Drive / QA',
+            self::PostWorkTrial => 'Trial Drive',
             self::WashPending => 'Wash Pending',
+            self::QcPending => 'Final QC',
             self::ReadyForDelivery => 'Ready For Delivery',
             self::Invoiced => 'Invoiced',
             self::GatePassGenerated => 'Gate Pass Generated',
@@ -56,7 +58,7 @@ enum JobCardStatus: string
             self::PickupScheduled, self::PickupEnRoute, self::VehicleCollected => 'pickup',
             self::IntakePending, self::IntakeInProgress => 'intake',
             self::AwaitingApproval, self::WorkInProgress, self::AwaitingParts => 'work',
-            self::PostWorkTrial, self::WashPending => 'qc',
+            self::PostWorkTrial, self::WashPending, self::QcPending => 'qc',
             self::ReadyForDelivery, self::Invoiced, self::GatePassGenerated => 'delivery',
             self::Delivered, self::Cancelled => 'closed',
         };

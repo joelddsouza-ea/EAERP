@@ -97,6 +97,8 @@ class EstimateApprovalTest extends TestCase
     private function jobInProgress(string $plan = 'ea-360', string $oil = 'fully-synthetic'): JobCard
     {
         $id = $this->as($this->advisor)->postJson('/api/v1/workshop/job-cards', [
+            'km_reading' => 12000,
+            'fuel_level' => 'half',
             'customer_id' => $this->customerId,
             'vehicle_id' => $this->vehicleId,
             'package_id' => ServicePackage::where('slug', $plan)->value('id'),
@@ -105,10 +107,10 @@ class EstimateApprovalTest extends TestCase
         ])->assertCreated()->json('data.id');
 
         $job = JobCard::withoutGlobalScopes()->findOrFail($id);
-        $this->as($this->advisor)->patchJson($this->base($job) . '/status', ['status' => 'intake_in_progress'])->assertOk();
         $job->update(['km_reading' => 56518, 'fuel_level' => 'half', 'technician_id' => $this->tech->id]);
         $this->completeIntake($job, $this->advisor->id);
-        $this->as($this->advisor)->patchJson($this->base($job) . '/status', ['status' => 'work_in_progress'])->assertOk();
+        // Intake complete + technician assigned: work starts by itself
+        $this->assertSame('work_in_progress', $job->fresh()->status);
 
         return $job->fresh();
     }
@@ -237,8 +239,9 @@ class EstimateApprovalTest extends TestCase
         $this->assertStringStartsWith('https://wa.me/919876543210?text=', $result['message']['share_url']);
         $this->assertStringContainsString('3 additional item(s) need your approval', $result['message']['body']);
 
-        // Work cannot resume by hand while items are pending
-        $codes = collect($this->as($this->advisor)->patchJson($this->base($job) . '/status', ['status' => 'work_in_progress'])
+        // Work resumes by itself; not even a manager can move it by hand while items are pending
+        $this->as($this->advisor)->patchJson($this->base($job) . '/status', ['status' => 'work_in_progress'])->assertForbidden();
+        $codes = collect($this->as($this->owner)->patchJson($this->base($job) . '/status', ['status' => 'work_in_progress', 'notes' => 'Customer said yes'])
             ->assertStatus(422)->json('errors.guards'))->pluck('code');
         $this->assertContains('estimate_pending', $codes->all());
 
@@ -260,8 +263,9 @@ class EstimateApprovalTest extends TestCase
         $declined = collect($page['estimate']['additional_lines'])->firstWhere('approval_status', 'declined');
         $this->assertSame('Recommended but not approved by customer', $declined['approval_label']);
 
+        // Everything answered; the two approved parts are not in yet, so the job waits for them
         $job->refresh();
-        $this->assertSame('work_in_progress', $job->status);
+        $this->assertSame('awaiting_parts', $job->status);
         $this->assertTrue($job->customer_approved);
         $this->assertSame(2, JobCardItem::where('job_card_id', $job->id)->whereNotNull('estimate_line_key')->count());
         $this->assertSame(3, JobCardEstimateDecision::where('job_card_id', $job->id)->where('decided_via', 'customer_link')->count());

@@ -17,14 +17,14 @@ import Button from '@/components/ui/Button.vue'
 import Badge from '@/components/ui/Badge.vue'
 import Spinner from '@/components/ui/Spinner.vue'
 
-type Tab = 'requests' | 'procure'
+type Tab = 'requests' | 'procure' | 'all'
 
 const route = useRoute()
 const router = useRouter()
 const { can } = usePermissions()
 const toast = useToast()
 
-const tab = ref<Tab>(route.query.tab === 'procure' ? 'procure' : 'requests')
+const tab = ref<Tab>(['procure', 'all'].includes(String(route.query.tab)) ? (route.query.tab as Tab) : 'requests')
 const requests = ref<SparePartRequest[]>([])
 const suppliers = ref<Supplier[]>([])
 const loading = ref(true)
@@ -166,6 +166,16 @@ async function markOrdered(r: SparePartRequest) {
   }
 }
 
+async function markReceived(r: SparePartRequest) {
+  try {
+    await partsApi.markReceived(r.id)
+    toast.success('Marked as received', 'The technician and advisor have been notified.')
+    await load()
+  } catch (err) {
+    toast.apiError(err)
+  }
+}
+
 function selectedQuote(r: SparePartRequest) {
   return r.quotes.find((q) => q.id === r.selected_quote_id) ?? null
 }
@@ -179,7 +189,7 @@ watch(tab, load)
 watch(
   () => route.query.tab,
   (t) => {
-    if (t === 'procure' || t === 'requests') tab.value = t
+    if (t === 'procure' || t === 'requests' || t === 'all') tab.value = t
   }
 )
 
@@ -198,7 +208,7 @@ onMounted(() => {
 
     <div class="flex gap-2 mb-4">
       <button
-        v-for="t in ([{ key: 'requests', label: 'Price requests' }, { key: 'procure', label: 'To procure' }] as const)"
+        v-for="t in ([{ key: 'requests', label: 'Price requests' }, { key: 'procure', label: 'To procure' }, { key: 'all', label: 'All parts' }] as const)"
         :key="t.key"
         class="rounded-lg px-3 py-1.5 text-sm font-medium"
         :class="tab === t.key ? 'bg-primary-600 text-white' : 'bg-white border border-gray-300 text-gray-700'"
@@ -216,7 +226,7 @@ onMounted(() => {
 
     <Card v-else-if="!requests.length">
       <p class="text-center text-sm text-gray-500 py-6">
-        {{ tab === 'requests' ? 'No price requests waiting.' : 'Nothing to procure right now.' }}
+        {{ tab === 'requests' ? 'No price requests waiting.' : tab === 'procure' ? 'Nothing to procure right now.' : 'No parts in the last 60 days.' }}
       </p>
     </Card>
 
@@ -259,10 +269,11 @@ onMounted(() => {
                   <span class="font-medium">{{ q.supplier }}</span>
                 </label>
                 <span class="text-gray-600">
-                  ₹ {{ money(q.unit_cost) }}
+                  ₹ {{ money(q.unit_cost) }}/unit
                   <template v-if="q.gst_mode === 'excl'">+ GST = ₹ {{ money(q.landed_unit_cost) }}</template>
                   <template v-else-if="q.gst_mode === 'incl'">incl. GST</template>
                   <template v-else>cash, no bill</template>
+                  <b v-if="r.quantity !== 1" class="text-gray-900"> · × {{ r.quantity }} = ₹ {{ money(q.landed_unit_cost * r.quantity) }}</b>
                 </span>
                 <span v-if="q.availability" class="text-xs text-gray-500">· {{ q.availability }}</span>
                 <button v-if="canQuote" class="text-gray-400 hover:text-red-600" aria-label="Remove quote" @click="removeQuote(r, q.id)">
@@ -284,7 +295,7 @@ onMounted(() => {
                 type="number"
                 min="0"
                 class="col-span-4 sm:col-span-2 rounded-lg border-gray-300 text-sm"
-                placeholder="Price / unit"
+                :placeholder="r.quantity !== 1 ? `Price per unit (× ${r.quantity})` : 'Price per unit'"
               />
               <select v-model="formFor(r).gst_mode" class="col-span-8 sm:col-span-3 rounded-lg border-gray-300 text-sm">
                 <option v-for="m in GST_MODES" :key="m.value" :value="m.value">{{ m.label }}</option>
@@ -295,8 +306,9 @@ onMounted(() => {
                 placeholder="Availability"
               />
               <Button size="sm" variant="secondary" class="col-span-4 sm:col-span-1" :disabled="busy" @click="addQuote(r)">Add</Button>
-              <p v-if="landed(formFor(r)) !== null && formFor(r).gst_mode === 'excl'" class="col-span-12 text-xs text-gray-500">
-                Cost with GST: ₹ {{ money(landed(formFor(r))) }}
+              <p v-if="landed(formFor(r)) !== null && (formFor(r).gst_mode === 'excl' || r.quantity !== 1)" class="col-span-12 text-xs text-gray-500">
+                Cost with GST: ₹ {{ money(landed(formFor(r))) }} per unit
+                <template v-if="r.quantity !== 1"> · total for {{ r.quantity }}: <b>₹ {{ money((landed(formFor(r)) ?? 0) * r.quantity) }}</b></template>
               </p>
             </div>
           </li>
@@ -317,16 +329,26 @@ onMounted(() => {
             <span class="text-xs text-gray-500"> × {{ r.quantity }} {{ r.unit }}</span>
           </p>
           <span v-if="selectedQuote(r)" class="text-sm text-gray-600">
-            {{ selectedQuote(r)!.supplier }} · ₹ {{ money(selectedQuote(r)!.landed_unit_cost) }}
+            {{ selectedQuote(r)!.supplier }} · ₹ {{ money(selectedQuote(r)!.landed_unit_cost) }}/unit
+            <b v-if="r.quantity !== 1" class="text-gray-900">× {{ r.quantity }} = ₹ {{ money(selectedQuote(r)!.landed_unit_cost * r.quantity) }}</b>
             <span v-if="selectedQuote(r)!.gst_mode === 'cash'">(cash)</span>
           </span>
+          <span v-else class="text-xs text-gray-500">Priced on the estimate by the advisor</span>
           <span class="ml-auto flex items-center gap-2">
-            <Badge v-if="r.status === 'ordered'" size="sm" variant="success">Ordered {{ ago(r.ordered_at) }}</Badge>
-            <Button v-else-if="canQuote" size="sm" @click="markOrdered(r)">Mark ordered</Button>
+            <Badge v-if="r.status === 'received'" size="sm" variant="success">Received {{ ago(r.received_at) }}</Badge>
+            <Badge v-else-if="r.status === 'declined'" size="sm" variant="danger">Customer declined</Badge>
+            <Badge v-else-if="['requested', 'quoted'].includes(r.status)" size="sm" variant="warning">
+              {{ r.status === 'requested' ? 'Needs price' : 'Priced — with customer' }}
+            </Badge>
+            <template v-else>
+              <Badge v-if="r.status === 'ordered'" size="sm" variant="info">Ordered {{ ago(r.ordered_at) }}</Badge>
+              <Button v-else-if="canQuote" size="sm" variant="secondary" @click="markOrdered(r)">Mark ordered</Button>
+              <Button v-if="canQuote" size="sm" @click="markReceived(r)">Mark received</Button>
+            </template>
           </span>
         </li>
       </ul>
-      <p class="px-4 py-2 text-xs text-gray-400 border-t border-gray-100">Receiving parts (GRN) comes in the next phase.</p>
+      <p class="px-4 py-2 text-xs text-gray-400 border-t border-gray-100">When a part arrives, mark it received: the technician is told to fit it. (The full GRN with supplier bills comes in the next phase.)</p>
     </Card>
   </div>
 </template>

@@ -77,7 +77,7 @@ class PaymentController extends ApiController
      */
     public function recordPayment(Request $request, Invoice $invoice): JsonResponse
     {
-        if (!in_array($invoice->status, ['issued', 'partial'])) {
+        if (!$invoice->isPayable()) {
             return $this->error('Cannot record payment for this invoice status', 400);
         }
 
@@ -95,6 +95,18 @@ class PaymentController extends ApiController
         // Validate amount doesn't exceed balance
         if ($request->amount > $invoice->balance_amount) {
             return $this->error('Payment amount cannot exceed balance amount', 422);
+        }
+
+        // A job's payments are taken against the job (they count towards its current bill)
+        if ($invoice->job_card_id) {
+            $jobCard = \App\Modules\Workshop\Models\JobCard::withoutGlobalScopes()->findOrFail($invoice->job_card_id);
+            $payment = app(\App\Modules\Billing\Services\BillingService::class)
+                ->recordPayment($jobCard, $request->only(['amount', 'method', 'payment_date', 'reference_number', 'notes', 'cheque_number', 'cheque_date', 'bank_name']), $request->user());
+
+            return $this->created([
+                'payment' => $payment->load('receivedBy'),
+                'invoice' => $invoice->fresh(['customer']),
+            ], 'Payment recorded successfully');
         }
 
         $branchId = app('branch.context')->getCurrentBranchId();

@@ -10,13 +10,14 @@ import type {
   DashboardStats,
   FormPayload,
   JobCardOptions,
+  JobCardAssignments,
   JobCardStatus,
   Payment,
   User,
   VehicleMake,
   VehicleModel,
   VehicleCategory,
-  StatusTransitionOption,
+  StatusTransitions,
 } from './types'
 
 // Customers
@@ -112,12 +113,26 @@ export const jobCardsApi = {
     return apiClient.get<ApiResponse<JobCard>>(`/workshop/job-cards/${id}`)
   },
 
-  create(data: FormPayload<JobCard>) {
+  create(data: FormPayload<JobCard> & { complaints?: string[] }) {
     return apiClient.post<ApiResponse<JobCard>>('/workshop/job-cards', data)
   },
 
   update(id: number, data: FormPayload<JobCard>) {
     return apiClient.put<ApiResponse<JobCard>>(`/workshop/job-cards/${id}`, data)
+  },
+
+  /** Technicians (lead + others) and bay, with the candidates to choose from */
+  assignments(id: number) {
+    return apiClient.get<ApiResponse<JobCardAssignments>>(`/workshop/job-cards/${id}/assignments`)
+  },
+  addTechnician(id: number, userId: number, isLead = false) {
+    return apiClient.post<ApiResponse<JobCardAssignments>>(`/workshop/job-cards/${id}/technicians`, { user_id: userId, is_lead: isLead })
+  },
+  removeTechnician(id: number, userId: number) {
+    return apiClient.delete<ApiResponse<JobCardAssignments>>(`/workshop/job-cards/${id}/technicians/${userId}`)
+  },
+  moveBay(id: number, bayId: number, notes?: string | null) {
+    return apiClient.post<ApiResponse<JobCardAssignments>>(`/workshop/job-cards/${id}/bay`, { bay_id: bayId, notes })
   },
 
   /** Plans (with oil grades and prices for this car), repair types and the job sheets each brings */
@@ -131,6 +146,15 @@ export const jobCardsApi = {
     return apiClient.delete(`/workshop/job-cards/${id}`)
   },
 
+  /** After the work: trial drive OK / issues found, and washing done (the job then moves on by itself) */
+  postServiceTrial(id: number, result: 'ok' | 'issues', notes?: string) {
+    return apiClient.post(`/workshop/job-cards/${id}/post-service/trial`, { result, notes: notes || undefined })
+  },
+
+  washDone(id: number) {
+    return apiClient.post(`/workshop/job-cards/${id}/post-service/wash`)
+  },
+
   updateStatus(id: number, status: string, notes?: string, override = false) {
     return apiClient.patch<ApiResponse<JobCard>>(`/workshop/job-cards/${id}/status`, {
       status,
@@ -141,7 +165,7 @@ export const jobCardsApi = {
 
   // Next statuses from the current one, with any checks blocking them
   transitions(id: number) {
-    return apiClient.get<ApiResponse<StatusTransitionOption[]>>(`/workshop/job-cards/${id}/transitions`)
+    return apiClient.get<ApiResponse<StatusTransitions>>(`/workshop/job-cards/${id}/transitions`)
   },
 
   assignTechnician(id: number, technicianId: number) {

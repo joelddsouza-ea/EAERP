@@ -187,6 +187,8 @@ export interface JobCard {
   priority: 'low' | 'normal' | 'high' | 'urgent'
   package_id?: number | null
   oil_type_id?: number | null
+  /** Lead + co-technicians (all may fill the job sheets) */
+  technician_ids?: number[]
   package?: { id: number; name: string; activity_points: number } | null
   oil_type?: { id: number; name: string } | null
   package_price?: number | string
@@ -225,6 +227,7 @@ export type JobCardStatus =
   | 'awaiting_parts'
   | 'post_work_trial'
   | 'wash_pending'
+  | 'qc_pending'
   | 'ready_for_delivery'
   | 'invoiced'
   | 'gate_pass_generated'
@@ -283,6 +286,8 @@ export interface PanelFlags {
 }
 
 export interface JobSheetItem {
+  /** Pre-delivery QC spot check: shown only after the point is marked */
+  qc_evidence?: { required: boolean; marked_at: string; deadline: string; satisfied: boolean } | null
   id: number
   section_name: string | null
   item_name: string | null
@@ -305,7 +310,9 @@ export interface JobSheetItem {
 }
 
 export interface SheetProblem {
-  item_id: number
+  /** null for an unfinished Additional Issues line (see issue_id) */
+  item_id: number | null
+  issue_id?: number
   item_name: string | null
   section_name: string | null
   code: string
@@ -339,23 +346,56 @@ export interface JobSheet {
 export interface JobCardObservation {
   id: number
   job_card_id: number
-  source: 'manual' | 'activity' | 'pre_delivery'
+  /** manual / activity (⚠) / pre_delivery / estimate_declined (customer not approved) / issue_deferred */
+  source: 'manual' | 'activity' | 'pre_delivery' | 'estimate_declined' | 'issue_deferred'
   source_item_id: number | null
   text: string
   customer_visible: boolean
+  remark_id: number | null
+  remark_days: number | null
+  /** The remark as printed, e.g. "Fix within 30 days" */
+  remark_text?: string | null
   created_by?: { id: number; name: string } | null
   created_at: string
 }
 
+export interface ObservationRemark {
+  id: number
+  code: string
+  label: string
+  needs_days: boolean
+  sort_order?: number
+  is_active?: boolean
+}
+
+/** A line under Additional Issues: a customer complaint (intake), the technician's finding, or a flagged activity */
 export interface JobCardIssue {
   id: number
   job_card_id: number
+  source: 'customer' | 'technician' | 'activity'
   description: string
   priority: 'critical' | 'high' | 'normal'
   status: 'open' | 'in_progress' | 'resolved' | 'deferred'
   resolution_notes: string | null
+  reported_by?: string | null
+  resolved_by?: { id: number; name: string } | null
   resolved_at: string | null
-  additional_jobs?: JobCardAdditionalJob[]
+  media?: (JobCardMedia & { tag?: string | null })[]
+  /** Photos/videos on the flagged activity the line came from (count as evidence) */
+  activity_media?: JobCardMedia[]
+  /** Evidence of the faulty part is there: parts can be listed */
+  can_list_parts?: boolean
+  /** Approved parts not here yet */
+  parts_awaited?: boolean
+  /** New part arrived: photo/video of it fitted, then Done */
+  parts_arrived?: boolean
+  part_requests?: { id: number; part_name: string; part_number: string | null; quantity: number; status: SparePartStatus }[]
+  /** Parts were approved: a photo/video of the fitted part is needed before Done */
+  needs_fitted_media?: boolean
+  /** The customer declined all its parts: it is listed under Observations */
+  declined_by_customer?: boolean
+  /** Why it can't be marked Done yet, or null */
+  done_shortfall?: string | null
 }
 
 export interface JobCardAdditionalJob {
@@ -367,6 +407,14 @@ export interface JobCardAdditionalJob {
   cost: number | string
   done_by?: { id: number; name: string } | null
   created_at: string
+  /** Parts the technician asked for to do this job */
+  part_requests?: {
+    id: number
+    part_name: string
+    part_number: string | null
+    quantity: number | string
+    status: SparePartStatus
+  }[]
 }
 
 export interface GuardFailureInfo {
@@ -380,9 +428,120 @@ export interface StatusTransitionOption {
   label: string
   allowed: boolean
   permitted: boolean
+  // A move into a stage the system enters by itself: owner/manager only, with a reason
+  manual: boolean
   requires_notes: boolean
   can_override: boolean
   blocked_by: GuardFailureInfo[]
+}
+
+export interface StatusTransitions {
+  options: StatusTransitionOption[]
+  stage: {
+    status: JobCardStatus
+    waiting_for: string | null
+    // Sent back (e.g. QC failed): people move it on again
+    sent_back: boolean
+  }
+}
+
+/** Job stages master row */
+export interface WorkflowStageRow {
+  id: number
+  status: JobCardStatus
+  label: string
+  waiting_for: string | null
+  auto: boolean
+  auto_capable: boolean
+  entered_by: string | null
+  notify_customer: 'off' | 'first_entry' | 'always'
+  message: string | null
+  // Tell the customer about new photos/videos on entering this stage
+  gallery_update: boolean
+  customized_at: string | null
+}
+
+export interface BillLine {
+  id: number
+  type: string
+  hsn_code: string | null
+  description: string
+  quantity: number
+  unit_price: number
+  discount: number
+  taxable_amount: number
+  tax_rate: number
+  gst_inclusive: boolean
+  gst_applicable: boolean
+  tax: number
+  total: number
+  from_estimate: boolean
+  section: 'plan' | 'additional' | 'other'
+}
+
+export interface JobBill {
+  id: number
+  number: string
+  kind: 'proforma' | 'tax'
+  status: 'draft' | 'approved' | 'converted' | 'closed' | 'issued' | 'partial' | 'paid' | 'cancelled'
+  date: string
+  editable: boolean
+  payable: boolean
+  is_igst: boolean
+  customer_gstin: string | null
+  place_of_supply: string | null
+  lines: BillLine[]
+  taxable_amount: number
+  cgst: number
+  sgst: number
+  igst: number
+  total_tax: number
+  round_off: number
+  total: number
+  approved_by: string | null
+  approved_at: string | null
+  closed_at: string | null
+  proforma_number: string | null
+  estimate_changed: boolean
+}
+
+export interface JobPayment {
+  id: number
+  number: string
+  amount: number
+  stage: 'advance' | 'part' | 'final' | null
+  method: string
+  reference_number: string | null
+  payment_date: string
+  notes: string | null
+  received_by: string | null
+  created_at: string
+}
+
+export interface JobGatePass {
+  id: number
+  number: string
+  override: boolean
+  override_reason: string | null
+  amount_due: number
+  issued_by: string
+  issued_at: string
+  vehicle_out_at: string | null
+  vehicle_out_by: string | null
+}
+
+export interface JobBillingSummary {
+  estimate_total: number | null
+  bill: JobBill | null
+  bill_total: number | null
+  paid: number
+  balance: number
+  payments: JobPayment[]
+  gate_pass: JobGatePass | null
+  proforma_from: string | null
+  methods: string[]
+  gst_rates: number[]
+  can: { manage: boolean; approve: boolean; pay: boolean; override_gate_pass: boolean; vehicle_out: boolean } | null
 }
 
 export interface StatusHistoryEntry {
@@ -637,6 +796,8 @@ export interface Estimate {
   customer_viewed_at: string | null
   responded_at: string | null
   declined_label: string
+  /** Observations & recommendations with remarks (work not approved is listed here) */
+  observations?: { id: number; text: string; source: string; remark: string | null; estimate_line_key: string | null }[]
   comments: EstimateComment[]
   sent_by?: { id: number; name: string } | null
   warnings?: string[]
@@ -728,6 +889,22 @@ export interface ServiceReport {
   include: { activities: boolean; additional: boolean; observations: boolean }
 }
 
+export interface CustomerGalleryItem {
+  id: number
+  media_type: 'photo' | 'video'
+  caption: string | null
+  url: string
+  thumbnail_url: string | null
+  captured_at: string | null
+}
+
+export interface CustomerGalleryArea {
+  key: string
+  title: string
+  count: number
+  groups: { title: string | null; items: CustomerGalleryItem[] }[]
+}
+
 export interface PublicJobPage {
   workshop: { name: string; phone: string | null }
   job: {
@@ -744,8 +921,13 @@ export interface PublicJobPage {
   }
   estimate: Estimate | null
   decisions_open: boolean
-  media: (EstimateLineMedia & { captured_at: string | null })[]
+  // Section-wise: arrival, job sheets by section, additional work before/after (final QC is internal)
+  gallery: CustomerGalleryArea[]
+  // Changes whenever anything on the page changes (the page polls it)
+  version: string
   report: ServiceReport | null
+  // Once back office approves the final bill
+  bill: { number: string; kind: 'proforma' | 'tax'; total: number; paid: number; balance: number; gate_pass: string | null } | null
 }
 
 export interface PlanMaster {
@@ -809,6 +991,8 @@ export interface LabourCharge {
 // ---- Parts pricing loop (advisor ↔ spare parts coordinator)
 
 export type SparePartStatus =
+  | 'draft'
+  | 'proposed'
   | 'requested'
   | 'quoted'
   | 'approved'
@@ -846,6 +1030,9 @@ export interface SparePartRequest {
   note: string | null
   status: SparePartStatus
   estimate_line_key: string | null
+  job_card_additional_job_id: number | null
+  additional_job: string | null
+  received_at: string | null
   requested_by: string | null
   requested_at: string | null
   quoted_by: string | null
@@ -908,3 +1095,24 @@ export interface JobCardOptions {
   /** Set when an estimate has been sent: plan and oil grade change on the estimate instead */
   lock: { reason: string } | null
 }
+
+// ---- Job card assignments (several technicians, bay moves)
+
+export interface JobCardAssignments {
+  technicians: { id: number; name: string; is_lead: boolean }[]
+  bay: { id: number; name: string } | null
+  bay_moves: { from: string | null; to: string | null; notes: string | null; by: string | null; at: string | null }[]
+  candidates: {
+    technicians: { id: number; name: string }[]
+    bays: { id: number; name: string; code: string; type: string; occupied_by: string | null }[]
+  }
+}
+
+// ---- Car classes & models master
+
+export interface CarClassMasters {
+  classes: { id: number; name: string; slug: string; description: string | null; sort_order: number; is_active: boolean; vehicles_count: number; has_prices: boolean }[]
+  makes: { id: number; name: string; is_active: boolean }[]
+  models: { id: number; make_id: number; make: string | null; name: string; class_id: number | null; is_active: boolean }[]
+}
+

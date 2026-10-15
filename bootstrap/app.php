@@ -16,6 +16,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'branch.context' => \App\Core\Http\Middleware\BranchContext::class,
             'permission' => \App\Core\Http\Middleware\CheckPermission::class,
             'role' => \App\Core\Http\Middleware\CheckRole::class,
+            'job.lifecycle' => \App\Modules\Workshop\Http\Middleware\SyncJobLifecycle::class,
         ]);
 
         // Using pure token-based API authentication

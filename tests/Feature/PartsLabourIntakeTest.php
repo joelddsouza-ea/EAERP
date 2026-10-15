@@ -106,6 +106,8 @@ class PartsLabourIntakeTest extends TestCase
     private function newJob(): JobCard
     {
         $id = $this->as($this->advisor)->postJson('/api/v1/workshop/job-cards', [
+            'km_reading' => 12000,
+            'fuel_level' => 'half',
             'customer_id' => $this->customerId,
             'vehicle_id' => $this->vehicle->id,
             'package_id' => ServicePackage::where('slug', 'ea-360')->value('id'),
@@ -122,10 +124,10 @@ class PartsLabourIntakeTest extends TestCase
     private function jobInProgress(): JobCard
     {
         $job = $this->newJob();
-        $this->as($this->advisor)->patchJson($this->base($job) . '/status', ['status' => 'intake_in_progress'])->assertOk();
         $job->update(['km_reading' => 56518, 'fuel_level' => 'half', 'technician_id' => $this->tech->id]);
         $this->completeIntake($job, $this->advisor->id);
-        $this->as($this->advisor)->patchJson($this->base($job) . '/status', ['status' => 'work_in_progress'])->assertOk();
+        // Intake complete + technician assigned: work starts by itself
+        $this->assertSame('work_in_progress', $job->fresh()->status);
 
         return $job->fresh();
     }
@@ -355,35 +357,41 @@ class PartsLabourIntakeTest extends TestCase
     public function test_intake_needs_trial_drive_and_inventory_media(): void
     {
         $job = $this->newJob();
-        $this->as($this->advisor)->patchJson($this->base($job) . '/status', ['status' => 'intake_in_progress'])->assertOk();
         $job->update(['km_reading' => 1200, 'fuel_level' => 'half', 'technician_id' => $this->tech->id]);
-
-        $move = fn () => $this->as($this->advisor)->patchJson($this->base($job) . '/status', ['status' => 'work_in_progress']);
-        $guard = collect($move()->assertStatus(422)->json('errors.guards'))->firstWhere('code', 'intake_incomplete');
-        $this->assertSame(['trial_drive'], $guard['details']['fields']);
-        $this->assertSame(4, $guard['details']['photos_needed']);
+        $this->assertSame('intake_pending', $job->fresh()->status);
 
         // Skipping the trial drive needs a reason
         $this->as($this->advisor)->putJson($this->base($job) . '/intake/trial', ['status' => 'skipped'])->assertStatus(422);
         $this->as($this->advisor)->putJson($this->base($job) . '/intake/trial', ['status' => 'skipped', 'notes' => 'Battery dead, car towed in'])
             ->assertOk()->assertJsonPath('data.trial.status', 'skipped');
+        // The first intake action starts intake by itself
+        $this->assertSame('intake_in_progress', $job->fresh()->status);
+
+        $move = fn () => $this->as($this->owner)->patchJson($this->base($job) . '/status', ['status' => 'work_in_progress', 'notes' => 'Checking']);
+        $guard = collect($move()->assertStatus(422)->json('errors.guards'))->firstWhere('code', 'intake_incomplete');
+        $this->assertSame([], $guard['details']['fields']);
+        $this->assertSame(4, $guard['details']['photos_needed']);
 
         // Owner lowers the video minimum; four photos complete the intake
         $this->as($this->advisor)->putJson('/api/v1/workshop/intake-requirements', ['min_photos' => 4, 'min_videos' => 0])->assertForbidden();
         $this->as($this->owner)->putJson('/api/v1/workshop/intake-requirements', ['min_photos' => 4, 'min_videos' => 0])->assertOk();
 
         $mediaId = null;
-        foreach (range(1, 4) as $i) {
+        foreach (range(1, 3) as $i) {
             $mediaId = $this->as($this->advisor)->post($this->base($job) . '/intake/media', ['file' => UploadedFile::fake()->image("side{$i}.jpg", 400, 300)])
                 ->assertCreated()->json('data.media.id');
         }
-        $this->as($this->advisor)->getJson($this->base($job) . '/intake')->assertOk()->assertJsonPath('data.counts.photo', 4);
+        $this->as($this->advisor)->getJson($this->base($job) . '/intake')->assertOk()->assertJsonPath('data.counts.photo', 3);
 
         $this->as($this->advisor)->deleteJson($this->base($job) . "/intake/media/{$mediaId}")->assertOk();
         $move()->assertStatus(422);
-        $this->as($this->advisor)->post($this->base($job) . '/intake/media', ['file' => UploadedFile::fake()->image('rear.jpg', 400, 300)])->assertCreated();
+        $this->assertSame('intake_in_progress', $job->fresh()->status);
 
-        $move()->assertOk();
+        // The fourth photo completes intake: with a technician assigned, work starts by itself
+        foreach (['rear', 'front'] as $side) {
+            $this->as($this->advisor)->post($this->base($job) . '/intake/media', ['file' => UploadedFile::fake()->image("{$side}.jpg", 400, 300)])->assertCreated();
+        }
+        $this->assertSame('work_in_progress', $job->fresh()->status);
 
         // Intake is frozen once work starts
         $this->as($this->advisor)->putJson($this->base($job) . '/intake/trial', ['status' => 'done'])->assertStatus(422);
@@ -401,7 +409,8 @@ class PartsLabourIntakeTest extends TestCase
             'work_started_at' => now()->subDay(),
         ]);
 
-        $this->as($this->advisor)->patchJson($this->base($job) . '/status', ['status' => 'work_in_progress'])
-            ->assertOk();
+        app(\App\Modules\Workshop\Services\JobLifecycleService::class)->sync($job->fresh());
+
+        $this->assertSame('work_in_progress', $job->fresh()->status);
     }
 }

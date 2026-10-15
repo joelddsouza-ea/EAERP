@@ -3,11 +3,13 @@ import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ArrowLeftIcon, ChevronDownIcon, PlusIcon } from '@heroicons/vue/20/solid'
 import { jobCardsApi } from '@/api/workshop.api'
-import { jobSheetsApi } from '@/api/jobSheets.api'
+import { jobSheetsApi, jobCardIssuesApi } from '@/api/jobSheets.api'
+import { partsApi } from '@/api/estimates.api'
+import { useAuthStore } from '@/stores/auth.store'
 import { usePermissions } from '@/composables/usePermissions'
 import { useToast } from '@/composables/useToast'
 import { useUiStore } from '@/stores/ui.store'
-import type { JobCard, JobSheet, JobSheetItem, SheetProblem } from '@/api/types'
+import type { JobCard, JobSheet, JobSheetItem, SheetProblem, JobCardAdditionalJob } from '@/api/types'
 import { statusLabel, statusVariant } from '@/constants/jobCardStatus'
 import Badge from '@/components/ui/Badge.vue'
 import Button from '@/components/ui/Button.vue'
@@ -22,14 +24,16 @@ const router = useRouter()
 const { can } = usePermissions()
 const toast = useToast()
 const uiStore = useUiStore()
+const authStore = useAuthStore()
 
 const jobCardId = Number(route.params.id)
 
 // Job statuses in which each kind of sheet can be edited (mirrors JobSheetService)
 const EDITABLE: Record<string, string[]> = {
   work: ['intake_in_progress', 'work_in_progress', 'awaiting_parts', 'awaiting_approval', 'post_work_trial'],
-  pre_delivery: ['post_work_trial', 'wash_pending', 'ready_for_delivery'],
-  observation_report: ['intake_in_progress', 'work_in_progress', 'awaiting_parts', 'awaiting_approval', 'post_work_trial', 'wash_pending'],
+  // Final QC happens after the wash
+  pre_delivery: ['qc_pending'],
+  observation_report: ['intake_in_progress', 'work_in_progress', 'awaiting_parts', 'awaiting_approval', 'post_work_trial', 'wash_pending', 'qc_pending'],
 }
 
 const loading = ref(true)
@@ -53,21 +57,34 @@ const reopenNotes = ref('')
 const newRowName = ref('')
 
 const activeSheet = computed(() => sheets.value.find((s) => `sheet-${s.id}` === activeTab.value) ?? null)
-const hasIssuesTab = computed(() => sheets.value.some((s) => s.has_issues_tab))
-const hasObservations = computed(() => sheets.value.some((s) => s.has_observations))
+// Order: work sheet(s), Additional Issues, Observations, Observation Report, Pre-Delivery last
+const sheetTab = (s: JobSheet) => ({ key: `sheet-${s.id}`, label: shortName(s), done: s.status === 'completed' })
 
 const tabs = computed(() => [
-  ...sheets.value.map((s) => ({ key: `sheet-${s.id}`, label: shortName(s), done: s.status === 'completed' })),
-  ...(hasIssuesTab.value ? [{ key: 'issues', label: 'Issues & Jobs', done: false }] : []),
-  ...(hasObservations.value ? [{ key: 'observations', label: 'Observations', done: false }] : []),
+  ...sheets.value.filter((s) => !['observation_report', 'pre_delivery'].includes(s.sheet_kind)).map(sheetTab),
+  { key: 'issues', label: 'Additional Issues', done: false },
+  { key: 'observations', label: 'Observations', done: false },
+  ...sheets.value.filter((s) => s.sheet_kind === 'observation_report').map(sheetTab),
+  ...sheets.value.filter((s) => s.sheet_kind === 'pre_delivery').map(sheetTab),
 ])
 
 const editableKey = (s: JobSheet) => (s.sheet_kind in EDITABLE ? s.sheet_kind : 'work')
 
+/** Technician sheets, additional jobs and observations are filled only by the assigned technician */
+const isAssignedTechnician = computed(() => {
+  if (!authStore.user || !jobCard.value) return false
+  // Lead and co-technicians all fill the sheets
+  const ids = [...(jobCard.value.technician_ids ?? []), jobCard.value.technician_id ?? jobCard.value.technician?.id]
+  return ids.some((id) => id != null && Number(id) === Number(authStore.user!.id))
+})
+
+const isTechnicianSheet = (s: JobSheet) => s.filled_by !== 'advisor'
+
 const sheetPermission = computed(() => {
   const s = activeSheet.value
   if (!s) return false
-  return s.sheet_kind === 'pre_delivery' ? can('workshop.pre-delivery.update') : can('workshop.job-sheets.update')
+  if (!isTechnicianSheet(s)) return can('workshop.pre-delivery.update')
+  return can('workshop.job-sheets.update') && isAssignedTechnician.value
 })
 
 const statusAllowsEditing = computed(() => {
@@ -77,10 +94,63 @@ const statusAllowsEditing = computed(() => {
 
 const readonly = computed(() => !activeSheet.value || activeSheet.value.status === 'completed' || !sheetPermission.value || !statusAllowsEditing.value)
 
-// Issues / observations are editable while the job is open and the user can fill sheets
-const companionsReadonly = computed(
-  () => !can('workshop.job-sheets.update') || !jobCard.value || ['delivered', 'cancelled'].includes(jobCard.value.status)
+const jobClosed = computed(() => !jobCard.value || ['delivered', 'cancelled'].includes(jobCard.value.status))
+
+// Customer issues: the advisor logs them too. Additional jobs, parts and observations: technician only.
+const companionsReadonly = computed(() => !can('workshop.job-sheets.update') || jobClosed.value)
+const technicianOnlyReadonly = computed(() => companionsReadonly.value || !isAssignedTechnician.value)
+
+// ---- "Submit for Report": the technician's observations go to the advisor for the report
+
+const sendingReport = ref(false)
+
+async function submitForReport() {
+  sendingReport.value = true
+  try {
+    await jobCardIssuesApi.submitObservations(jobCardId)
+    toast.success('Sent for the report', 'Your advisor has been notified.')
+  } catch (err) {
+    toast.apiError(err)
+  } finally {
+    sendingReport.value = false
+  }
+}
+
+// ---- "Submit to SA for Parts"
+
+const issuesPanel = ref<InstanceType<typeof IssuesPanel> | null>(null)
+const showPartsSubmit = ref(false)
+const draftLines = ref<{ description: string; part_requests?: { id: number; part_name: string; part_number: string | null; quantity: number | string; status: string }[] }[]>([])
+const sendingParts = ref(false)
+
+const draftParts = computed(() =>
+  draftLines.value.flatMap((l) => (l.part_requests ?? []).filter((p) => p.status === 'draft').map((p) => ({ ...p, job: l.description })))
 )
+
+async function openPartsSubmit() {
+  try {
+    const [issues, jobs] = await Promise.all([jobCardIssuesApi.issues(jobCardId), jobCardIssuesApi.additionalJobs(jobCardId)])
+    draftLines.value = [...issues.data.data, ...(jobs.data.data as JobCardAdditionalJob[])]
+  } catch (err) {
+    toast.apiError(err)
+    return
+  }
+  showPartsSubmit.value = true
+}
+
+async function submitPartsToAdvisor() {
+  sendingParts.value = true
+  try {
+    await partsApi.submitToAdvisor(jobCardId)
+    showPartsSubmit.value = false
+    toast.success('Sent to the service advisor', 'You will be notified when the parts arrive. Carry on with the other activities.')
+    issuesPanel.value?.reload()
+  } catch (err) {
+    toast.apiError(err)
+  } finally {
+    sendingParts.value = false
+  }
+}
 
 const canSubmit = computed(() => {
   const s = activeSheet.value
@@ -172,6 +242,11 @@ async function submit(override = false) {
 
 async function goToProblem(problem: SheetProblem) {
   showProblems.value = false
+  // Unfinished Additional Issues lines
+  if (problem.issue_id) {
+    activeTab.value = 'issues'
+    return
+  }
   const sheet = activeSheet.value
   const section = sheet?.sections.find((s) => s.items.some((i) => i.id === problem.item_id))
   if (section) collapsed.value[section.name] = false
@@ -275,12 +350,16 @@ onMounted(load)
           <div v-else-if="!statusAllowsEditing" class="rounded-lg bg-gray-100 border border-gray-200 p-3 text-sm text-gray-700">
             This sheet can't be filled while the job is {{ statusLabel(jobCard.status) }}.
           </div>
-          <div v-else-if="!sheetPermission" class="rounded-lg bg-gray-100 border border-gray-200 p-3 text-sm text-gray-700">
-            You can view this sheet but not fill it.
+          <div v-else-if="!sheetPermission" class="rounded-lg bg-blue-50 border border-blue-200 p-3 text-sm text-blue-800">
+            <template v-if="isTechnicianSheet(activeSheet)">
+              View only — job progress. This sheet is filled by
+              {{ jobCard.technician?.name ?? 'the assigned technician (none assigned yet)' }}.
+            </template>
+            <template v-else>You can view this sheet but not fill it.</template>
           </div>
 
           <p v-if="activeSheet.sheet_kind === 'general_repair' && !activeSheet.sections.length" class="text-sm text-gray-600">
-            Record the customer's issues and the jobs done on the <button type="button" class="text-primary-600 underline" @click="activeTab = 'issues'">Issues & Jobs</button> tab.
+            Record the customer's issues and the work done on the <button type="button" class="text-primary-600 underline" @click="activeTab = 'issues'">Additional Issues</button> tab.
           </p>
 
           <section v-for="section in activeSheet.sections" :key="section.name">
@@ -322,32 +401,85 @@ onMounted(load)
           </form>
         </template>
 
-        <IssuesPanel v-else-if="activeTab === 'issues'" :job-card-id="jobCardId" :readonly="companionsReadonly" />
+        <IssuesPanel
+          v-else-if="activeTab === 'issues'"
+          ref="issuesPanel"
+          :job-card-id="jobCardId"
+          :readonly="companionsReadonly"
+          :jobs-readonly="technicianOnlyReadonly"
+        />
         <ObservationsPanel
           v-else-if="activeTab === 'observations'"
           :job-card-id="jobCardId"
-          :readonly="companionsReadonly"
+          :readonly="technicianOnlyReadonly"
+          :remarks-readonly="companionsReadonly"
           :refresh-key="observationsRefresh"
         />
       </div>
 
       <!-- Submit bar -->
       <div
-        v-if="activeSheet && (canSubmit || (activeSheet.status === 'completed' && can('workshop.job-sheets.reopen')))"
-        class="fixed bottom-0 inset-x-0 z-30 bg-white border-t border-gray-200 px-4 py-3"
+        v-if="(activeSheet && (canSubmit || (activeSheet.status === 'completed' && can('workshop.job-sheets.reopen')))) || (isAssignedTechnician && !jobClosed)"
+        class="fixed bottom-0 inset-x-0 z-30 bg-white border-t border-gray-200 px-4 py-3 flex gap-2"
         :class="uiStore.sidebarCollapsed ? 'lg:pl-24' : 'lg:pl-68'"
       >
-        <Button v-if="canSubmit" block :loading="submitting" @click="submit(false)">
-          Submit {{ shortName(activeSheet) }}
+        <!-- Observations go to the advisor for the customer's report -->
+        <Button
+          v-if="isAssignedTechnician && !jobClosed && activeTab === 'observations'"
+          class="flex-1"
+          :loading="sendingReport"
+          @click="submitForReport"
+        >
+          Submit for Report
         </Button>
-        <Button v-else block variant="secondary" @click="showReopen = true">Reopen sheet</Button>
+        <Button v-else-if="isAssignedTechnician && !jobClosed" class="flex-1" variant="secondary" @click="openPartsSubmit">
+          Submit to SA for Parts
+        </Button>
+        <template v-if="activeSheet">
+          <Button v-if="canSubmit" class="flex-1" :loading="submitting" @click="submit(false)">
+            Submit {{ shortName(activeSheet) }}
+          </Button>
+          <Button
+            v-else-if="activeSheet.status === 'completed' && can('workshop.job-sheets.reopen')"
+            class="flex-1"
+            variant="secondary"
+            @click="showReopen = true"
+          >
+            Reopen sheet
+          </Button>
+        </template>
       </div>
+
+      <!-- Submit to SA for Parts -->
+      <Modal :open="showPartsSubmit" title="Submit to SA for Parts" @close="showPartsSubmit = false">
+        <template v-if="draftParts.length">
+          <p class="text-sm text-gray-600 mb-3">
+            Your advisor gets these parts, your observations and additional jobs. The job sheet stays open: carry on with
+            other activities while the parts are arranged.
+          </p>
+          <ul class="divide-y divide-gray-100">
+            <li v-for="p in draftParts" :key="p.id" class="py-2 text-sm">
+              <p class="font-medium text-gray-900">{{ p.part_name }} <span class="text-gray-500">× {{ Number(p.quantity) }}</span></p>
+              <p class="text-xs text-gray-500">For: {{ p.job }}<span v-if="p.part_number"> · {{ p.part_number }}</span></p>
+            </li>
+          </ul>
+        </template>
+        <p v-else class="text-sm text-gray-600">
+          No parts to send yet. On the
+          <button type="button" class="text-primary-600 underline" @click="showPartsSubmit = false; activeTab = 'issues'">Additional Issues</button>
+          tab, tap “+ Part required” on the line that needs it.
+        </p>
+        <template #footer>
+          <Button variant="secondary" @click="showPartsSubmit = false">Cancel</Button>
+          <Button :disabled="!draftParts.length" :loading="sendingParts" @click="submitPartsToAdvisor">Send to advisor</Button>
+        </template>
+      </Modal>
 
       <!-- Unfinished items -->
       <Modal :open="showProblems" title="Not finished yet" @close="showProblems = false">
         <p class="text-sm text-gray-600 mb-3">Complete these before submitting:</p>
         <ul class="divide-y divide-gray-100 max-h-80 overflow-y-auto">
-          <li v-for="p in problems" :key="p.item_id">
+          <li v-for="p in problems" :key="p.item_id ?? `issue-${p.issue_id}`">
             <button type="button" class="w-full text-left py-2 hover:bg-gray-50" @click="goToProblem(p)">
               <p class="text-sm font-medium text-gray-900">{{ p.item_name }}</p>
               <p class="text-xs text-red-600">{{ p.message }}</p>

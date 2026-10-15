@@ -83,6 +83,8 @@ class JobCardFormTest extends TestCase
     private function create(array $data)
     {
         return $this->as($this->advisor)->postJson('/api/v1/workshop/job-cards', [
+            'km_reading' => 12000,
+            'fuel_level' => 'half',
             'customer_id' => $this->customerId,
             'vehicle_id' => $this->vehicle->id,
             ...$data,

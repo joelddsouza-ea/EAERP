@@ -319,6 +319,25 @@ const openPartRequests = computed(() =>
   partRequests.value.filter((r) => r.status === 'requested' || (r.status === 'quoted' && !r.estimate_line_key))
 )
 
+// Parts the technician sent ("Submit to SA for Parts"), for the advisor to forward
+const technicianParts = computed(() => partRequests.value.filter((r) => r.status === 'proposed'))
+const forwardIds = ref<number[]>([])
+
+async function forwardTechnicianParts() {
+  const ids = forwardIds.value.length ? forwardIds.value : technicianParts.value.map((r) => r.id)
+  busy.value = true
+  try {
+    await partsApi.forward(jobCardId, ids)
+    toast.success('Sent to the spare parts coordinator', 'You will be notified when the prices are in.')
+    forwardIds.value = []
+    await loadPartRequests()
+  } catch (err) {
+    toast.apiError(err)
+  } finally {
+    busy.value = false
+  }
+}
+
 function selectedQuote(r: SparePartRequest) {
   return r.quotes.find((q) => q.id === r.selected_quote_id) ?? null
 }
@@ -376,6 +395,9 @@ async function removeAdditionalLine(line: EstimateLine) {
 }
 
 /** Technician's additional jobs and open customer issues not yet on the estimate */
+const activeAdditional = computed(() => (estimate.value?.additional_lines ?? []).filter((l) => l.approval_status !== 'declined'))
+const declinedAdditional = computed(() => (estimate.value?.additional_lines ?? []).filter((l) => l.approval_status === 'declined'))
+
 const pullable = computed(() => {
   const lines = estimate.value?.additional_lines ?? []
   const jobIds = new Set(lines.map((l) => l.job_card_additional_job_id).filter(Boolean))
@@ -637,6 +659,31 @@ onMounted(load)
           </div>
         </template>
 
+        <!-- Parts the technician asked for -->
+        <div v-if="technicianParts.length" class="px-4 py-3 border-b border-gray-100 bg-blue-50/50">
+          <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+            <p class="text-xs font-medium text-gray-600">Parts requested by the technician</p>
+            <Button v-if="can('workshop.spare-parts.create')" size="sm" :loading="busy" @click="forwardTechnicianParts">
+              Send {{ forwardIds.length ? `${forwardIds.length} selected` : 'all' }} to coordinator
+            </Button>
+          </div>
+          <ul class="space-y-1">
+            <li v-for="r in technicianParts" :key="r.id" class="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+              <label class="inline-flex items-center gap-2">
+                <input v-model="forwardIds" type="checkbox" :value="r.id" class="rounded border-gray-300" />
+                <span class="font-medium text-gray-900">{{ r.part_name }}</span>
+              </label>
+              <span v-if="r.part_number" class="text-xs text-gray-500">{{ r.part_number }}</span>
+              <span class="text-xs text-gray-500">× {{ qty(r.quantity) }}</span>
+              <span v-if="r.additional_job" class="text-xs text-gray-500">for “{{ r.additional_job }}”</span>
+              <span class="text-xs text-gray-400">{{ r.requested_by }}</span>
+              <button v-if="can('workshop.spare-parts.create')" class="text-xs text-gray-400 hover:text-red-600 ml-auto" @click="cancelPartRequest(r)">
+                Not needed
+              </button>
+            </li>
+          </ul>
+        </div>
+
         <!-- Parts priced by the spare parts coordinator -->
         <div v-if="openPartRequests.length" class="px-4 py-3 border-b border-gray-100 bg-amber-50/40">
           <p class="text-xs font-medium text-gray-600 mb-2">Parts prices from the spare parts coordinator</p>
@@ -650,7 +697,7 @@ onMounted(load)
               </template>
               <template v-else-if="selectedQuote(r)">
                 <span class="text-xs text-gray-600">
-                  {{ selectedQuote(r)!.supplier }} · cost ₹ {{ money(selectedQuote(r)!.landed_unit_cost, 0) }} incl. GST
+                  {{ selectedQuote(r)!.supplier }} · cost ₹ {{ money(selectedQuote(r)!.landed_unit_cost, 0) }}/unit incl. GST
                   <span v-if="selectedQuote(r)!.availability">· {{ selectedQuote(r)!.availability }}</span>
                 </span>
                 <template v-if="editable">
@@ -664,7 +711,9 @@ onMounted(load)
                       :placeholder="String(masters?.parts_default_margin_pct ?? '')"
                     />%
                   </label>
-                  <span class="text-xs font-medium">= ₹ {{ money(suggestedRate(r), 0) }}</span>
+                  <span class="text-xs font-medium">
+                    = ₹ {{ money(suggestedRate(r), 0) }}/unit<template v-if="r.quantity !== 1"> × {{ qty(r.quantity) }} = ₹ {{ money((suggestedRate(r) ?? 0) * r.quantity, 0) }}</template>
+                  </span>
                   <Button size="sm" :loading="busy" @click="addPartToEstimate(r)">Add to estimate</Button>
                 </template>
                 <span v-else class="text-xs text-gray-500">Open a draft to add it.</span>
@@ -696,7 +745,7 @@ onMounted(load)
         </div>
 
         <ul class="divide-y divide-gray-100">
-          <li v-for="line in estimate.additional_lines" :key="line.id" class="px-4 py-3">
+          <li v-for="line in activeAdditional" :key="line.id" class="px-4 py-3">
             <div class="flex flex-wrap items-start gap-3">
               <div class="flex-1 min-w-[12rem]">
                 <p class="text-sm font-medium" :class="line.approval_status === 'declined' ? 'text-gray-400 line-through' : 'text-gray-900'">
@@ -762,8 +811,40 @@ onMounted(load)
               </div>
             </div>
           </li>
-          <li v-if="!estimate.additional_lines.length" class="px-4 py-4 text-center text-sm text-gray-500">No additional work.</li>
+          <li v-if="!activeAdditional.length" class="px-4 py-4 text-center text-sm text-gray-500">No additional work.</li>
         </ul>
+        <!-- Not approved by the customer: shown under Observations on the estimate and report -->
+        <div v-if="declinedAdditional.length" class="border-t border-gray-100 bg-gray-50 px-4 py-3">
+          <p class="text-xs font-medium text-gray-600 mb-1">Not approved by the customer — listed under Observations</p>
+          <ul class="space-y-1 text-sm text-gray-500">
+            <li v-for="line in declinedAdditional" :key="line.id" class="flex justify-between gap-3">
+              <span>{{ line.description }}</span>
+              <span>{{ qty(line.quantity) }} × {{ money(line.rate) }}</span>
+            </li>
+          </ul>
+        </div>
+      </Card>
+
+      <!-- Observations & remarks (as on the estimate and the report) -->
+      <Card v-if="estimate.observations?.length" class="mb-4">
+        <template #header>
+          <div class="flex items-center justify-between gap-2">
+            <h3 class="font-semibold">Observations &amp; Report</h3>
+            <RouterLink :to="`/job-cards/${jobCardId}/sheet`" class="text-xs text-primary-600 hover:underline">Remarks on the job sheet</RouterLink>
+          </div>
+        </template>
+        <table class="min-w-full text-sm">
+          <thead class="text-xs text-gray-500">
+            <tr><th class="py-1 pr-2 text-left w-8">#</th><th class="py-1 pr-2 text-left">Observation</th><th class="py-1 text-left">Remarks</th></tr>
+          </thead>
+          <tbody class="divide-y divide-gray-100">
+            <tr v-for="(o, i) in estimate.observations" :key="o.id">
+              <td class="py-1.5 pr-2 text-gray-500">{{ i + 1 }}</td>
+              <td class="py-1.5 pr-2 text-gray-900">{{ o.text }}</td>
+              <td class="py-1.5" :class="o.remark ? 'text-amber-800' : 'text-gray-400'">{{ o.remark ?? '—' }}</td>
+            </tr>
+          </tbody>
+        </table>
       </Card>
 
       <!-- Discounts & totals -->

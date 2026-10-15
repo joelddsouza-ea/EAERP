@@ -8,7 +8,9 @@ import Card from '@/components/ui/Card.vue'
 import Button from '@/components/ui/Button.vue'
 import Input from '@/components/ui/Input.vue'
 import Select from '@/components/ui/Select.vue'
-import Textarea from '@/components/ui/Textarea.vue'
+import VoiceInput from '@/components/ui/VoiceInput.vue'
+import AssignmentsCard from '@/components/jobcard/AssignmentsCard.vue'
+import { jobCardIssuesApi } from '@/api/jobSheets.api'
 import Spinner from '@/components/ui/Spinner.vue'
 
 const route = useRoute()
@@ -19,6 +21,8 @@ const jobCardId = computed(() => (route.params.id ? Number(route.params.id) : nu
 const isEditing = computed(() => !!jobCardId.value)
 
 const loading = ref(false)
+/** Set after creating: the screen switches to assigning technicians and bay */
+const created = ref<{ id: number; job_number: string } | null>(null)
 const saving = ref(false)
 const errors = ref<Record<string, string>>({})
 
@@ -30,7 +34,6 @@ const form = ref({
   oil_type_id: null as number | null,
   km_reading: null as number | null,
   fuel_level: null as FuelLevel | null,
-  customer_complaints: '',
   estimated_delivery: '',
 })
 
@@ -56,6 +59,49 @@ const fuelLevelOptions = [
   { value: 'three_quarter', label: '3/4' },
   { value: 'full', label: 'Full' },
 ]
+
+// ---- Customer complaints: one line each (each becomes an Additional Issues line on the job sheet)
+
+interface ComplaintLine {
+  id?: number
+  text: string
+  original?: string
+}
+const complaints = ref<ComplaintLine[]>([{ text: '' }])
+const removedComplaintIds = ref<number[]>([])
+
+function addComplaint() {
+  complaints.value.push({ text: '' })
+}
+
+function removeComplaint(index: number) {
+  const [line] = complaints.value.splice(index, 1)
+  if (line?.id) removedComplaintIds.value.push(line.id)
+  if (!complaints.value.length) complaints.value.push({ text: '' })
+}
+
+async function loadComplaints() {
+  if (!jobCardId.value) return
+  try {
+    const lines = (await jobCardIssuesApi.issues(jobCardId.value)).data.data.filter((l) => l.source === 'customer')
+    complaints.value = lines.length ? lines.map((l) => ({ id: l.id, text: l.description, original: l.description })) : [{ text: '' }]
+  } catch {
+    // Older jobs keep their complaint text on the job card
+  }
+}
+
+/** On edit: add new lines, save changed ones, remove deleted ones */
+async function saveComplaints(id: number) {
+  for (const lineId of removedComplaintIds.value) {
+    await jobCardIssuesApi.deleteIssue(id, lineId)
+  }
+  for (const line of complaints.value) {
+    const text = line.text.trim()
+    if (!text) continue
+    if (!line.id) await jobCardIssuesApi.createIssue(id, { description: text })
+    else if (text !== line.original) await jobCardIssuesApi.updateIssue(id, line.id, { description: text })
+  }
+}
 
 // ---- Service type (plan or repair type) and engine oil grade
 
@@ -187,7 +233,6 @@ async function fetchJobCard() {
       oil_type_id: jobCard.oil_type_id ?? null,
       km_reading: jobCard.km_reading,
       fuel_level: jobCard.fuel_level,
-      customer_complaints: jobCard.customer_complaints || '',
       // datetime-local inputs need "YYYY-MM-DDTHH:mm"
       estimated_delivery: jobCard.estimated_delivery?.slice(0, 16) || '',
     }
@@ -221,6 +266,12 @@ async function handleSubmit() {
   if (isPlan.value && !form.value.oil_type_id) {
     errors.value.oil_type_id = 'Engine oil type is required for a service plan'
   }
+  if (!isEditing.value && (form.value.km_reading === null || (form.value.km_reading as unknown) === '')) {
+    errors.value.km_reading = 'Odometer reading is required'
+  }
+  if (!isEditing.value && !form.value.fuel_level) {
+    errors.value.fuel_level = 'Fuel level is required'
+  }
 
   if (Object.keys(errors.value).length > 0) {
     return
@@ -246,11 +297,14 @@ async function handleSubmit() {
 
     if (isEditing.value) {
       await jobCardsApi.update(jobCardId.value!, payload)
+      await saveComplaints(jobCardId.value!)
       toast.success('Job Card Updated', 'Job card has been updated.')
     } else {
-      const response = await jobCardsApi.create({ ...payload, customer_id, vehicle_id })
-      toast.success('Job Card Created', 'New job card has been created.')
-      router.push(`/job-cards/${response.data.data.id}`)
+      const lines = complaints.value.map((c) => c.text.trim()).filter(Boolean)
+      const response = await jobCardsApi.create({ ...payload, customer_id, vehicle_id, complaints: lines })
+      toast.success('Job Card Created', 'Now assign the technician(s) and bay.')
+      created.value = { id: response.data.data.id, job_number: response.data.data.job_number }
+      window.scrollTo({ top: 0, behavior: 'smooth' })
       return
     }
     router.push('/job-cards')
@@ -268,7 +322,29 @@ async function handleSubmit() {
   }
 }
 
-onMounted(fetchJobCard)
+/**
+ * Opened from "Create Job Card" on the vehicle screen: customer and vehicle come chosen.
+ */
+async function prefillFromQuery() {
+  const customerId = Number(route.query.customer_id)
+  const vehicleId = Number(route.query.vehicle_id)
+  if (isEditing.value || !customerId) return
+  try {
+    const customer = (await customersApi.get(customerId)).data.data
+    await selectCustomer(customer)
+    if (vehicleId && customerVehicles.value.some((v) => v.id === vehicleId)) {
+      form.value.vehicle_id = vehicleId
+    }
+  } catch {
+    // Pick them by hand
+  }
+}
+
+onMounted(async () => {
+  await fetchJobCard()
+  await loadComplaints()
+  await prefillFromQuery()
+})
 
 watch(customerSearch, (value) => {
   if (value !== selectedCustomer.value?.name) {
@@ -297,6 +373,18 @@ watch(
 
     <div v-if="loading" class="flex justify-center py-12">
       <Spinner size="lg" />
+    </div>
+
+    <!-- Created: assign technicians and bay on the same screen -->
+    <div v-else-if="created" class="max-w-3xl space-y-4">
+      <div class="rounded-lg border border-green-200 bg-green-50 p-4 text-sm text-green-800">
+        Job card <b>{{ created.job_number }}</b> has been created. Assign the technician(s) and the bay below.
+      </div>
+      <AssignmentsCard :job-card-id="created.id" />
+      <div class="flex flex-wrap gap-3">
+        <Button @click="router.push(`/job-cards/${created.id}`)">Open job card</Button>
+        <Button variant="secondary" @click="router.push('/job-cards')">Back to job cards</Button>
+      </div>
     </div>
 
     <form v-else @submit.prevent="handleSubmit" class="max-w-3xl">
@@ -406,6 +494,7 @@ watch(
               label="Odometer (km)"
               type="number"
               :error="errors.km_reading"
+              :required="!isEditing"
             />
 
             <Select
@@ -414,6 +503,7 @@ watch(
               placeholder="Select fuel level"
               :options="fuelLevelOptions"
               :error="errors.fuel_level"
+              :required="!isEditing"
             />
 
             <Input
@@ -424,12 +514,33 @@ watch(
             />
           </div>
 
-          <Textarea
-            v-model="form.customer_complaints"
-            label="Customer Complaint / Work Required"
-            :error="errors.customer_complaints"
-            :rows="4"
-          />
+          <!-- Customer complaints, one per line -->
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Customer Complaints / Work Required</label>
+            <p class="text-xs text-gray-500 mb-2">One complaint per line. Each appears under Additional Issues on the technician's job sheet.</p>
+            <ol class="space-y-2">
+              <li v-for="(line, index) in complaints" :key="line.id ?? `new-${index}`" class="flex items-center gap-2">
+                <span class="w-5 text-right text-sm text-gray-500">{{ index + 1 }}.</span>
+                <input
+                  v-model="line.text"
+                  class="input flex-1"
+                  placeholder="e.g. Brake noise when stopping"
+                  @keydown.enter.prevent="addComplaint"
+                />
+                <VoiceInput @text="(t: string) => (line.text = line.text ? `${line.text} ${t}` : t)" />
+                <button
+                  type="button"
+                  class="p-2 text-gray-400 hover:text-red-600"
+                  aria-label="Remove complaint"
+                  @click="removeComplaint(index)"
+                >
+                  ✕
+                </button>
+              </li>
+            </ol>
+            <button type="button" class="mt-2 text-sm text-primary-600" @click="addComplaint">+ Add another complaint</button>
+            <p v-if="errors.complaints" class="mt-1 text-sm text-red-600">{{ errors.complaints }}</p>
+          </div>
         </div>
 
         <template #footer>

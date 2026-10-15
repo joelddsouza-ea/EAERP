@@ -29,6 +29,14 @@ class JobCardAdditionalJob extends Model
         return $this->belongsTo(JobCard::class);
     }
 
+    /**
+     * Parts the technician asked for to do this job.
+     */
+    public function partRequests()
+    {
+        return $this->hasMany(SparePartRequest::class, 'job_card_additional_job_id');
+    }
+
     public function issue()
     {
         return $this->belongsTo(JobCardIssue::class, 'job_card_issue_id');

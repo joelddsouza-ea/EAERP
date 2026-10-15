@@ -142,6 +142,8 @@ class JobSheetController extends ApiController
             'customer_visible' => 'sometimes|boolean',
         ]);
 
+        abort_unless($media->job_card_id === $jobCard->id, 404);
+
         $media->update($data);
 
         return $this->success(new JobCardMediaResource($media), 'Media updated');

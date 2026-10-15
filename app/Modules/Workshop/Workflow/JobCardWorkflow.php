@@ -5,10 +5,16 @@ namespace App\Modules\Workshop\Workflow;
 use App\Core\Models\User;
 use App\Modules\Workshop\Enums\JobCardStatus;
 use App\Modules\Workshop\Models\JobCard;
+use App\Modules\Workshop\Models\JobCardStatusHistory;
+use App\Modules\Workshop\Models\WorkflowStage;
+use App\Modules\Workshop\Workflow\Guards\BillApproved;
 use App\Modules\Workshop\Workflow\Guards\EstimateResponded;
+use App\Modules\Workshop\Workflow\Guards\GatePassIssued;
 use App\Modules\Workshop\Workflow\Guards\IntakeCaptured;
 use App\Modules\Workshop\Workflow\Guards\JobSheetActivitiesResolved;
 use App\Modules\Workshop\Workflow\Guards\NoOpenCriticalIssues;
+use App\Modules\Workshop\Workflow\Guards\PostTrialPassed;
+use App\Modules\Workshop\Workflow\Guards\WashRecorded;
 use App\Modules\Workshop\Workflow\Guards\PreDeliveryChecklistComplete;
 use App\Modules\Workshop\Workflow\Guards\TechnicianAssigned;
 
@@ -19,6 +25,11 @@ use App\Modules\Workshop\Workflow\Guards\TechnicianAssigned;
  * must pass, and whether notes are mandatory. Statuses disabled in
  * config('workshop.workflow.disabled_statuses') are routed around: their outgoing
  * edges are followed, combining guards, so enabling a status later is config-only.
+ *
+ * Stages marked automatic in the Job stages master are entered by the system
+ * (JobLifecycleService). People take only the "event" edges (QC result, send back,
+ * cancel); any other move into an automatic stage is a manual correction that only
+ * an owner/manager may make, with a reason.
  */
 class JobCardWorkflow
 {
@@ -63,25 +74,59 @@ class JobCardWorkflow
             'work_in_progress' => ['perms' => [self::CHANGE, self::SHEET, self::PARTS]],
         ],
         'post_work_trial' => [
-            'wash_pending' => ['perms' => [self::QC]],
-            // QA failed: back to the technician
+            'wash_pending' => ['perms' => [self::QC, self::CHANGE], 'guards' => [PostTrialPassed::class]],
+            // Trial drive found issues: back to the technician
             'work_in_progress' => ['perms' => [self::QC], 'requires_notes' => true],
         ],
         'wash_pending' => [
-            'ready_for_delivery' => ['perms' => [self::PRE_DELIVERY, self::CHANGE], 'guards' => [PreDeliveryChecklistComplete::class]],
+            'qc_pending' => ['perms' => [self::QC, self::CHANGE], 'guards' => [WashRecorded::class]],
             'work_in_progress' => ['perms' => [self::QC], 'requires_notes' => true],
         ],
+        // Final QC after the wash: the pre-delivery checklist
+        'qc_pending' => [
+            'ready_for_delivery' => ['perms' => [self::PRE_DELIVERY, self::CHANGE], 'guards' => [PreDeliveryChecklistComplete::class]],
+            'work_in_progress' => ['perms' => [self::QC], 'requires_notes' => true],
+            'wash_pending' => ['perms' => [self::QC], 'requires_notes' => true],
+        ],
         'ready_for_delivery' => [
-            'invoiced' => ['perms' => ['billing.invoices.create']],
+            'invoiced' => ['perms' => ['billing.invoices.create'], 'guards' => [BillApproved::class]],
             'wash_pending' => ['perms' => [self::CHANGE], 'requires_notes' => true],
         ],
         'invoiced' => [
-            'gate_pass_generated' => ['perms' => ['billing.payments.create']],
+            'gate_pass_generated' => ['perms' => ['billing.payments.create'], 'guards' => [GatePassIssued::class]],
         ],
         'gate_pass_generated' => [
-            'delivered' => ['perms' => [self::CHANGE, 'billing.payments.create']],
+            'delivered' => ['perms' => [self::CHANGE, 'billing.payments.create'], 'guards' => [GatePassIssued::class]],
         ],
     ];
+
+    /**
+     * Moves people make as events whatever the stage settings: the QC result and
+     * sending a car back.
+     */
+    private const EVENT_EDGES = [
+        'post_work_trial' => ['work_in_progress'],
+        'wash_pending' => ['work_in_progress'],
+        'qc_pending' => ['work_in_progress', 'wash_pending'],
+        'ready_for_delivery' => ['wash_pending'],
+    ];
+
+    /**
+     * Stage order, to tell a car sent back (e.g. QC failed) from normal progress.
+     */
+    private const ORDER = [
+        'intake_pending' => 1, 'intake_in_progress' => 2,
+        'awaiting_approval' => 3, 'work_in_progress' => 3, 'awaiting_parts' => 3,
+        'post_work_trial' => 4, 'wash_pending' => 5, 'qc_pending' => 6, 'ready_for_delivery' => 7,
+        'invoiced' => 8, 'gate_pass_generated' => 9, 'delivered' => 10,
+    ];
+
+    public const OVERRIDE_PERMISSION = 'workshop.job-cards.override-guards';
+
+    /**
+     * Guards no override can skip.
+     */
+    public const HARD_GUARDS = [GatePassIssued::CODE];
 
     /**
      * Any non-terminal status may be cancelled, with a reason.
@@ -124,22 +169,75 @@ class JobCardWorkflow
         $options = [];
 
         foreach ($this->edgesFrom($jobCard->status) as $to => $edge) {
-            $permitted = $user->hasAnyPermission($edge['perms']);
+            $manual = $this->isManualCorrection($jobCard, $to);
+            $permitted = $this->mayTake($jobCard, $user, $to, $edge);
             $failures = $this->failedGuards($jobCard, $edge);
+            $hard = array_filter($failures, fn (GuardFailure $f) => in_array($f->code, self::HARD_GUARDS, true));
 
             $options[] = [
                 'status' => $to,
                 'label' => JobCardStatus::from($to)->label(),
                 'allowed' => $permitted && empty($failures),
                 'permitted' => $permitted,
-                'requires_notes' => $edge['requires_notes'],
-                'can_override' => $permitted && !empty($failures)
-                    && $user->hasPermission('workshop.job-cards.override-guards'),
+                'manual' => $manual,
+                'requires_notes' => $edge['requires_notes'] || $manual,
+                'can_override' => $permitted && !empty($failures) && !$hard
+                    && $user->hasPermission(self::OVERRIDE_PERMISSION),
                 'blocked_by' => array_map(fn (GuardFailure $f) => $f->toArray(), $failures),
             ];
         }
 
         return $options;
+    }
+
+    /**
+     * A move into a stage the system enters by itself, other than an event
+     * (QC result, send back, cancel) or moving on after the car was sent back.
+     */
+    public function isManualCorrection(JobCard $jobCard, string $to): bool
+    {
+        $from = $jobCard->status;
+
+        if ($to === JobCardStatus::Cancelled->value || in_array($to, self::EVENT_EDGES[$from] ?? [], true)) {
+            return false;
+        }
+
+        if (!WorkflowStage::isAuto($to)) {
+            return false;
+        }
+
+        // Sent back to work (trial drive / QC failed): the system waits for people to move it on again
+        return !($from === JobCardStatus::WorkInProgress->value && $this->enteredBackwards($jobCard) && $this->order($to) > $this->order($from));
+    }
+
+    public function mayTake(JobCard $jobCard, User $user, string $to, array $edge): bool
+    {
+        return $this->isManualCorrection($jobCard, $to)
+            ? $user->hasPermission(self::OVERRIDE_PERMISSION)
+            : $user->hasAnyPermission($edge['perms']);
+    }
+
+    /**
+     * Whether the job came into its current status from a later stage.
+     */
+    public function enteredBackwards(JobCard $jobCard): bool
+    {
+        $from = JobCardStatusHistory::where('job_card_id', $jobCard->id)
+            ->where('to_status', $jobCard->status)
+            ->latest('id')
+            ->value('from_status');
+
+        return $from !== null && $this->order($from) > $this->order($jobCard->status);
+    }
+
+    public function isForward(string $from, string $to): bool
+    {
+        return $this->order($to) > $this->order($from);
+    }
+
+    private function order(string $status): int
+    {
+        return self::ORDER[$status] ?? 0;
     }
 
     /**

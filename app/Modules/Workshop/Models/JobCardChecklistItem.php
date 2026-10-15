@@ -44,6 +44,8 @@ class JobCardChecklistItem extends Model
         'photo_path',
         'completed_by',
         'completed_at',
+        'qc_evidence_required',
+        'qc_marked_at',
     ];
 
     protected $casts = [
@@ -54,6 +56,8 @@ class JobCardChecklistItem extends Model
         'min_media_count' => 'integer',
         'value_json' => 'array',
         'completed_at' => 'datetime',
+        'qc_evidence_required' => 'boolean',
+        'qc_marked_at' => 'datetime',
     ];
 
     public function jobCardChecklist()

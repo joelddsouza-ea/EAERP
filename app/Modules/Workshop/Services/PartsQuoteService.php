@@ -5,7 +5,9 @@ namespace App\Modules\Workshop\Services;
 use App\Core\Models\Role;
 use App\Core\Models\User;
 use App\Modules\Workshop\Models\JobCard;
+use App\Modules\Workshop\Models\JobCardAdditionalJob;
 use App\Modules\Workshop\Models\JobCardEstimate;
+use App\Modules\Workshop\Models\JobCardIssue;
 use App\Modules\Workshop\Models\JobCardEstimateLine as Line;
 use App\Modules\Workshop\Models\SparePartQuote;
 use App\Modules\Workshop\Models\SparePartRequest;
@@ -53,6 +55,155 @@ class PartsQuoteService
         ));
 
         return $requests;
+    }
+
+    /**
+     * Technician lists a part needed for an additional job (stays a draft until submitted to the advisor).
+     */
+    public function addTechnicianPart(JobCard $jobCard, JobCardAdditionalJob $job, array $part, User $technician): SparePartRequest
+    {
+        if ($job->job_card_id !== $jobCard->id) {
+            throw new EstimateException('That job belongs to another job card.', [], 404);
+        }
+        if ($jobCard->isClosed()) {
+            throw new EstimateException('This job card is closed.');
+        }
+
+        return $jobCard->sparePartRequests()->create([
+            'job_card_additional_job_id' => $job->id,
+            'part_name' => $part['part_name'],
+            'part_number' => $part['part_number'] ?? null,
+            'quantity' => $part['quantity'] ?? 1,
+            'unit' => $part['unit'] ?? 'nos',
+            'requested_note' => $part['note'] ?? null,
+            'status' => SparePartRequest::DRAFT,
+            'requested_by' => $technician->id,
+            'requested_at' => now(),
+        ]);
+    }
+
+    /**
+     * Technician lists a part required for an Additional Issues line (draft until submitted to the advisor).
+     */
+    public function addIssuePart(JobCard $jobCard, JobCardIssue $issue, array $part, User $technician): SparePartRequest
+    {
+        if ($issue->job_card_id !== $jobCard->id) {
+            throw new EstimateException('That line belongs to another job card.', [], 404);
+        }
+        if ($jobCard->isClosed()) {
+            throw new EstimateException('This job card is closed.');
+        }
+        if (in_array($issue->status, ['resolved', 'deferred'], true)) {
+            throw new EstimateException('Re-open the line to add parts to it.');
+        }
+        // Evidence of the faulty part first, then the part required
+        if (!app(IssueLineRules::class)->canListParts($issue->load(IssueLineRules::RELATIONS))) {
+            throw new EstimateException('Add a photo or video of the faulty part first.', [
+                'part_name' => ['Add a photo or video of the faulty part first.'],
+            ]);
+        }
+
+        return $jobCard->sparePartRequests()->create([
+            'job_card_issue_id' => $issue->id,
+            'part_name' => $part['part_name'],
+            'part_number' => $part['part_number'] ?? null,
+            'quantity' => $part['quantity'] ?? 1,
+            'unit' => $part['unit'] ?? 'nos',
+            'requested_note' => $part['note'] ?? null,
+            'status' => SparePartRequest::DRAFT,
+            'requested_by' => $technician->id,
+            'requested_at' => now(),
+        ]);
+    }
+
+    /**
+     * "Submit to SA for Parts": the technician's draft parts go to the job's advisor.
+     *
+     * @return Collection<int, SparePartRequest> the parts sent
+     */
+    public function submitToAdvisor(JobCard $jobCard, User $technician): Collection
+    {
+        $drafts = $jobCard->sparePartRequests()->where('status', SparePartRequest::DRAFT)->get();
+        if ($drafts->isEmpty()) {
+            throw new EstimateException('Add the parts needed to an additional job first.', [
+                'parts' => ['No parts listed yet.'],
+            ]);
+        }
+
+        SparePartRequest::whereIn('id', $drafts->pluck('id'))->update(['status' => SparePartRequest::PROPOSED]);
+
+        $advisor = $jobCard->service_advisor_id ? User::find($jobCard->service_advisor_id) : null;
+        $advisor?->notify(StaffAlert::technicianNeedsParts($jobCard, $technician->name, $drafts->pluck('part_name')->all()));
+
+        return $drafts;
+    }
+
+    /**
+     * Advisor sends parts the technician proposed to the spare parts coordinator for prices.
+     *
+     * @param int[] $ids
+     */
+    public function forwardToCoordinator(JobCard $jobCard, array $ids, User $advisor): Collection
+    {
+        $requests = $jobCard->sparePartRequests()
+            ->whereIn('id', $ids)
+            ->whereIn('status', [SparePartRequest::PROPOSED, SparePartRequest::DRAFT])
+            ->get();
+
+        if ($requests->isEmpty()) {
+            throw new EstimateException('Choose parts the technician has sent you.');
+        }
+
+        SparePartRequest::whereIn('id', $requests->pluck('id'))->update([
+            'status' => SparePartRequest::REQUESTED,
+            'forwarded_by' => $advisor->id,
+            'forwarded_at' => now(),
+        ]);
+
+        $this->notifyCoordinators($jobCard, StaffAlert::partsPriceRequested(
+            $jobCard,
+            $requests->pluck('part_name')->all(),
+            $advisor->name,
+        ));
+
+        return $requests;
+    }
+
+    /**
+     * Coordinator marks a part as received (until the Phase 3 GRN does this); the job's
+     * technician and advisor are told it has arrived.
+     */
+    public function markReceived(SparePartRequest $request, User $user): SparePartRequest
+    {
+        if (!in_array($request->status, [SparePartRequest::APPROVED, SparePartRequest::ORDERED], true)) {
+            throw new EstimateException('Only approved or ordered parts can be marked received.');
+        }
+
+        $request->update([
+            'status' => SparePartRequest::RECEIVED,
+            'received_by' => $user->id,
+            'received_at' => now(),
+            'received_quantity' => $request->quantity,
+            'ordered_by' => $request->ordered_by ?? $user->id,
+            'ordered_at' => $request->ordered_at ?? now(),
+        ]);
+
+        $jobCard = $request->jobCard()->withoutGlobalScopes()->first();
+        if ($jobCard) {
+            // Every technician on the job (lead and co-technicians)
+            $technicianIds = $jobCard->technicians()->pluck('users.id')->push($jobCard->technician_id)->filter()->unique();
+            foreach (User::whereIn('id', $technicianIds)->get() as $technician) {
+                $technician->notify(StaffAlert::partsReceived($jobCard, [$request->part_name], true));
+            }
+            if ($jobCard->service_advisor_id && !$technicianIds->contains($jobCard->service_advisor_id)) {
+                User::find($jobCard->service_advisor_id)?->notify(StaffAlert::partsReceived($jobCard, [$request->part_name], false));
+            }
+
+            // Last part in: Awaiting Parts → back to work
+            app(JobLifecycleService::class)->sync($jobCard, 'parts_received');
+        }
+
+        return $request;
     }
 
     /**
@@ -127,10 +278,11 @@ class PartsQuoteService
             }
         });
 
-        foreach ($requests->groupBy(fn ($r) => $r->job_card_id . ':' . $r->requested_by) as $group) {
-            $first = $group->first();
-            $advisor = User::find($first->requested_by ?? $first->jobCard->service_advisor_id);
-            $advisor?->notify(StaffAlert::partsQuoted($first->jobCard, $group->pluck('part_name')->all()));
+        // Prices are for the advisor (and owner / managers) — not the technician who listed the parts
+        foreach ($requests->groupBy('job_card_id') as $group) {
+            $jobCard = $group->first()->jobCard;
+            $recipients = $this->advisorsAndManagers($jobCard, $group->pluck('forwarded_by')->all());
+            Notification::send($recipients, StaffAlert::partsQuoted($jobCard, $group->pluck('part_name')->all()));
         }
 
         return $requests;
@@ -165,6 +317,9 @@ class PartsQuoteService
                 'unit_cost' => $cost,
                 'margin_pct' => $margin,
                 'spare_part_request_id' => $request->id,
+                // A part the technician asked for belongs to that job sheet line
+                'job_card_additional_job_id' => $request->job_card_additional_job_id,
+                'job_card_issue_id' => $request->job_card_issue_id,
             ]);
 
             $request->update(['estimate_line_key' => $line->line_key]);
@@ -179,13 +334,38 @@ class PartsQuoteService
      */
     public function syncFromEstimate(JobCard $jobCard, JobCardEstimate $estimate): void
     {
+        $newlyApproved = [];
+
+        // Parts the advisor typed straight onto the estimate (not priced through the Parts Desk):
+        // once approved they still have to be procured, so they go to the coordinator's list
+        $manual = $estimate->lines()
+            ->where('kind', 'part')
+            ->whereNull('spare_part_request_id')
+            ->where('approval_status', Line::APPROVED)
+            ->get();
+        foreach ($manual as $line) {
+            $request = $jobCard->sparePartRequests()->create([
+                'estimate_line_key' => $line->line_key,
+                'job_card_issue_id' => $line->job_card_issue_id,
+                'part_name' => $line->description,
+                'quantity' => $line->quantity,
+                'unit' => 'nos',
+                'status' => SparePartRequest::APPROVED,
+                'requested_by' => $line->decided_by ?? $jobCard->service_advisor_id,
+                'requested_at' => now(),
+                'approved_by' => $line->decided_by,
+                'approved_at' => now(),
+            ]);
+            $line->update(['spare_part_request_id' => $request->id]);
+            $newlyApproved[] = $request->part_name;
+        }
+
         $lines = $estimate->lines()->whereNotNull('spare_part_request_id')->get();
         if ($lines->isEmpty()) {
             return;
         }
 
         $requests = SparePartRequest::whereIn('id', $lines->pluck('spare_part_request_id'))->get()->keyBy('id');
-        $newlyApproved = [];
 
         foreach ($lines as $line) {
             $request = $requests->get($line->spare_part_request_id);
@@ -232,13 +412,32 @@ class PartsQuoteService
 
     public function cancel(SparePartRequest $request): SparePartRequest
     {
-        if (!in_array($request->status, SparePartRequest::QUOTABLE, true) || $request->estimate_line_key) {
+        $cancellable = [SparePartRequest::DRAFT, SparePartRequest::PROPOSED, ...SparePartRequest::QUOTABLE];
+        if (!in_array($request->status, $cancellable, true) || $request->estimate_line_key) {
             throw new EstimateException('This part is already on an estimate; remove the estimate line instead.');
         }
 
         $request->update(['status' => SparePartRequest::CANCELLED]);
 
         return $request;
+    }
+
+    /**
+     * The job's advisor, whoever forwarded the parts, and the owner / managers of the branch.
+     *
+     * @param array<int, ?int> $extraUserIds
+     */
+    protected function advisorsAndManagers(JobCard $jobCard, array $extraUserIds = []): \Illuminate\Support\Collection
+    {
+        $ids = collect($extraUserIds)->push($jobCard->service_advisor_id)->filter();
+
+        $managers = User::active()
+            ->whereHas('roles', fn ($q) => $q->whereIn('slug', [Role::OWNER, Role::MANAGER, Role::BODY_SHOP_MANAGER]))
+            ->get()
+            // Owners see every branch; managers only their own
+            ->filter(fn (User $u) => $u->hasRole(Role::OWNER) || !$jobCard->branch_id || $u->hasAccessToBranch($jobCard->branch_id));
+
+        return User::whereIn('id', $ids)->get()->concat($managers)->unique('id')->values();
     }
 
     protected function notifyCoordinators(JobCard $jobCard, StaffAlert $alert): void

@@ -26,6 +26,7 @@ class EstimateDecisionService
         protected CustomerMessageService $messages,
         protected JobCardStatusService $statusService,
         protected PartsQuoteService $parts,
+        protected ObservationService $observations,
     ) {}
 
     /**
@@ -116,6 +117,8 @@ class EstimateDecisionService
             $this->calculator->recalculate($estimate);
             $this->syncJobCard($jobCard, $estimate);
             $this->parts->syncFromEstimate($jobCard, $estimate);
+            // Declined lines go to the Observations list ("Customer not approved")
+            $this->observations->syncDeclinedLines($jobCard, $estimate);
 
             if ($via === Line::VIA_ADVISOR) {
                 $message = $this->messages->prepare($jobCard, 'decision_recorded', [
@@ -207,16 +210,8 @@ class EstimateDecisionService
      */
     public function resumeWorkIfAnswered(JobCard $jobCard, JobCardEstimate $estimate, string $via): bool
     {
-        if ($jobCard->status !== JobCardStatus::AwaitingApproval->value || $this->hasPending($estimate->fresh('lines'))) {
-            return false;
-        }
-
-        return $this->statusService->changeBySystem(
-            $jobCard,
-            JobCardStatus::WorkInProgress->value,
-            $via,
-            'All estimate items answered.'
-        );
+        // The job stages decide where it goes (back to work, or on to Awaiting Parts)
+        return in_array(JobCardStatus::WorkInProgress->value, app(JobLifecycleService::class)->sync($jobCard, $via), true);
     }
 
     public function currentEstimate(JobCard $jobCard): JobCardEstimate

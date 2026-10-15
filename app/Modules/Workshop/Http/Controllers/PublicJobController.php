@@ -11,11 +11,14 @@ use App\Modules\Workshop\Models\JobCardEstimateComment;
 use App\Modules\Workshop\Models\JobCardEstimateLine as Line;
 use App\Modules\Workshop\Models\JobCardMedia;
 use App\Modules\Workshop\Services\CustomerDocumentService;
+use App\Modules\Workshop\Services\CustomerGalleryService;
 use App\Modules\Workshop\Services\EstimateDecisionService;
 use App\Modules\Workshop\Services\EstimateException;
 use App\Modules\Workshop\Services\EstimatePresenter;
 use App\Modules\Workshop\Services\ServiceReportService;
 use App\Modules\Workshop\Services\CustomerLinkService;
+use App\Modules\Billing\Services\BillingDocuments;
+use App\Modules\Billing\Services\BillingService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -83,20 +86,70 @@ class PublicJobController extends ApiController
             ],
             'estimate' => $estimate ? $this->presenter->present($estimate, forCustomer: true) : null,
             'decisions_open' => $this->decisions->decisionsOpen($jobCard),
-            'media' => JobCardMedia::where('job_card_id', $jobCard->id)
-                ->where('customer_visible', true)
-                ->orderBy('id')
-                ->get()
-                ->map(fn (JobCardMedia $m) => [
-                    'id' => $m->id,
-                    'media_type' => $m->media_type,
-                    'description' => $m->description,
-                    'url' => $m->url(),
-                    'thumbnail_url' => $m->thumbnail_path ? $m->url(true) : null,
-                    'captured_at' => ($m->captured_at ?? $m->created_at)?->toIso8601String(),
-                ])->values(),
+            // Section-wise: arrival, job sheets by section, additional work before/after
+            'gallery' => app(CustomerGalleryService::class)->build($jobCard),
+            'version' => $this->pageVersion($jobCard),
             'report' => $report->released_at ? $this->reports->build($jobCard, forCustomer: true) : null,
+            'bill' => $this->customerBill($jobCard),
         ]);
+    }
+
+    /**
+     * The customer's page asks this every few seconds and reloads when it changes.
+     */
+    public function version(string $token): JsonResponse
+    {
+        [, $jobCard] = $this->resolve($token);
+
+        return $this->success(['version' => $this->pageVersion($jobCard)]);
+    }
+
+    /**
+     * Changes whenever something the customer sees changes: status, estimate, photos/videos,
+     * report, bill and payments.
+     */
+    private function pageVersion(JobCard $jobCard): string
+    {
+        $media = JobCardMedia::where('job_card_id', $jobCard->id)->where('customer_visible', true)
+            ->selectRaw('COUNT(*) c, MAX(id) m')->first();
+        $estimate = JobCardEstimate::where('job_card_id', $jobCard->id)->max('updated_at');
+        $bill = \App\Modules\Billing\Models\Invoice::withoutGlobalScopes()->where('job_card_id', $jobCard->id)->max('updated_at');
+        $paid = \App\Modules\Billing\Models\Payment::withoutGlobalScopes()->where('job_card_id', $jobCard->id)->max('id');
+        $report = \App\Modules\Workshop\Models\JobCardReport::where('job_card_id', $jobCard->id)->value('released_at');
+
+        return md5(implode('|', [$jobCard->status, $jobCard->status_changed_at, $media?->c, $media?->m, $estimate, $bill, $paid, $report]));
+    }
+
+    public function billPdf(string $token, BillingDocuments $documents)
+    {
+        [, $jobCard] = $this->resolve($token);
+        $bill = app(BillingService::class)->payableBill($jobCard) ?? throw new EstimateException('The bill is not ready yet.', [], 404);
+
+        return $documents->billPdf($bill);
+    }
+
+    /**
+     * The approved bill with what has been paid (nothing before back office approves it).
+     */
+    private function customerBill(JobCard $jobCard): ?array
+    {
+        $billing = app(BillingService::class);
+        $bill = $billing->payableBill($jobCard);
+
+        if (!$bill) {
+            return null;
+        }
+
+        $summary = $billing->summary($jobCard);
+
+        return [
+            'number' => $bill->invoice_number,
+            'kind' => $bill->kind,
+            'total' => (float) $bill->total_amount,
+            'paid' => $summary['paid'],
+            'balance' => max(0, $summary['balance']),
+            'gate_pass' => $summary['gate_pass']['number'] ?? null,
+        ];
     }
 
     public function decide(Request $request, string $token): JsonResponse

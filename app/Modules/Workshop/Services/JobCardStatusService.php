@@ -10,6 +10,7 @@ use App\Modules\Workshop\Models\FollowUpCall;
 use App\Modules\Workshop\Models\JobCard;
 use App\Modules\Workshop\Models\JobCardChecklist;
 use App\Modules\Workshop\Models\JobCardStatusHistory;
+use App\Modules\Workshop\Models\WorkflowStage;
 use App\Modules\Workshop\Workflow\GuardFailure;
 use App\Modules\Workshop\Workflow\JobCardWorkflow;
 use App\Modules\Workshop\Workflow\TransitionBlockedException;
@@ -25,6 +26,7 @@ class JobCardStatusService
         protected JobCardWorkflow $workflow,
         protected NotificationService $notificationService,
         protected CustomerMessageService $customerMessages,
+        protected CustomerGalleryService $gallery,
     ) {}
 
     /**
@@ -45,14 +47,30 @@ class JobCardStatusService
             throw new TransitionBlockedException($this->label($fromStatus) . ' cannot move to ' . $this->label($toStatus) . '.');
         }
 
-        if (!$user->hasAnyPermission($edge['perms'])) {
-            throw new TransitionBlockedException('You do not have permission to move this job to ' . $this->label($toStatus) . '.', [], 403);
+        $manual = $this->workflow->isManualCorrection($jobCard, $toStatus);
+
+        if (!$this->workflow->mayTake($jobCard, $user, $toStatus, $edge)) {
+            throw new TransitionBlockedException(
+                $manual
+                    ? $this->label($toStatus) . ' is reached automatically' . $this->waitingFor($fromStatus) . ' Only an owner or manager can move the job by hand.'
+                    : 'You do not have permission to move this job to ' . $this->label($toStatus) . '.',
+                [],
+                403
+            );
         }
 
         $notes = $notes !== null ? trim($notes) : null;
 
+        if ($manual && !$notes) {
+            throw new TransitionBlockedException('Give a reason for moving the job by hand (it is logged).');
+        }
+
         if ($edge['requires_notes'] && !$notes) {
             throw new TransitionBlockedException('A note is required to move this job to ' . $this->label($toStatus) . '.');
+        }
+
+        if ($manual) {
+            $meta += ['manual' => true];
         }
 
         $failures = $this->workflow->failedGuards($jobCard, $edge);
@@ -60,6 +78,9 @@ class JobCardStatusService
         if ($failures) {
             if (!$override) {
                 throw new TransitionBlockedException('This job cannot move to ' . $this->label($toStatus) . ' yet.', $failures);
+            }
+            if (array_filter($failures, fn (GuardFailure $f) => in_array($f->code, JobCardWorkflow::HARD_GUARDS, true))) {
+                throw new TransitionBlockedException('This check cannot be overridden here.', $failures);
             }
             if (!$user->hasPermission('workshop.job-cards.override-guards')) {
                 throw new TransitionBlockedException('You do not have permission to override these checks.', $failures, 403);
@@ -107,7 +128,12 @@ class JobCardStatusService
                 JobCardStatus::IntakeInProgress->value => $jobCard->time_in ??= now(),
                 // First start only; resuming after parts/QA must not reset it
                 JobCardStatus::WorkInProgress->value => $jobCard->work_started_at ??= now(),
-                JobCardStatus::PostWorkTrial->value => $jobCard->work_completed_at = now(),
+                // Each round of trial drive / wash is recorded afresh
+                JobCardStatus::PostWorkTrial->value => $jobCard->forceFill([
+                    'work_completed_at' => now(),
+                    'post_trial_result' => null, 'post_trial_notes' => null, 'post_trial_by' => null, 'post_trial_at' => null,
+                ]),
+                JobCardStatus::WashPending->value => $jobCard->forceFill(['wash_done_by' => null, 'wash_done_at' => null]),
                 JobCardStatus::ReadyForDelivery->value => $jobCard->qc_completed_at = now(),
                 JobCardStatus::Delivered->value => $jobCard->time_out = now(),
                 JobCardStatus::Cancelled->value => $jobCard->cancel_reason = $notes,
@@ -118,6 +144,15 @@ class JobCardStatusService
 
             if ($user && $fromStatus === JobCardStatus::WorkInProgress->value && $toStatus === JobCardStatus::PostWorkTrial->value) {
                 $this->completeWorkSheets($jobCard, $user, $meta);
+            }
+
+            // Sent back from final QC (or later): the QC checklist is done again next time
+            if (in_array($fromStatus, [JobCardStatus::QcPending->value, JobCardStatus::ReadyForDelivery->value], true)
+                && in_array($toStatus, [JobCardStatus::WashPending->value, JobCardStatus::WorkInProgress->value], true)) {
+                $jobCard->checklists()
+                    ->where('sheet_kind', ChecklistTemplate::KIND_PRE_DELIVERY)
+                    ->where('status', JobCardChecklist::STATUS_COMPLETED)
+                    ->update(['status' => JobCardChecklist::STATUS_IN_PROGRESS, 'completed_at' => null, 'completed_by' => null]);
             }
 
             JobCardStatusHistory::create([
@@ -152,14 +187,30 @@ class JobCardStatusService
 
     protected function afterTransition(JobCard $jobCard, string $toStatus, ?User $user): void
     {
-        $mode = config("workshop.workflow.notify_customer.{$toStatus}");
+        // The Job stages master decides; config is the fallback for stages without a row
+        $stage = WorkflowStage::for($toStatus);
+        $mode = $stage
+            ? ($stage->notify_customer === WorkflowStage::NOTIFY_OFF ? null : $stage->notify_customer)
+            : config("workshop.workflow.notify_customer.{$toStatus}");
 
-        if ($mode && ($mode === 'always' || $this->isFirstEntry($jobCard, $toStatus))) {
-            $jobCard->loadMissing('customer');
-            if ($jobCard->customer) {
-                $this->notificationService->notifyJobCardStatus($jobCard->customer, $jobCard->job_number, $toStatus);
-                $this->customerMessages->prepareForStatus($jobCard, $toStatus, $user);
+        $jobCard->loadMissing('customer');
+        $sendStage = $mode && ($mode === 'always' || $this->isFirstEntry($jobCard, $toStatus));
+
+        // New photos/videos since the customer was last told, if this stage tells them
+        $gallery = $stage?->gallery_update && $jobCard->customer ? $this->gallery->noticeSince($jobCard->fresh()) : null;
+
+        if ($sendStage && $jobCard->customer) {
+            $this->notificationService->notifyJobCardStatus($jobCard->customer, $jobCard->job_number, $toStatus);
+            $message = $this->customerMessages->prepareForStatus($jobCard, $toStatus, $user, $gallery);
+            if ($message && $gallery) {
+                $this->gallery->markNotified($jobCard);
+                $gallery = null;
             }
+        }
+
+        if ($gallery) {
+            $this->customerMessages->prepare($jobCard, 'gallery_update', ['gallery' => $gallery], $user);
+            $this->gallery->markNotified($jobCard);
         }
 
         if ($toStatus === JobCardStatus::Delivered->value) {
@@ -194,6 +245,16 @@ class JobCardStatusService
             'status' => 'scheduled',
             'scheduled_date' => now()->addDays(7)->toDateString(),
         ]);
+    }
+
+    /**
+     * " when: <what the stage waits for>." from the Job stages master.
+     */
+    private function waitingFor(string $status): string
+    {
+        $text = WorkflowStage::for($status)?->waiting_for;
+
+        return $text ? ' when: ' . rtrim(lcfirst($text), '.') . '.' : '.';
     }
 
     private function label(string $status): string

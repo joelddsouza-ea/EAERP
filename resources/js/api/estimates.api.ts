@@ -261,6 +261,13 @@ export const pricingApi = {
   },
 }
 
+export interface JobSheetMediaSettings {
+  min_photos: number
+  min_videos: number
+  issue_min_problem_media: number
+  issue_min_fitted_media: number
+}
+
 export interface PlanInput {
   name?: string
   description?: string | null
@@ -317,7 +324,7 @@ export const partsApi = {
     return apiClient.get<ApiResponse<LabourCharge[]>>(`${jc(jobCardId)}/labour-charges`, { params: { q: q || undefined } })
   },
 
-  desk(tab: 'requests' | 'procure') {
+  desk(tab: 'requests' | 'procure' | 'all') {
     return apiClient.get<ApiResponse<{ tab: string; requests: SparePartRequest[] }>>('/workshop/parts-desk', {
       params: { tab },
     })
@@ -337,6 +344,30 @@ export const partsApi = {
 
   markOrdered(requestId: number) {
     return apiClient.post<ApiResponse<unknown>>(`/workshop/parts-desk/requests/${requestId}/ordered`)
+  },
+
+  /** Coordinator: the part has arrived (the technician and advisor are notified) */
+  markReceived(requestId: number) {
+    return apiClient.post<ApiResponse<unknown>>(`/workshop/parts-desk/requests/${requestId}/received`)
+  },
+
+  /** Advisor: send parts the technician asked for to the coordinator */
+  forward(jobCardId: number, ids: number[]) {
+    return apiClient.post<ApiResponse<{ forwarded: number }>>(`${jc(jobCardId)}/part-requests/forward`, { ids })
+  },
+
+  /** Technician: a part needed for an additional job (draft until submitted to the advisor) */
+  addTechnicianPart(jobCardId: number, additionalJobId: number, data: PartRequestInput) {
+    return apiClient.post<ApiResponse<SparePartRequest>>(`${jc(jobCardId)}/additional-jobs/${additionalJobId}/parts`, data)
+  },
+
+  removeTechnicianPart(jobCardId: number, requestId: number) {
+    return apiClient.delete<ApiResponse<null>>(`${jc(jobCardId)}/part-requests/${requestId}`)
+  },
+
+  /** Technician: "Submit to SA for Parts" */
+  submitToAdvisor(jobCardId: number) {
+    return apiClient.post<ApiResponse<{ submitted: number }>>(`${jc(jobCardId)}/parts-submission`)
   },
 
   suppliers() {
@@ -366,12 +397,13 @@ export const intakeApi = {
     return apiClient.delete<ApiResponse<IntakeInfo>>(`${jc(jobCardId)}/intake/media/${mediaId}`)
   },
 
+  /** Intake minimums and the Additional Issues photo/video minimums */
   requirements() {
-    return apiClient.get<ApiResponse<{ min_photos: number; min_videos: number }>>('/workshop/intake-requirements')
+    return apiClient.get<ApiResponse<JobSheetMediaSettings>>('/workshop/intake-requirements')
   },
 
-  setRequirements(data: { min_photos: number; min_videos: number }) {
-    return apiClient.put<ApiResponse<{ min_photos: number; min_videos: number }>>('/workshop/intake-requirements', data)
+  setRequirements(data: Partial<JobSheetMediaSettings>) {
+    return apiClient.put<ApiResponse<JobSheetMediaSettings>>('/workshop/intake-requirements', data)
   },
 }
 
@@ -413,12 +445,21 @@ export const publicJobApi = {
     return publicClient.post<ApiResponse<PublicJobPage>>(`/j/${token}/comments`, { body })
   },
 
+  /** Cheap check the page polls; a new value means something changed */
+  version(token: string) {
+    return publicClient.get<ApiResponse<{ version: string }>>(`/j/${token}/version`)
+  },
+
   estimatePdfUrl(token: string) {
     return `/api/v1/public/j/${token}/estimate.pdf`
   },
 
   reportPdfUrl(token: string) {
     return `/api/v1/public/j/${token}/report.pdf`
+  },
+
+  billPdfUrl(token: string) {
+    return `/api/v1/public/j/${token}/bill.pdf`
   },
 }
 

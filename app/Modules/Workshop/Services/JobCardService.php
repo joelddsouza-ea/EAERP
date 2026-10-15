@@ -3,6 +3,7 @@
 namespace App\Modules\Workshop\Services;
 
 use App\Modules\Workshop\Models\JobCard;
+use App\Modules\Workshop\Models\JobCardBayMove;
 use App\Modules\Workshop\Models\JobCardEstimate;
 use App\Modules\Workshop\Models\JobCardStatusHistory;
 use App\Modules\Workshop\Enums\JobCardStatus;
@@ -11,7 +12,8 @@ use Illuminate\Support\Facades\DB;
 class JobCardService
 {
     public function __construct(
-        protected JobSheetService $jobSheetService
+        protected JobSheetService $jobSheetService,
+        protected AdditionalIssueService $issueLines,
     ) {}
 
     /**
@@ -29,6 +31,13 @@ class JobCardService
             $data['status_changed_at'] = now();
             $data = $this->normalizeServiceType($data);
 
+            // Complaint lines also kept as one text for older screens and documents
+            $complaints = array_values(array_filter(array_map('trim', $data['complaints'] ?? []), fn ($c) => $c !== ''));
+            unset($data['complaints']);
+            if ($complaints && empty($data['customer_complaints'])) {
+                $data['customer_complaints'] = implode("\n", $complaints);
+            }
+
             // Calculate package price if package selected
             if (!empty($data['package_id']) && !empty($data['vehicle_id'])) {
                 $data['package_price'] = $this->calculatePackagePrice(
@@ -42,6 +51,9 @@ class JobCardService
 
             // Create the job sheets for this plan / service type
             $this->jobSheetService->instantiateFor($jobCard);
+
+            // Each complaint is a line under Additional Issues on the technician's sheet
+            $this->issueLines->createComplaints($jobCard, $complaints, auth()->user());
 
             JobCardStatusHistory::create([
                 'job_card_id' => $jobCard->id,
@@ -127,22 +139,82 @@ class JobCardService
      */
     public function assignTechnician(JobCard $jobCard, int $technicianId): JobCard
     {
-        $jobCard->update(['technician_id' => $technicianId]);
-
-        // Notify technician
-        // $this->notificationService->sendPush(...);
-
-        return $jobCard->fresh();
+        // Kept for the single-technician endpoint: makes this technician the lead
+        return $this->addTechnician($jobCard, $technicianId, true);
     }
 
     /**
-     * Assign bay to job card.
+     * Put a technician on the job. The lead is also kept in job_cards.technician_id.
      */
-    public function assignBay(JobCard $jobCard, int $bayId): JobCard
+    public function addTechnician(JobCard $jobCard, int $technicianId, bool $lead = false): JobCard
     {
-        $jobCard->update(['bay_id' => $bayId]);
+        return DB::transaction(function () use ($jobCard, $technicianId, $lead) {
+            $makeLead = $lead || !$jobCard->technician_id;
 
-        return $jobCard->fresh();
+            if ($makeLead) {
+                DB::table('job_card_technicians')->where('job_card_id', $jobCard->id)->update(['is_lead' => false]);
+            }
+
+            $jobCard->technicians()->syncWithoutDetaching([
+                $technicianId => ['is_lead' => $makeLead, 'assigned_by' => auth()->id(), 'assigned_at' => now()],
+            ]);
+            if (!$makeLead) {
+                DB::table('job_card_technicians')
+                    ->where(['job_card_id' => $jobCard->id, 'user_id' => $technicianId])
+                    ->update(['is_lead' => false]);
+            }
+
+            if ($makeLead) {
+                $jobCard->update(['technician_id' => $technicianId]);
+            }
+
+            return $jobCard->fresh();
+        });
+    }
+
+    /**
+     * Take a technician off the job; if it was the lead, the next one becomes lead.
+     */
+    public function removeTechnician(JobCard $jobCard, int $technicianId): JobCard
+    {
+        return DB::transaction(function () use ($jobCard, $technicianId) {
+            $jobCard->technicians()->detach($technicianId);
+
+            if ($jobCard->technician_id === $technicianId) {
+                $next = DB::table('job_card_technicians')->where('job_card_id', $jobCard->id)->orderBy('id')->value('user_id');
+                if ($next) {
+                    DB::table('job_card_technicians')->where(['job_card_id' => $jobCard->id, 'user_id' => $next])->update(['is_lead' => true]);
+                }
+                $jobCard->update(['technician_id' => $next]);
+            }
+
+            return $jobCard->fresh();
+        });
+    }
+
+    /**
+     * Put the car in a bay, or move it to another bay (the move is kept in the history).
+     */
+    public function assignBay(JobCard $jobCard, int $bayId, ?string $notes = null): JobCard
+    {
+        if ($jobCard->bay_id === $bayId) {
+            return $jobCard;
+        }
+
+        return DB::transaction(function () use ($jobCard, $bayId, $notes) {
+            JobCardBayMove::create([
+                'job_card_id' => $jobCard->id,
+                'from_bay_id' => $jobCard->bay_id,
+                'to_bay_id' => $bayId,
+                'notes' => $notes,
+                'moved_by' => auth()->id(),
+                'moved_at' => now(),
+            ]);
+
+            $jobCard->update(['bay_id' => $bayId]);
+
+            return $jobCard->fresh();
+        });
     }
 
     /**
