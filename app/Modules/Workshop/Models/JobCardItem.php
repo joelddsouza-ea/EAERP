@@ -8,6 +8,7 @@ class JobCardItem extends Model
 {
     protected $fillable = [
         'job_card_id',
+        'estimate_line_key',
         'type',
         'description',
         'part_number',

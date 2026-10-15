@@ -9,62 +9,27 @@ class VehicleCategoriesSeeder extends Seeder
 {
     public function run(): void
     {
-        $categories = [
-            [
-                'name' => 'Hatchback',
-                'slug' => 'hatchback',
-                'description' => 'Small hatchback cars like Swift, i10, Nano, Figo',
-                'sort_order' => 1,
-            ],
-            [
-                'name' => 'Premium Hatchback',
-                'slug' => 'premium-hatchback',
-                'description' => 'Premium hatchbacks like Jazz, i20, Polo',
-                'sort_order' => 2,
-            ],
-            [
-                'name' => 'Sedan / Compact SUV',
-                'slug' => 'sedan-compact-suv',
-                'description' => 'Sedans and compact SUVs like City, Verna, Creta, Venue',
-                'sort_order' => 3,
-            ],
-            [
-                'name' => 'SUV / MUV',
-                'slug' => 'suv-muv',
-                'description' => 'Full-size SUVs and MUVs like Innova, XUV, Safari',
-                'sort_order' => 4,
-            ],
-            [
-                'name' => 'Premium SUV',
-                'slug' => 'premium-suv',
-                'description' => 'Premium SUVs like Fortuner, Endeavour',
-                'sort_order' => 5,
-            ],
-            [
-                'name' => 'Luxury Class 3',
-                'slug' => 'luxury-class-3',
-                'description' => 'Entry luxury like Audi A4, BMW 3 Series, Mercedes C-Class',
-                'sort_order' => 6,
-            ],
-            [
-                'name' => 'Luxury Class 2',
-                'slug' => 'luxury-class-2',
-                'description' => 'Mid luxury like Audi A6, BMW 5 Series, Mercedes E-Class',
-                'sort_order' => 7,
-            ],
-            [
-                'name' => 'Luxury Class 1',
-                'slug' => 'luxury-class-1',
-                'description' => 'Top luxury like Audi A8, BMW 7 Series, Mercedes S-Class, Range Rover',
-                'sort_order' => 8,
-            ],
+        // Names and order follow the owner's estimate sheet; descriptions are ours
+        $descriptions = [
+            'hatchback' => 'Small hatchback cars like Swift, i10, Nano, Figo',
+            'sedan-compact-suv' => 'Premium hatchbacks, sedans and compact SUVs like i20, Jazz, City, Verna, Creta, Venue',
+            'suv-muv' => 'Full-size SUVs and MUVs like Innova, XUV, Safari',
+            'premium-suv' => 'Premium SUVs like Fortuner, Endeavour',
+            'luxury-class-1' => 'Top luxury like Audi A8, BMW 7 Series, Mercedes S-Class, Range Rover',
+            'luxury-class-2' => 'Mid luxury like Audi A6, BMW 5 Series, Mercedes E-Class',
+            'luxury-class-3' => 'Entry luxury like Audi A4, BMW 3 Series, Mercedes C-Class',
         ];
 
-        foreach ($categories as $category) {
-            VehicleCategory::firstOrCreate(
+        $priceList = require database_path('seeders/data/pricing/price_list.php');
+
+        foreach ($priceList['categories'] as $category) {
+            VehicleCategory::updateOrCreate(
                 ['slug' => $category['slug']],
-                $category
+                [...$category, 'description' => $descriptions[$category['slug']] ?? null, 'is_active' => true]
             );
         }
+
+        // Merged into "Prem. Hatch / Sedan / Compact SUV" (see 2026_10_16_000001 migration)
+        VehicleCategory::where('slug', 'premium-hatchback')->update(['is_active' => false]);
     }
 }

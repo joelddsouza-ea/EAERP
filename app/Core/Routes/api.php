@@ -2,6 +2,7 @@
 
 use Illuminate\Support\Facades\Route;
 use App\Core\Http\Controllers\Api\AuthController;
+use App\Core\Http\Controllers\Api\NotificationController;
 
 /*
 |--------------------------------------------------------------------------
@@ -26,6 +27,11 @@ Route::prefix('v1')->group(function () {
             Route::post('/refresh', [AuthController::class, 'refresh']);
             Route::post('/change-password', [AuthController::class, 'changePassword']);
         });
+
+        // In-app notifications (header bell)
+        Route::get('/notifications', [NotificationController::class, 'index']);
+        Route::post('/notifications/read-all', [NotificationController::class, 'markAllRead']);
+        Route::post('/notifications/{id}/read', [NotificationController::class, 'markRead']);
 
         // Apply branch context to all authenticated routes
         Route::middleware('branch.context')->group(function () {

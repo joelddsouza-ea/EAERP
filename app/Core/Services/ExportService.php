@@ -27,10 +27,15 @@ class ExportService
         array $data,
         string $filename,
         string $orientation = 'portrait',
-        string $size = 'a4'
+        string $size = 'a4',
+        array $options = []
     ) {
         $pdf = Pdf::loadView($view, $data)
             ->setPaper($size, $orientation);
+
+        if ($options) {
+            $pdf->setOption($options);
+        }
 
         return $pdf->download($filename . '.pdf');
     }

@@ -18,6 +18,10 @@ const JobCardForm = () => import('@/views/workshop/JobCardForm.vue')
 const JobCardDetail = () => import('@/views/workshop/JobCardDetail.vue')
 const JobSheet = () => import('@/views/workshop/JobSheet.vue')
 const JobSheetMasters = () => import('@/views/workshop/masters/JobSheetMasters.vue')
+const PricingMasters = () => import('@/views/workshop/masters/PricingMasters.vue')
+const PartsDesk = () => import('@/views/workshop/PartsDesk.vue')
+const EstimateEditor = () => import('@/views/workshop/EstimateEditor.vue')
+const CustomerJob = () => import('@/views/public/CustomerJob.vue')
 const BayList = () => import('@/views/workshop/BayList.vue')
 const MyJobs = () => import('@/views/workshop/MyJobs.vue')
 
@@ -148,6 +152,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: 'Job Sheet', permission: 'workshop.job-sheets.view' },
       },
       {
+        path: 'job-cards/:id/estimate',
+        name: 'job-card-estimate',
+        component: EstimateEditor,
+        meta: { title: 'Estimate', permission: 'workshop.estimates.view' },
+      },
+      {
         path: 'job-cards/:id/edit',
         name: 'job-card-edit',
         component: JobCardForm,
@@ -159,6 +169,20 @@ const routes: RouteRecordRaw[] = [
         name: 'job-sheet-masters',
         component: JobSheetMasters,
         meta: { title: 'Job Sheet Masters', permission: 'workshop.job-sheet-masters.view' },
+      },
+
+      {
+        path: 'pricing-masters',
+        name: 'pricing-masters',
+        component: PricingMasters,
+        meta: { title: 'Price Masters', permission: 'workshop.pricing-masters.view' },
+      },
+
+      {
+        path: 'parts-desk',
+        name: 'parts-desk',
+        component: PartsDesk,
+        meta: { title: 'Parts Desk', permission: 'workshop.spare-parts.view' },
       },
 
       {
@@ -261,6 +285,14 @@ const routes: RouteRecordRaw[] = [
         meta: { title: 'Edit Branch', permission: 'user-admin.branches.update' },
       },
     ],
+  },
+
+  // Customer's login-free job page (token in the URL is the credential)
+  {
+    path: '/j/:token',
+    name: 'customer-job',
+    component: CustomerJob,
+    meta: { title: 'Your car' },
   },
 
   // Error routes

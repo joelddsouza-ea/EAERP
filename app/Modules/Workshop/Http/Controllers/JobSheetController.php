@@ -3,6 +3,7 @@
 namespace App\Modules\Workshop\Http\Controllers;
 
 use App\Core\Http\Controllers\Api\ApiController;
+use App\Modules\Workshop\Http\Controllers\Concerns\ValidatesMediaUpload;
 use App\Modules\Workshop\Http\Resources\JobCardMediaResource;
 use App\Modules\Workshop\Http\Resources\JobSheetItemResource;
 use App\Modules\Workshop\Http\Resources\JobSheetResource;
@@ -26,6 +27,8 @@ use Symfony\Component\HttpFoundation\BinaryFileResponse;
  */
 class JobSheetController extends ApiController
 {
+    use ValidatesMediaUpload;
+
     private const SHEET_RELATIONS = ['items.media', 'items.completedBy', 'template', 'completedBy'];
 
     public function __construct(
@@ -97,26 +100,8 @@ class JobSheetController extends ApiController
 
     public function uploadMedia(Request $request, JobCard $jobCard, JobCardChecklist $sheet, JobCardChecklistItem $item): JsonResponse
     {
-        $maxVideo = (int) config('workshop.job_sheets.max_video_kb');
-        $maxPhoto = (int) config('workshop.job_sheets.max_photo_kb');
-
-        $request->validate([
-            'file' => [
-                'required', 'file',
-                'mimetypes:image/jpeg,image/png,image/webp,image/heic,image/heif,video/mp4,video/quicktime,video/webm',
-                'max:' . max($maxVideo, $maxPhoto),
-            ],
-            'poster' => 'nullable|image|max:2048',
-            'duration_seconds' => 'nullable|numeric|min:0|max:' . config('workshop.job_sheets.max_video_seconds'),
-            'description' => 'nullable|string|max:255',
-            'captured_at' => 'nullable|date',
-        ]);
-
+        $this->validateMediaUpload($request);
         $file = $request->file('file');
-        $isVideo = str_starts_with((string) $file->getMimeType(), 'video/');
-        if (!$isVideo && $file->getSize() > $maxPhoto * 1024) {
-            return $this->validationError(['file' => ['Photos may not be larger than ' . round($maxPhoto / 1024) . ' MB.']]);
-        }
 
         $item->setRelation('jobCardChecklist', $sheet->setRelation('jobCard', $jobCard));
         $media = $this->sheets->attachMedia(

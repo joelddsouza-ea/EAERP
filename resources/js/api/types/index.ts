@@ -185,6 +185,11 @@ export interface JobCard {
   service_type: ServiceType | null
   status: JobCardStatus
   priority: 'low' | 'normal' | 'high' | 'urgent'
+  package_id?: number | null
+  oil_type_id?: number | null
+  package?: { id: number; name: string; activity_points: number } | null
+  oil_type?: { id: number; name: string } | null
+  package_price?: number | string
   km_reading: number | null
   fuel_level: FuelLevel | null
   customer_complaints: string | null
@@ -551,3 +556,355 @@ export interface InvoiceFilters {
 
 // Form payloads may send null for cleared optional fields
 export type FormPayload<T> = { [K in keyof T]?: T[K] | null }
+
+// ---- Estimates & customer approval (Phase 2) ----
+
+export type EstimateStatus = 'draft' | 'sent' | 'superseded'
+export type EstimateLineKind = 'oil' | 'plan_item' | 'plan_extra' | 'labour_balance' | 'part' | 'labor' | 'third_party'
+export type ApprovalStatus = 'included' | 'pending' | 'approved' | 'declined'
+
+export interface EstimateLineMedia {
+  id: number
+  media_type: 'photo' | 'video'
+  description: string | null
+  url: string
+  thumbnail_url: string | null
+}
+
+export interface EstimateLine {
+  id: number
+  line_key: string
+  section: 'plan' | 'additional'
+  kind: EstimateLineKind
+  description: string
+  quantity: number
+  rate: number
+  amount: number
+  approval_status: ApprovalStatus
+  approval_label: string
+  decided_via: 'customer_link' | 'advisor_on_behalf' | null
+  decided_by: string | null
+  decided_at: string | null
+  media: EstimateLineMedia[]
+  job_card_additional_job_id?: number | null
+  job_card_issue_id?: number | null
+  /** Workshop-only fields (never sent to the customer) */
+  labour_service_id?: number | null
+  spare_part_request_id?: number | null
+  unit_cost?: number | null
+  margin_pct?: number | null
+}
+
+export interface EstimateComment {
+  id: number
+  author_type: 'customer' | 'staff'
+  author: string | null
+  body: string
+  created_at: string
+}
+
+export interface Estimate {
+  id: number
+  job_card_id: number
+  version: number
+  status: EstimateStatus
+  package_id: number | null
+  category_id: number | null
+  oil_type_id: number | null
+  package_name: string | null
+  category_name: string | null
+  oil_type_name: string | null
+  package_price: number
+  plan_lines: EstimateLine[]
+  additional_lines: EstimateLine[]
+  plan_discount_pct: number
+  plan_discount_flat: number
+  plan_discount: number
+  plan_total: number
+  extras_discount_pct: number
+  extras_discount_flat: number
+  extras_subtotal: number
+  extras_discount: number
+  extras_total: number
+  grand_total: number
+  grand_total_words: string
+  pending_count: number
+  next_service_km: number | null
+  next_service_date: string | null
+  payment_mode: string | null
+  notes: string | null
+  sent_at: string | null
+  customer_viewed_at: string | null
+  responded_at: string | null
+  declined_label: string
+  comments: EstimateComment[]
+  sent_by?: { id: number; name: string } | null
+  warnings?: string[]
+}
+
+export interface EstimateVersionSummary {
+  id: number
+  version: number
+  status: EstimateStatus
+  grand_total: number
+  sent_at: string | null
+  sent_by: string | null
+  responded_at: string | null
+}
+
+export interface EstimateOverview {
+  versions: EstimateVersionSummary[]
+  draft: Estimate | null
+  current: Estimate | null
+  decisions_open: boolean
+}
+
+export interface CustomerMessage {
+  id: number
+  template: string
+  body: string
+  phone: string | null
+  channel: string
+  status: 'prepared' | 'sent' | 'failed' | 'dismissed'
+  error: string | null
+  share_url: string | null
+  sent_at: string | null
+  sent_by: { id: number; name: string } | null
+  created_at: string
+}
+
+export interface CustomerLinkInfo {
+  url: string
+  expires_at: string | null
+  last_viewed_at: string | null
+  created_at: string
+}
+
+export interface EstimateSuggestion {
+  description: string
+  kind: EstimateLineKind
+  /** null for a labour-chart service not offered for this car */
+  last_rate: number | null
+  median_rate: number | null
+  times_used: number
+  source: 'labour' | 'history' | 'addon'
+  labour_service_id?: number
+  unit?: 'job' | 'hour'
+}
+
+export interface EstimateDecisionLog {
+  id: number
+  line_key: string
+  description: string
+  from_status: ApprovalStatus
+  to_status: ApprovalStatus
+  decided_via: 'customer_link' | 'advisor_on_behalf'
+  user: { id: number; name: string } | null
+  note: string | null
+  customer_message: { id: number; status: string; sent_at: string | null } | null
+  created_at: string
+}
+
+export interface ServiceReport {
+  title: string
+  job_number: string
+  date: string
+  customer: string | null
+  car: string
+  registration_no: string | null
+  km_reading: number | null
+  advisor: string | null
+  activities_carried_out: number
+  sections: { name: string; items: { name: string; mark: string }[] }[]
+  additional_jobs: string[]
+  observations: { text: string; severity: 'minor' | 'medium' | 'major' | null }[]
+  not_approved: string[]
+  not_approved_label: string
+  next_service_km: number | null
+  next_service_date: string | null
+  advisor_notes: string | null
+  released_at: string | null
+  sends_to_customer: boolean
+  include: { activities: boolean; additional: boolean; observations: boolean }
+}
+
+export interface PublicJobPage {
+  workshop: { name: string; phone: string | null }
+  job: {
+    job_number: string
+    status: string
+    status_label: string
+    customer_name: string | null
+    car: string
+    registration_no: string | null
+    plan: string | null
+    advisor: string | null
+    advisor_phone: string | null
+    timeline: { status: string; label: string; at: string }[]
+  }
+  estimate: Estimate | null
+  decisions_open: boolean
+  media: (EstimateLineMedia & { captured_at: string | null })[]
+  report: ServiceReport | null
+}
+
+export interface PlanMaster {
+  id: number
+  name: string
+  slug: string
+  description: string | null
+  features: string[]
+  activity_points: number
+  home_service_available: boolean
+  send_customer_report: boolean
+  next_service_km: number | null
+  next_service_months: number | null
+  is_active: boolean
+  sort_order: number
+  prices_count: number
+  sheets_count: number
+}
+
+export type FuelGroup = 'petrol' | 'diesel'
+
+export interface LabourServiceMaster {
+  id: number
+  name: string
+  unit: 'job' | 'hour'
+  gst_rate: number
+  sort_order: number
+  is_active: boolean
+  /** rates[fuel][categoryId]; null or missing = not offered */
+  rates: Record<FuelGroup, Record<number, number | null>>
+}
+
+export interface PricingMasters {
+  packages: PlanMaster[]
+  categories: { id: number; name: string; slug: string }[]
+  oil_types: { id: number; name: string; slug: string; product_name: string | null; rate_per_litre: string }[]
+  prices: { package_id: number; category_id: number; oil_type_id: number; price: string }[]
+  litres: { package_id: number; category_id: number; litres: string }[]
+  line_items: {
+    id: number
+    package_id: number
+    description: string
+    sort_order: number
+    is_active: boolean
+    prices: Record<number, number>
+  }[]
+  labour_services: LabourServiceMaster[]
+  parts_default_margin_pct: number
+}
+
+// ---- Labour charges for a job's car
+
+export interface LabourCharge {
+  labour_service_id: number
+  description: string
+  unit: 'job' | 'hour'
+  /** null = not on the chart for this car type / fuel */
+  rate: number | null
+}
+
+// ---- Parts pricing loop (advisor ↔ spare parts coordinator)
+
+export type SparePartStatus =
+  | 'requested'
+  | 'quoted'
+  | 'approved'
+  | 'declined'
+  | 'ordered'
+  | 'issued'
+  | 'received'
+  | 'returned'
+  | 'cancelled'
+
+export type GstMode = 'incl' | 'excl' | 'cash'
+
+export interface SparePartQuote {
+  id: number
+  supplier_id: number
+  supplier: string | null
+  unit_cost: number
+  gst_mode: GstMode
+  gst_rate: number
+  landed_unit_cost: number
+  availability: string | null
+}
+
+export interface SparePartRequest {
+  id: number
+  job_card_id: number
+  job_number: string | null
+  job_status: string | null
+  vehicle: string | null
+  advisor: string | null
+  part_name: string
+  part_number: string | null
+  quantity: number
+  unit: string
+  note: string | null
+  status: SparePartStatus
+  estimate_line_key: string | null
+  requested_by: string | null
+  requested_at: string | null
+  quoted_by: string | null
+  quoted_at: string | null
+  ordered_by: string | null
+  ordered_at: string | null
+  selected_quote_id: number | null
+  quotes: SparePartQuote[]
+}
+
+export interface Supplier {
+  id: number
+  name: string
+  contact_person: string | null
+  phone: string | null
+  gstin: string | null
+  is_active: boolean
+}
+
+// ---- Intake (trial drive + inventory media)
+
+export interface IntakeInfo {
+  editable: boolean
+  trial: { status: 'done' | 'skipped' | null; notes: string | null; by: string | null; at: string | null }
+  km_reading: number | null
+  fuel_level: string | null
+  requirements: { min_photos: number; min_videos: number }
+  counts: { photo: number; video: number }
+  media: JobCardMedia[]
+}
+
+// ---- In-app staff notifications
+
+export interface StaffNotification {
+  id: string
+  kind: 'parts_price_requested' | 'parts_quoted' | 'parts_to_procure' | 'estimate_answered' | string
+  title: string
+  body: string
+  link: string
+  job_card_id: number | null
+  read: boolean
+  created_at: string
+}
+
+// ---- Create / Edit Job Card choices
+
+export interface JobCardPlanOption {
+  id: number
+  name: string
+  /** Oil grades this plan is priced for on the car's type, with the package price */
+  oil_options: { id: number; name: string; price: number }[]
+  sheets: string[]
+}
+
+export interface JobCardOptions {
+  car_type: { id: number; name: string } | null
+  plans: JobCardPlanOption[]
+  service_types: { value: ServiceType; label: string; sheets: string[] }[]
+  oil_types: { id: number; name: string }[]
+  /** Set when an estimate has been sent: plan and oil grade change on the estimate instead */
+  lock: { reason: string } | null
+}

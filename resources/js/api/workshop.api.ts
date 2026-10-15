@@ -9,6 +9,7 @@ import type {
   Bay,
   DashboardStats,
   FormPayload,
+  JobCardOptions,
   JobCardStatus,
   Payment,
   User,
@@ -94,6 +95,11 @@ export const masterDataApi = {
   vehicleCategories() {
     return apiClient.get<ApiResponse<VehicleCategory[]>>('/workshop/vehicle-categories')
   },
+
+  /** Active service plans */
+  servicePackages() {
+    return apiClient.get<ApiResponse<{ id: number; name: string; slug: string }[]>>('/workshop/service-packages')
+  },
 }
 
 // Job Cards
@@ -112,6 +118,13 @@ export const jobCardsApi = {
 
   update(id: number, data: FormPayload<JobCard>) {
     return apiClient.put<ApiResponse<JobCard>>(`/workshop/job-cards/${id}`, data)
+  },
+
+  /** Plans (with oil grades and prices for this car), repair types and the job sheets each brings */
+  formOptions(vehicleId: number | null, jobCardId?: number | null) {
+    return apiClient.get<ApiResponse<JobCardOptions>>('/workshop/job-card-options', {
+      params: { vehicle_id: vehicleId ?? undefined, job_card_id: jobCardId ?? undefined },
+    })
   },
 
   delete(id: number) {

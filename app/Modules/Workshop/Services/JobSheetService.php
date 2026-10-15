@@ -290,12 +290,40 @@ class JobSheetService
         }
 
         $jobCard = $sheet->jobCard;
-        $stored = $this->files->uploadJobSheetMedia($file, $jobCard->id, "sheets/{$item->id}", $poster);
+        $media = $this->storeMedia(
+            $jobCard, $file, 'sheet_item', $item->id, "sheets/{$item->id}",
+            "{$item->item_name} — {$jobCard->job_number}", $user, $poster, $meta,
+        );
 
-        $media = JobCardMedia::create([
+        if ($sheet->status === JobCardChecklist::STATUS_PENDING) {
+            $sheet->update(['status' => JobCardChecklist::STATUS_IN_PROGRESS, 'started_at' => now()]);
+        }
+
+        return $media;
+    }
+
+    /**
+     * Store an uploaded photo/video on the private media disk and record it against
+     * a job card attachment (sheet item, intake, ...).
+     */
+    public function storeMedia(
+        JobCard $jobCard,
+        UploadedFile $file,
+        string $attachableType,
+        int $attachableId,
+        string $folder,
+        string $defaultDescription,
+        User $user,
+        ?UploadedFile $poster = null,
+        array $meta = [],
+    ): JobCardMedia {
+        $mediaType = str_starts_with((string) $file->getMimeType(), 'video/') ? JobCardMedia::TYPE_VIDEO : JobCardMedia::TYPE_PHOTO;
+        $stored = $this->files->uploadJobSheetMedia($file, $jobCard->id, $folder, $poster);
+
+        return JobCardMedia::create([
             'job_card_id' => $jobCard->id,
-            'attachable_type' => 'sheet_item',
-            'attachable_id' => $item->id,
+            'attachable_type' => $attachableType,
+            'attachable_id' => $attachableId,
             'media_type' => $mediaType,
             'disk' => $stored['disk'],
             'file_path' => $stored['path'],
@@ -305,16 +333,10 @@ class JobSheetService
             'duration_seconds' => $meta['duration_seconds'] ?? null,
             'width' => $stored['width'],
             'height' => $stored['height'],
-            'description' => $meta['description'] ?? "{$item->item_name} — {$jobCard->job_number}",
+            'description' => $meta['description'] ?? $defaultDescription,
             'uploaded_by' => $user->id,
             'captured_at' => $meta['captured_at'] ?? now(),
         ]);
-
-        if ($sheet->status === JobCardChecklist::STATUS_PENDING) {
-            $sheet->update(['status' => JobCardChecklist::STATUS_IN_PROGRESS, 'started_at' => now()]);
-        }
-
-        return $media;
     }
 
     /**

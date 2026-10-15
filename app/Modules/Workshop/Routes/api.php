@@ -10,6 +10,14 @@ use App\Modules\Workshop\Http\Controllers\MasterDataController;
 use App\Modules\Workshop\Http\Controllers\JobSheetController;
 use App\Modules\Workshop\Http\Controllers\JobCardIssueController;
 use App\Modules\Workshop\Http\Controllers\JobSheetMasterController;
+use App\Modules\Workshop\Http\Controllers\EstimateController;
+use App\Modules\Workshop\Http\Controllers\CustomerChannelController;
+use App\Modules\Workshop\Http\Controllers\ServiceReportController;
+use App\Modules\Workshop\Http\Controllers\PublicJobController;
+use App\Modules\Workshop\Http\Controllers\PricingMasterController;
+use App\Modules\Workshop\Http\Controllers\PartsDeskController;
+use App\Modules\Workshop\Http\Controllers\IntakeController;
+use App\Modules\Workshop\Http\Controllers\JobCardFormController;
 
 Route::prefix('v1/workshop')->middleware(['auth:sanctum', 'branch.context'])->group(function () {
     // Master Data (Read-only lookups)
@@ -41,6 +49,10 @@ Route::prefix('v1/workshop')->middleware(['auth:sanctum', 'branch.context'])->gr
 
     // Job Cards
     Route::apiResource('job-cards', JobCardController::class);
+
+    // Create / Edit Job Card choices: plans with oil grades + prices for the car, repair types, job sheets
+    Route::get('job-card-options', [JobCardFormController::class, 'options'])
+        ->middleware('permission:workshop.job-cards.view');
 
     // Job Card Status & Assignments
     Route::get('job-cards/{jobCard}/transitions', [JobCardController::class, 'transitions']);
@@ -123,10 +135,117 @@ Route::prefix('v1/workshop')->middleware(['auth:sanctum', 'branch.context'])->gr
             Route::delete('observations/{observation}', [JobCardIssueController::class, 'destroyObservation']);
         });
 
+        // Estimates (versioned) and customer approval
+        Route::middleware('permission:workshop.estimates.view')->group(function () {
+            Route::get('estimates', [EstimateController::class, 'index']);
+            Route::get('estimates/{estimate}', [EstimateController::class, 'show']);
+            Route::get('estimates/{estimate}/pdf', [EstimateController::class, 'pdf']);
+            Route::get('estimate-decisions', [EstimateController::class, 'decisionLog']);
+            Route::get('media-library', [EstimateController::class, 'media']);
+        });
+
+        Route::middleware('permission:workshop.estimates.manage')->group(function () {
+            Route::post('estimates', [EstimateController::class, 'draft']);
+            Route::put('estimates/{estimate}', [EstimateController::class, 'update']);
+            Route::post('estimates/{estimate}/refresh-plan', [EstimateController::class, 'refreshPlan']);
+            Route::post('estimates/{estimate}/lines', [EstimateController::class, 'storeLine']);
+            Route::put('estimates/{estimate}/lines/{line}', [EstimateController::class, 'updateLine']);
+            Route::delete('estimates/{estimate}/lines/{line}', [EstimateController::class, 'destroyLine']);
+            Route::post('estimates/{estimate}/comments', [EstimateController::class, 'comment']);
+        });
+
+        Route::post('estimates/{estimate}/send', [EstimateController::class, 'send'])
+            ->middleware('permission:workshop.estimates.send');
+        Route::post('estimate-decisions', [EstimateController::class, 'decide'])
+            ->middleware('permission:workshop.estimates.decide-on-behalf');
+
+        // Parts pricing: advisor asks the spare parts coordinator, then adds priced parts with a margin
+        Route::get('part-requests', [PartsDeskController::class, 'forJobCard'])
+            ->middleware('permission:workshop.estimates.view|workshop.spare-parts.view');
+        Route::middleware('permission:workshop.spare-parts.create')->group(function () {
+            Route::post('part-requests', [PartsDeskController::class, 'requestPrices']);
+            Route::post('part-requests/{sparePartRequest}/cancel', [PartsDeskController::class, 'cancel']);
+        });
+        Route::middleware('permission:workshop.estimates.manage')->group(function () {
+            Route::post('estimates/{estimate}/parts', [PartsDeskController::class, 'addToEstimate']);
+            Route::get('labour-charges', [PartsDeskController::class, 'labourCharges']);
+        });
+
+        // Walk-in intake: trial drive and inventory photos/videos
+        Route::get('intake', [IntakeController::class, 'show'])->middleware('permission:workshop.job-cards.view');
+        Route::middleware('permission:workshop.job-cards.update')->group(function () {
+            Route::put('intake/trial', [IntakeController::class, 'updateTrial']);
+            Route::post('intake/media', [IntakeController::class, 'uploadMedia']);
+            Route::delete('intake/media/{media}', [IntakeController::class, 'deleteMedia']);
+        });
+
+        // Customer link and WhatsApp messages
+        Route::middleware('permission:workshop.customer-links.manage')->group(function () {
+            Route::get('customer-link', [CustomerChannelController::class, 'link']);
+            Route::post('customer-link', [CustomerChannelController::class, 'regenerateLink']);
+            Route::delete('customer-link', [CustomerChannelController::class, 'revokeLink']);
+            Route::get('customer-messages', [CustomerChannelController::class, 'messages']);
+            Route::post('customer-messages/{customerMessage}/sent', [CustomerChannelController::class, 'markSent']);
+            Route::post('customer-messages/{customerMessage}/dismiss', [CustomerChannelController::class, 'dismiss']);
+            Route::post('customer-messages/approval-reminder', [CustomerChannelController::class, 'remind']);
+            Route::post('customer-messages/share-media', [CustomerChannelController::class, 'shareMedia']);
+        });
+
+        // Service report (sent to the customer for 360 / ELITE)
+        Route::get('report', [ServiceReportController::class, 'show'])->middleware('permission:workshop.reports.view');
+        Route::get('report/pdf', [ServiceReportController::class, 'pdf'])->middleware('permission:workshop.reports.view');
+        Route::put('report', [ServiceReportController::class, 'update'])->middleware('permission:workshop.reports.release');
+        Route::post('report/release', [ServiceReportController::class, 'release'])->middleware('permission:workshop.reports.release');
+
         // Body-shop insurance claim details
         Route::get('insurance', [JobCardIssueController::class, 'insurance'])->middleware('permission:workshop.job-cards.view');
         Route::put('insurance', [JobCardIssueController::class, 'updateInsurance'])->middleware('permission:workshop.job-cards.update');
     });
+
+    // Estimate line suggestions (history + add-ons)
+    Route::get('estimate-suggestions', [EstimateController::class, 'suggestions'])
+        ->middleware('permission:workshop.estimates.manage');
+
+    // Price masters (plans × car types × oil grades, plan items, oil litres / rates)
+    Route::prefix('pricing-masters')->group(function () {
+        Route::get('/', [PricingMasterController::class, 'index'])->middleware('permission:workshop.pricing-masters.view');
+
+        Route::middleware('permission:workshop.pricing-masters.update')->group(function () {
+            Route::put('prices', [PricingMasterController::class, 'updatePrice']);
+            Route::put('litres', [PricingMasterController::class, 'updateLitres']);
+            Route::put('oil-types/{oilType}', [PricingMasterController::class, 'updateOilType']);
+            Route::post('packages', [PricingMasterController::class, 'storePackage']);
+            Route::put('packages/{package}', [PricingMasterController::class, 'updatePackage']);
+            Route::post('line-items', [PricingMasterController::class, 'storeLineItem']);
+            Route::put('line-items/{lineItem}', [PricingMasterController::class, 'updateLineItem']);
+            Route::delete('line-items/{lineItem}', [PricingMasterController::class, 'destroyLineItem']);
+            Route::post('labour-services', [PricingMasterController::class, 'storeLabourService']);
+            Route::put('labour-services/{labourService}', [PricingMasterController::class, 'updateLabourService']);
+            Route::put('parts-margin', [PricingMasterController::class, 'updatePartsMargin']);
+        });
+    });
+
+    // Parts Desk (spare parts coordinator): price requests, supplier quotes, procurement
+    Route::prefix('parts-desk')->scopeBindings()->group(function () {
+        Route::get('/', [PartsDeskController::class, 'desk'])->middleware('permission:workshop.spare-parts.view');
+
+        Route::middleware('permission:workshop.spare-parts.update')->group(function () {
+            Route::post('requests/{sparePartRequest}/quotes', [PartsDeskController::class, 'storeQuote']);
+            Route::delete('requests/{sparePartRequest}/quotes/{quote}', [PartsDeskController::class, 'destroyQuote']);
+            Route::post('submit', [PartsDeskController::class, 'submit']);
+            Route::post('requests/{sparePartRequest}/ordered', [PartsDeskController::class, 'markOrdered']);
+        });
+    });
+
+    Route::get('suppliers', [PartsDeskController::class, 'suppliers'])->middleware('permission:workshop.suppliers.view');
+    Route::middleware('permission:workshop.suppliers.manage')->group(function () {
+        Route::post('suppliers', [PartsDeskController::class, 'storeSupplier']);
+        Route::put('suppliers/{supplier}', [PartsDeskController::class, 'updateSupplier']);
+    });
+
+    // Intake requirements (minimum inventory photos / videos)
+    Route::get('intake-requirements', [IntakeController::class, 'requirements'])->middleware('permission:workshop.job-sheet-masters.view');
+    Route::put('intake-requirements', [IntakeController::class, 'updateRequirements'])->middleware('permission:workshop.job-sheet-masters.update');
 
     // Job-sheet masters
     Route::prefix('job-sheet-masters')->scopeBindings()->group(function () {
@@ -150,3 +269,12 @@ Route::prefix('v1/workshop')->middleware(['auth:sanctum', 'branch.context'])->gr
 Route::get('v1/workshop/media/{media}/stream', [JobSheetController::class, 'stream'])
     ->middleware('signed')
     ->name('workshop.media.stream');
+
+// Customer's login-free job page: the token is the credential (hashed lookup, revocable, expires)
+Route::prefix('v1/public/j/{token}')->middleware('throttle:30,1')->group(function () {
+    Route::get('/', [PublicJobController::class, 'show']);
+    Route::post('decisions', [PublicJobController::class, 'decide']);
+    Route::post('comments', [PublicJobController::class, 'comment']);
+    Route::get('estimate.pdf', [PublicJobController::class, 'estimatePdf']);
+    Route::get('report.pdf', [PublicJobController::class, 'reportPdf']);
+});

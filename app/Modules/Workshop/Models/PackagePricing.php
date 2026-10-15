@@ -13,10 +13,12 @@ class PackagePricing extends Model
         'category_id',
         'oil_type_id',
         'price',
+        'customized_at',
     ];
 
     protected $casts = [
         'price' => 'decimal:2',
+        'customized_at' => 'datetime',
     ];
 
     /**

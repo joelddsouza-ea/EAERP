@@ -17,6 +17,10 @@ class JobCardResource extends JsonResource
             'cancel_reason' => $this->cancel_reason,
             'service_type' => $this->service_type,
             'priority' => $this->priority,
+            'customer_id' => $this->customer_id,
+            'vehicle_id' => $this->vehicle_id,
+            'package_id' => $this->package_id,
+            'oil_type_id' => $this->oil_type_id,
 
             // Customer & Vehicle
             'customer' => $this->whenLoaded('customer', fn() => [

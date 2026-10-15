@@ -7,6 +7,9 @@ use App\Modules\Workshop\Models\ServicePackage;
 use App\Modules\Workshop\Models\PackagePricing;
 use App\Modules\Workshop\Models\VehicleCategory;
 use App\Modules\Workshop\Models\OilType;
+use App\Modules\Workshop\Models\PackageLineItem;
+use App\Modules\Workshop\Models\PackageLineItemPrice;
+use App\Modules\Workshop\Models\PackageOilLitre;
 
 class ServicePackagesSeeder extends Seeder
 {
@@ -108,53 +111,98 @@ class ServicePackagesSeeder extends Seeder
             ],
         ];
 
-        // Base prices for Hatchback with Semi-Synthetic oil
-        $basePrices = [
-            'ea-refresh' => 1499,
-            'ea-essentials' => 2499,
-            'ea-pro' => 4999,
-            'ea-360' => 7999,
-            'ea-elite' => 12999,
-        ];
+        // Service report goes to the customer only for 360 and ELITE (owner decision)
+        $sendsReport = ['ea-360', 'ea-elite'];
 
-        // Category multipliers
-        $categoryMultipliers = [
-            'hatchback' => 1.0,
-            'premium-hatchback' => 1.15,
-            'sedan-compact-suv' => 1.25,
-            'suv-muv' => 1.40,
-            'premium-suv' => 1.60,
-            'luxury-class-3' => 2.0,
-            'luxury-class-2' => 2.5,
-            'luxury-class-1' => 3.0,
-        ];
-
-        $categories = VehicleCategory::pluck('id', 'slug');
-        $oilTypes = OilType::get();
-
+        $packageIds = [];
         foreach ($packages as $packageData) {
-            $package = ServicePackage::firstOrCreate(
-                ['slug' => $packageData['slug']],
-                $packageData
-            );
+            $package = ServicePackage::firstOrCreate(['slug' => $packageData['slug']], $packageData);
 
-            // Create pricing matrix
-            $basePrice = $basePrices[$packageData['slug']];
+            if (!$package->customized_at) {
+                $package->update([
+                    'send_customer_report' => in_array($package->slug, $sendsReport, true),
+                    'next_service_km' => $package->next_service_km ?? self::NEXT_SERVICE_KM,
+                    'next_service_months' => $package->next_service_months ?? self::NEXT_SERVICE_MONTHS,
+                ]);
+            }
 
-            foreach ($categories as $categorySlug => $categoryId) {
-                $categoryMultiplier = $categoryMultipliers[$categorySlug] ?? 1.0;
+            $packageIds[$package->slug] = $package->id;
+        }
 
-                foreach ($oilTypes as $oilType) {
-                    $price = round($basePrice * $categoryMultiplier * $oilType->price_multiplier, -1); // Round to nearest 10
+        $priceList = require database_path('seeders/data/pricing/price_list.php');
+        $categories = VehicleCategory::pluck('id', 'slug');
+        $oilTypes = OilType::pluck('id', 'slug');
 
-                    PackagePricing::firstOrCreate(
-                        [
-                            'package_id' => $package->id,
-                            'category_id' => $categoryId,
-                            'oil_type_id' => $oilType->id,
-                        ],
-                        ['price' => $price]
-                    );
+        $this->seedPackagePrices($priceList['package_prices'], $packageIds, $categories, $oilTypes);
+        $this->seedOilLitres($priceList['oil_litres'], $packageIds, $categories);
+        $this->seedLineItems($priceList['line_items'], $packageIds, $categories);
+    }
+
+    private const NEXT_SERVICE_KM = 10000;
+    private const NEXT_SERVICE_MONTHS = 9;
+
+    /**
+     * Prices from the sheet. Combinations the sheet does not offer are removed,
+     * unless the owner priced them in the app.
+     */
+    private function seedPackagePrices(array $rows, array $packageIds, $categories, $oilTypes): void
+    {
+        $keep = [];
+
+        foreach ($rows as [$plan, $category, $oil, $price]) {
+            $pricing = PackagePricing::firstOrNew([
+                'package_id' => $packageIds[$plan],
+                'category_id' => $categories[$category],
+                'oil_type_id' => $oilTypes[$oil],
+            ]);
+
+            if (!$pricing->customized_at) {
+                $pricing->price = $price;
+                $pricing->save();
+            }
+
+            $keep[] = $pricing->id;
+        }
+
+        PackagePricing::whereIn('package_id', $packageIds)
+            ->whereNotIn('id', $keep)
+            ->whereNull('customized_at')
+            ->delete();
+    }
+
+    /**
+     * Litres: EA Refresh uses the first column of the sheet, every other plan the second.
+     */
+    private function seedOilLitres(array $litres, array $packageIds, $categories): void
+    {
+        foreach ($packageIds as $slug => $packageId) {
+            foreach ($litres as $category => [$refresh, $other]) {
+                $row = PackageOilLitre::firstOrNew(['package_id' => $packageId, 'category_id' => $categories[$category]]);
+                if (!$row->customized_at) {
+                    $row->litres = $slug === 'ea-refresh' ? $refresh : $other;
+                    $row->save();
+                }
+            }
+        }
+    }
+
+    private function seedLineItems(array $rows, array $packageIds, $categories): void
+    {
+        $order = [];
+
+        foreach ($rows as [$plan, $description, $amounts]) {
+            $item = PackageLineItem::firstOrNew(['package_id' => $packageIds[$plan], 'description' => $description]);
+            $order[$plan] = ($order[$plan] ?? 0) + 1;
+
+            if (!$item->customized_at) {
+                $item->fill(['sort_order' => $order[$plan], 'is_active' => true])->save();
+            }
+
+            foreach ($amounts as $category => $amount) {
+                $price = PackageLineItemPrice::firstOrNew(['line_item_id' => $item->id, 'category_id' => $categories[$category]]);
+                if (!$price->customized_at) {
+                    $price->amount = $amount;
+                    $price->save();
                 }
             }
         }

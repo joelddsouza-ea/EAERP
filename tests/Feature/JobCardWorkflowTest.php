@@ -8,6 +8,7 @@ use App\Modules\Workshop\Models\Customer;
 use App\Modules\Workshop\Models\JobCard;
 use App\Modules\Workshop\Models\JobCardChecklist;
 use App\Modules\Workshop\Models\JobCardChecklistItem;
+use App\Modules\Workshop\Models\PackagePricing;
 use App\Modules\Workshop\Models\ServicePackage;
 use App\Modules\Workshop\Models\Vehicle;
 use App\Modules\Workshop\Models\VehicleCategory;
@@ -23,6 +24,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Laravel\Sanctum\Sanctum;
+use Tests\Concerns\CompletesIntake;
 use Tests\TestCase;
 
 /**
@@ -31,6 +33,7 @@ use Tests\TestCase;
 class JobCardWorkflowTest extends TestCase
 {
     use RefreshDatabase;
+    use CompletesIntake;
 
     private User $owner;
     private User $advisor;
@@ -85,10 +88,17 @@ class JobCardWorkflowTest extends TestCase
 
     private function createJob(string $plan = 'ea-refresh'): JobCard
     {
+        $packageId = ServicePackage::where('slug', $plan)->value('id');
+        // A service plan needs an oil grade it is priced for on this car type
+        $oilTypeId = PackagePricing::where('package_id', $packageId)
+            ->where('category_id', Vehicle::find($this->vehicleId)->category_id)
+            ->value('oil_type_id');
+
         $id = $this->as($this->advisor)->postJson('/api/v1/workshop/job-cards', [
             'customer_id' => $this->customerId,
             'vehicle_id' => $this->vehicleId,
-            'package_id' => ServicePackage::where('slug', $plan)->value('id'),
+            'package_id' => $packageId,
+            'oil_type_id' => $oilTypeId,
             'service_type' => 'scheduled',
         ])->assertCreated()->json('data.id');
 
@@ -108,6 +118,7 @@ class JobCardWorkflowTest extends TestCase
         $job = $this->createJob($plan);
         $this->moveTo($job, 'intake_in_progress', $this->advisor)->assertOk();
         $job->update(['km_reading' => 12000, 'fuel_level' => 'half', 'technician_id' => $this->tech->id]);
+        $this->completeIntake($job, $this->advisor->id);
         $this->moveTo($job, 'work_in_progress', $this->advisor)->assertOk();
 
         return $job->fresh();

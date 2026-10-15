@@ -20,10 +20,14 @@ import Badge from '@/components/ui/Badge.vue'
 import Select from '@/components/ui/Select.vue'
 import Modal from '@/components/ui/Modal.vue'
 import Spinner from '@/components/ui/Spinner.vue'
-import { serviceTypeLabel } from '@/constants/serviceTypes'
+import { jobServiceLabel } from '@/constants/serviceTypes'
 import { statusLabel, statusVariant } from '@/constants/jobCardStatus'
 import StatusActions from '@/components/jobcard/StatusActions.vue'
 import StatusTimeline from '@/components/jobcard/StatusTimeline.vue'
+import IntakePanel from '@/components/jobcard/IntakePanel.vue'
+import EstimateSummaryCard from '@/components/estimate/EstimateSummaryCard.vue'
+import CustomerChannelCard from '@/components/estimate/CustomerChannelCard.vue'
+import ServiceReportCard from '@/components/estimate/ServiceReportCard.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -34,6 +38,16 @@ const jobCardId = Number(route.params.id)
 
 const loading = ref(true)
 const jobCard = ref<JobCard | null>(null)
+
+// Customer cards refresh after a status change (it may prepare a WhatsApp message)
+const estimateCard = ref<InstanceType<typeof EstimateSummaryCard> | null>(null)
+const channelCard = ref<InstanceType<typeof CustomerChannelCard> | null>(null)
+
+async function onStatusChanged() {
+  await fetchJobCard()
+  estimateCard.value?.reload()
+  channelCard.value?.reload()
+}
 
 // Job sheets (technician sheets, observation report, pre-delivery)
 const sheets = ref<JobSheet[]>([])
@@ -167,6 +181,11 @@ onMounted(fetchJobCard)
             {{ jobCard.vehicle?.registration_no }} -
             {{ jobCard.vehicle?.make?.name }} {{ jobCard.vehicle?.model?.name }}
           </p>
+          <p class="mt-1 text-sm font-medium text-gray-800">
+            {{ jobServiceLabel(jobCard) }}
+            <template v-if="jobCard.oil_type"> · {{ jobCard.oil_type.name }} engine oil</template>
+            <span v-else-if="jobCard.service_type === 'scheduled'" class="text-amber-700"> · engine oil type not chosen</span>
+          </p>
         </div>
 
         <div class="flex flex-wrap gap-2">
@@ -177,6 +196,14 @@ onMounted(fetchJobCard)
           >
             <ClipboardDocumentCheckIcon class="h-4 w-4 mr-1" />
             Job Sheet
+          </Button>
+          <Button
+            v-if="can('workshop.estimates.view')"
+            variant="secondary"
+            @click="router.push(`/job-cards/${jobCard.id}/estimate`)"
+          >
+            <DocumentTextIcon class="h-4 w-4 mr-1" />
+            Estimate
           </Button>
           <Button v-if="can('workshop.job-cards.update')" @click="router.push(`/job-cards/${jobCard.id}/edit`)">
             <PencilIcon class="h-4 w-4 mr-1" />
@@ -210,6 +237,9 @@ onMounted(fetchJobCard)
               </div>
             </div>
           </Card>
+
+          <!-- Intake: trial drive + inventory photos/videos -->
+          <IntakePanel :job-card-id="jobCard.id" />
 
           <!-- Complaint & Work -->
           <Card>
@@ -319,8 +349,19 @@ onMounted(fetchJobCard)
             <p v-if="jobCard.status === 'cancelled' && jobCard.cancel_reason" class="text-sm text-gray-600 mb-3">
               Cancelled: {{ jobCard.cancel_reason }}
             </p>
-            <StatusActions :job-card-id="jobCard.id" :status="jobCard.status" @changed="fetchJobCard" />
+            <StatusActions :job-card-id="jobCard.id" :status="jobCard.status" @changed="onStatusChanged" />
           </Card>
+
+          <EstimateSummaryCard v-if="can('workshop.estimates.view')" ref="estimateCard" :job-card-id="jobCard.id" />
+
+          <CustomerChannelCard
+            v-if="can('workshop.customer-links.manage')"
+            ref="channelCard"
+            :job-card-id="jobCard.id"
+            :can-remind="jobCard.status === 'awaiting_approval'"
+          />
+
+          <ServiceReportCard v-if="can('workshop.reports.view')" :job-card-id="jobCard.id" />
 
           <!-- Summary -->
           <Card>
@@ -331,11 +372,17 @@ onMounted(fetchJobCard)
             <dl class="space-y-3">
               <div class="flex justify-between">
                 <dt class="text-sm text-gray-500">Service Type</dt>
-                <dd class="text-sm font-medium">{{ serviceTypeLabel(jobCard.service_type) }}</dd>
+                <dd class="text-sm font-medium">{{ jobServiceLabel(jobCard) }}</dd>
               </div>
-              <div class="flex justify-between">
-                <dt class="text-sm text-gray-500">Priority</dt>
-                <dd class="text-sm font-medium capitalize">{{ jobCard.priority }}</dd>
+              <div v-if="jobCard.oil_type || jobCard.service_type === 'scheduled'" class="flex justify-between">
+                <dt class="text-sm text-gray-500">Engine Oil Type</dt>
+                <dd class="text-sm font-medium" :class="jobCard.oil_type ? '' : 'text-amber-700'">
+                  {{ jobCard.oil_type?.name ?? 'Not chosen' }}
+                </dd>
+              </div>
+              <div v-if="Number(jobCard.package_price) > 0" class="flex justify-between">
+                <dt class="text-sm text-gray-500">Package Price</dt>
+                <dd class="text-sm font-medium">{{ formatCurrency(jobCard.package_price ?? 0) }}</dd>
               </div>
               <div class="flex justify-between">
                 <dt class="text-sm text-gray-500">Estimated Amount</dt>

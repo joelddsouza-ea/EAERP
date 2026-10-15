@@ -21,6 +21,7 @@ class DatabaseSeeder extends Seeder
             VehicleMakesSeeder::class,
             OilTypesSeeder::class,
             ServicePackagesSeeder::class,
+            LabourChargesSeeder::class,
             ServiceAddonsSeeder::class,
             ChecklistTemplatesSeeder::class,
             JobSheetTemplatesSeeder::class,

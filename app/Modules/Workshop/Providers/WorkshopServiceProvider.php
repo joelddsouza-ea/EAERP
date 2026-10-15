@@ -2,6 +2,7 @@
 
 namespace App\Modules\Workshop\Providers;
 
+use App\Modules\Workshop\Models\JobCard;
 use App\Modules\Workshop\Models\JobCardAdditionalJob;
 use App\Modules\Workshop\Models\JobCardChecklistItem;
 use App\Modules\Workshop\Models\JobCardIssue;
@@ -29,6 +30,7 @@ class WorkshopServiceProvider extends ServiceProvider
             'sheet_item' => JobCardChecklistItem::class,
             'job_card_issue' => JobCardIssue::class,
             'job_card_additional_job' => JobCardAdditionalJob::class,
+            'job_card' => JobCard::class, // intake inventory media
         ]);
 
         // Load routes with api prefix and middleware

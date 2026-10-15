@@ -10,6 +10,7 @@ class Customer extends BaseModel
         'name',
         'phone',
         'alt_phone',
+        'whatsapp_phone',
         'email',
         'address',
         'city',

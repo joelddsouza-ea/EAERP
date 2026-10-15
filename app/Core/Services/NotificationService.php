@@ -171,6 +171,7 @@ class NotificationService
     ): void {
         $statusMessages = [
             'intake_in_progress' => "Your vehicle has been received at our workshop. Job Card: {$jobNumber}",
+            'awaiting_approval' => "An estimate for additional work on your vehicle is waiting for your approval. Job Card: {$jobNumber}",
             'work_in_progress' => "Work has started on your vehicle. Job Card: {$jobNumber}",
             'post_work_trial' => "Your vehicle is undergoing a trial drive and quality check. Job Card: {$jobNumber}",
             'ready_for_delivery' => "Your vehicle is ready for delivery! Job Card: {$jobNumber}",

@@ -28,10 +28,11 @@ export const JOB_CARD_STATUS_META: Record<JobCardStatus, StatusMeta> = {
   cancelled: { label: 'Cancelled', variant: 'danger', group: 'closed', color: '#dc2626' },
 }
 
-// Statuses with working features in Phase 1 (others are disabled in config/workshop.php)
+// Statuses with working features (others are disabled in config/workshop.php)
 export const ACTIVE_STATUSES: JobCardStatus[] = [
   'intake_pending',
   'intake_in_progress',
+  'awaiting_approval',
   'work_in_progress',
   'awaiting_parts',
   'post_work_trial',

@@ -3,7 +3,7 @@ import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { jobCardsApi } from '@/api/workshop.api'
 import { useAuthStore } from '@/stores/auth.store'
-import { serviceTypeLabel } from '@/constants/serviceTypes'
+import { jobServiceLabel } from '@/constants/serviceTypes'
 import { useToast } from '@/composables/useToast'
 import type { JobCard } from '@/api/types'
 import Card from '@/components/ui/Card.vue'
@@ -27,12 +27,6 @@ const statusOptions = [
   { value: 'all', label: 'All' },
 ]
 
-const priorityColors: Record<string, string> = {
-  low: 'text-gray-500',
-  normal: 'text-blue-600',
-  high: 'text-amber-600',
-  urgent: 'text-red-600',
-}
 
 async function fetchMyJobs() {
   loading.value = true
@@ -119,13 +113,7 @@ onMounted(fetchMyJobs)
           </div>
           <div>
             <span class="text-gray-500">Type:</span>
-            <span class="ml-2 font-medium capitalize">{{ serviceTypeLabel(job.service_type) }}</span>
-          </div>
-          <div>
-            <span class="text-gray-500">Priority:</span>
-            <span :class="['ml-2 font-medium capitalize', priorityColors[job.priority]]">
-              {{ job.priority }}
-            </span>
+            <span class="ml-2 font-medium">{{ jobServiceLabel(job) }}</span>
           </div>
           <div v-if="job.bay">
             <span class="text-gray-500">Bay:</span>

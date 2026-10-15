@@ -9,6 +9,9 @@ use App\Core\Services\Auth\RbacService;
 use App\Core\Services\NotificationService;
 use App\Core\Services\FileStorageService;
 use App\Core\Services\ExportService;
+use App\Core\Services\WhatsApp\CloudApiChannel;
+use App\Core\Services\WhatsApp\ShareLinkChannel;
+use App\Core\Services\WhatsApp\WhatsAppChannel;
 
 class CoreServiceProvider extends ServiceProvider
 {
@@ -39,6 +42,13 @@ class CoreServiceProvider extends ServiceProvider
         // Register File Storage Service
         $this->app->singleton(FileStorageService::class, function ($app) {
             return new FileStorageService();
+        });
+
+        // WhatsApp: share link (workshop phone) until the Business API is set up
+        $this->app->singleton(WhatsAppChannel::class, function ($app) {
+            return config('workshop.customer_channel.whatsapp_driver') === 'api'
+                ? new CloudApiChannel()
+                : new ShareLinkChannel();
         });
 
         // Register Export Service

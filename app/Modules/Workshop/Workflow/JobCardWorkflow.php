@@ -5,6 +5,7 @@ namespace App\Modules\Workshop\Workflow;
 use App\Core\Models\User;
 use App\Modules\Workshop\Enums\JobCardStatus;
 use App\Modules\Workshop\Models\JobCard;
+use App\Modules\Workshop\Workflow\Guards\EstimateResponded;
 use App\Modules\Workshop\Workflow\Guards\IntakeCaptured;
 use App\Modules\Workshop\Workflow\Guards\JobSheetActivitiesResolved;
 use App\Modules\Workshop\Workflow\Guards\NoOpenCriticalIssues;
@@ -48,7 +49,7 @@ class JobCardWorkflow
             'work_in_progress' => ['perms' => [self::CHANGE], 'guards' => [IntakeCaptured::class, TechnicianAssigned::class]],
         ],
         'awaiting_approval' => [
-            'work_in_progress' => ['perms' => [self::CHANGE], 'guards' => [TechnicianAssigned::class]],
+            'work_in_progress' => ['perms' => [self::CHANGE], 'guards' => [IntakeCaptured::class, TechnicianAssigned::class, EstimateResponded::class]],
         ],
         'work_in_progress' => [
             'awaiting_parts' => ['perms' => [self::CHANGE, self::SHEET]],

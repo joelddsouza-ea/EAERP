@@ -14,7 +14,7 @@ import SearchInput from '@/components/ui/SearchInput.vue'
 import Select from '@/components/ui/Select.vue'
 import Badge from '@/components/ui/Badge.vue'
 import type { Column } from '@/components/ui/DataTable.vue'
-import { serviceTypeLabel } from '@/constants/serviceTypes'
+import { jobServiceLabel } from '@/constants/serviceTypes'
 import { statusLabel, statusVariant, statusFilterOptions } from '@/constants/jobCardStatus'
 
 const router = useRouter()
@@ -140,8 +140,8 @@ watch(() => branchStore.currentBranchId, fetchJobCards)
         </div>
       </template>
 
-      <template #cell-service_type="{ value }">
-        <span>{{ serviceTypeLabel(value) }}</span>
+      <template #cell-service_type="{ row }">
+        <span>{{ jobServiceLabel(row) }}</span>
       </template>
 
       <template #cell-status="{ value }">

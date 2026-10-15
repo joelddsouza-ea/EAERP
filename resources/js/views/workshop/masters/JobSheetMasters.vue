@@ -2,6 +2,8 @@
 import { ref, computed, onMounted } from 'vue'
 import { ArrowUpIcon, ArrowDownIcon, PlusIcon } from '@heroicons/vue/20/solid'
 import { jobSheetMastersApi } from '@/api/jobSheets.api'
+import { intakeApi } from '@/api/estimates.api'
+import { masterDataApi } from '@/api/workshop.api'
 import { usePermissions } from '@/composables/usePermissions'
 import { useToast } from '@/composables/useToast'
 import type { ChecklistMasterItem, ChecklistMasterSection, ChecklistMasterTemplate, MediaRequirement, SheetKind } from '@/api/types'
@@ -73,6 +75,7 @@ async function loadTemplates() {
 
 async function select(template: ChecklistMasterTemplate) {
   loadingTemplate.value = true
+  editingPlans.value = false
   try {
     selected.value = (await jobSheetMastersApi.template(template.id)).data.data
   } catch (err) {
@@ -134,6 +137,58 @@ async function addSection() {
   }
 }
 
+// ---- plans a sheet is used for (new plans need a sheet linked here)
+
+const plans = ref<{ id: number; name: string }[]>([])
+const editingPlans = ref(false)
+const planSelection = ref<number[]>([])
+
+const linksToPlans = computed(() => ['service_activities', 'observation_report'].includes(selected.value?.sheet_kind ?? ''))
+
+function startPlanEdit() {
+  planSelection.value = selected.value?.packages.map((p) => p.id) ?? []
+  editingPlans.value = true
+}
+
+async function savePlans() {
+  if (!selected.value) return
+  try {
+    const response = await jobSheetMastersApi.updateTemplate(selected.value.id, { package_ids: planSelection.value })
+    selected.value.packages = response.data.data.packages
+    editingPlans.value = false
+    toast.success('Plans linked')
+  } catch (err) {
+    toast.apiError(err)
+  }
+}
+
+// ---- intake minimums (inventory photos / videos before work starts)
+
+const intakeReq = ref<{ min_photos: number; min_videos: number } | null>(null)
+
+async function loadIntakeRequirements() {
+  try {
+    intakeReq.value = (await intakeApi.requirements()).data.data
+  } catch {
+    intakeReq.value = null
+  }
+}
+
+async function saveIntakeRequirements() {
+  if (!intakeReq.value) return
+  try {
+    intakeReq.value = (
+      await intakeApi.setRequirements({
+        min_photos: Number(intakeReq.value.min_photos) || 0,
+        min_videos: Number(intakeReq.value.min_videos) || 0,
+      })
+    ).data.data
+    toast.success('Intake requirements saved')
+  } catch (err) {
+    toast.apiError(err)
+  }
+}
+
 async function toggleTemplateActive() {
   if (!selected.value) return
   try {
@@ -145,7 +200,15 @@ async function toggleTemplateActive() {
   }
 }
 
-onMounted(loadTemplates)
+onMounted(async () => {
+  await loadTemplates()
+  loadIntakeRequirements()
+  try {
+    plans.value = (await masterDataApi.servicePackages()).data.data
+  } catch {
+    plans.value = []
+  }
+})
 </script>
 
 <template>
@@ -156,6 +219,32 @@ onMounted(loadTemplates)
         Activities on each technician job sheet, and whether a photo or video is required or N/A is allowed.
       </p>
     </div>
+
+    <Card v-if="intakeReq" class="mb-6">
+      <div class="flex flex-wrap items-center gap-3 text-sm">
+        <span class="font-medium text-gray-700">Intake inventory: at least</span>
+        <input
+          v-model.number="intakeReq.min_photos"
+          type="number"
+          min="0"
+          max="30"
+          class="w-16 rounded border-gray-300 px-1 py-0.5 text-right text-sm disabled:bg-gray-50"
+          :disabled="!canEdit"
+          @change="saveIntakeRequirements"
+        />
+        <span>photos and</span>
+        <input
+          v-model.number="intakeReq.min_videos"
+          type="number"
+          min="0"
+          max="10"
+          class="w-16 rounded border-gray-300 px-1 py-0.5 text-right text-sm disabled:bg-gray-50"
+          :disabled="!canEdit"
+          @change="saveIntakeRequirements"
+        />
+        <span>videos before work can start, plus the advisor's trial drive.</span>
+      </div>
+    </Card>
 
     <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
       <!-- Template list -->
@@ -206,6 +295,22 @@ onMounted(loadTemplates)
                 <p class="text-sm text-gray-600 mt-2">
                   {{ totals.total }} activities · {{ totals.media }} need a photo/video · {{ totals.na }} allow N/A
                 </p>
+                <div v-if="linksToPlans && canEdit" class="mt-2">
+                  <Button v-if="!editingPlans" size="sm" variant="ghost" @click="startPlanEdit">Change plans…</Button>
+                  <div v-else class="mt-1 rounded-lg border border-gray-200 p-3">
+                    <p class="text-xs text-gray-500 mb-2">New job cards on these plans get this sheet.</p>
+                    <div class="flex flex-wrap gap-x-4 gap-y-1">
+                      <label v-for="p in plans" :key="p.id" class="inline-flex items-center gap-2 text-sm">
+                        <input v-model="planSelection" type="checkbox" :value="p.id" class="rounded border-gray-300" />
+                        {{ p.name }}
+                      </label>
+                    </div>
+                    <div class="mt-2 flex gap-2">
+                      <Button size="sm" @click="savePlans">Save</Button>
+                      <Button size="sm" variant="secondary" @click="editingPlans = false">Cancel</Button>
+                    </div>
+                  </div>
+                </div>
               </div>
               <div class="flex items-center gap-2">
                 <Badge :variant="selected.is_active ? 'success' : 'danger'">{{ selected.is_active ? 'Active' : 'Inactive' }}</Badge>

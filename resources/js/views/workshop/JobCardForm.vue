@@ -3,8 +3,7 @@ import { ref, onMounted, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { jobCardsApi, customersApi } from '@/api/workshop.api'
 import { useToast } from '@/composables/useToast'
-import type { Customer, Vehicle, JobCard, ServiceType, FuelLevel } from '@/api/types'
-import { serviceTypeOptions } from '@/constants/serviceTypes'
+import type { Customer, Vehicle, FuelLevel, JobCardOptions } from '@/api/types'
 import Card from '@/components/ui/Card.vue'
 import Button from '@/components/ui/Button.vue'
 import Input from '@/components/ui/Input.vue'
@@ -26,8 +25,9 @@ const errors = ref<Record<string, string>>({})
 const form = ref({
   customer_id: null as number | null,
   vehicle_id: null as number | null,
-  service_type: 'scheduled' as ServiceType,
-  priority: 'normal' as JobCard['priority'],
+  /** "plan:{id}" for a service plan, otherwise the repair service_type */
+  service_choice: '' as string,
+  oil_type_id: null as number | null,
   km_reading: null as number | null,
   fuel_level: null as FuelLevel | null,
   customer_complaints: '',
@@ -57,12 +57,68 @@ const fuelLevelOptions = [
   { value: 'full', label: 'Full' },
 ]
 
-const priorityOptions = [
-  { value: 'low', label: 'Low' },
-  { value: 'normal', label: 'Normal' },
-  { value: 'high', label: 'High' },
-  { value: 'urgent', label: 'Urgent' },
-]
+// ---- Service type (plan or repair type) and engine oil grade
+
+const options = ref<JobCardOptions | null>(null)
+let optionsRequest = 0
+
+async function loadOptions() {
+  // Only the latest request counts: a slower, older reply (e.g. for no vehicle yet) must not win
+  const request = ++optionsRequest
+  try {
+    const response = await jobCardsApi.formOptions(form.value.vehicle_id, jobCardId.value)
+    if (request === optionsRequest) options.value = response.data.data
+  } catch {
+    if (request === optionsRequest) options.value = null
+  }
+}
+
+const serviceOptions = computed(() => [
+  ...(options.value?.plans ?? []).map((p) => ({ value: `plan:${p.id}`, label: p.name })),
+  ...(options.value?.service_types ?? []).map((t) => ({ value: t.value, label: t.label })),
+])
+
+const selectedPlan = computed(() => {
+  const m = /^plan:(\d+)$/.exec(form.value.service_choice)
+  return m ? options.value?.plans.find((p) => p.id === Number(m[1])) ?? null : null
+})
+
+const isPlan = computed(() => form.value.service_choice.startsWith('plan:'))
+
+/** A plan offers only the grades it is priced for on this car type; repairs may take any grade */
+const oilOptions = computed(() => {
+  if (selectedPlan.value) {
+    return selectedPlan.value.oil_options.map((o) => ({ value: o.id, label: `${o.name} — ₹ ${money(o.price)}` }))
+  }
+  return (options.value?.oil_types ?? []).map((o) => ({ value: o.id, label: o.name }))
+})
+
+const packagePrice = computed(() =>
+  selectedPlan.value?.oil_options.find((o) => o.id === Number(form.value.oil_type_id))?.price ?? null
+)
+
+const sheets = computed(() => {
+  if (selectedPlan.value) return selectedPlan.value.sheets
+  return options.value?.service_types.find((t) => t.value === form.value.service_choice)?.sheets ?? []
+})
+
+const locked = computed(() => !!options.value?.lock)
+
+function money(n: number): string {
+  return new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(n)
+}
+
+/**
+ * The user picked a service type. Switching to a plan that isn't priced with the chosen
+ * grade clears the grade. Done here, not in a watcher, so loading options never clears a saved grade.
+ */
+function chooseService(value: string | number | null) {
+  form.value.service_choice = value ? String(value) : ''
+  const plan = selectedPlan.value
+  if (plan && form.value.oil_type_id && !plan.oil_options.some((o) => o.id === Number(form.value.oil_type_id))) {
+    form.value.oil_type_id = null
+  }
+}
 
 const vehicleOptions = computed(() =>
   customerVehicles.value.map((v) => ({
@@ -121,8 +177,14 @@ async function fetchJobCard() {
     form.value = {
       customer_id: jobCard.customer_id,
       vehicle_id: jobCard.vehicle_id,
-      service_type: jobCard.service_type || 'scheduled',
-      priority: jobCard.priority,
+      // Older plan jobs without a plan must have one chosen before saving
+      service_choice:
+        jobCard.service_type === 'scheduled'
+          ? jobCard.package_id
+            ? `plan:${jobCard.package_id}`
+            : ''
+          : jobCard.service_type || '',
+      oil_type_id: jobCard.oil_type_id ?? null,
       km_reading: jobCard.km_reading,
       fuel_level: jobCard.fuel_level,
       customer_complaints: jobCard.customer_complaints || '',
@@ -153,6 +215,12 @@ async function handleSubmit() {
   if (!form.value.vehicle_id) {
     errors.value.vehicle_id = 'Vehicle is required'
   }
+  if (!form.value.service_choice) {
+    errors.value.service_type = 'Choose the service plan or service type'
+  }
+  if (isPlan.value && !form.value.oil_type_id) {
+    errors.value.oil_type_id = 'Engine oil type is required for a service plan'
+  }
 
   if (Object.keys(errors.value).length > 0) {
     return
@@ -161,10 +229,19 @@ async function handleSubmit() {
   saving.value = true
   try {
     // Branch comes from the X-Branch-Id header; customer and vehicle are fixed after creation
-    const { customer_id, vehicle_id, ...editable } = form.value
-    const payload = {
+    const { customer_id, vehicle_id, service_choice, oil_type_id, ...editable } = form.value
+    const plan = selectedPlan.value
+    const payload: Record<string, unknown> = {
       ...editable,
       estimated_delivery: editable.estimated_delivery || null,
+    }
+    // Plan and oil grade are left out once locked (an estimate has been sent)
+    if (!locked.value) {
+      Object.assign(payload, {
+        service_type: plan ? 'scheduled' : service_choice,
+        package_id: plan ? plan.id : null,
+        oil_type_id: oil_type_id ? Number(oil_type_id) : null,
+      })
     }
 
     if (isEditing.value) {
@@ -201,7 +278,12 @@ watch(customerSearch, (value) => {
 
 watch(
   () => form.value.vehicle_id,
-  (id) => selectVehicle(id)
+  (id) => {
+    selectVehicle(id)
+    // Prices and grades depend on the car type
+    loadOptions()
+  },
+  { immediate: true }
 )
 </script>
 
@@ -278,20 +360,46 @@ watch(
 
           <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
             <Select
-              v-model="form.service_type"
+              :model-value="form.service_choice"
               label="Service Type"
-              :options="serviceTypeOptions"
-              :error="errors.service_type"
+              :options="serviceOptions"
+              :error="errors.service_type || errors.package_id"
+              placeholder="Choose a service plan or service type"
+              :disabled="locked"
               required
+              @update:model-value="chooseService"
             />
 
             <Select
-              v-model="form.priority"
-              label="Priority"
-              :options="priorityOptions"
-              :error="errors.priority"
-              required
+              :model-value="form.oil_type_id"
+              label="Engine Oil Type"
+              :options="oilOptions"
+              :error="errors.oil_type_id"
+              :placeholder="isPlan ? 'Choose the oil grade' : 'Optional'"
+              :disabled="locked || (isPlan && !oilOptions.length)"
+              :required="isPlan"
+              @update:model-value="(v) => (form.oil_type_id = v ? Number(v) : null)"
             />
+
+            <div v-if="form.service_choice || locked" class="md:col-span-2 -mt-3 rounded-lg bg-gray-50 px-3 py-2 text-sm text-gray-600 space-y-1">
+              <p v-if="locked" class="text-amber-700">
+                {{ options?.lock?.reason }}
+                <RouterLink v-if="jobCardId" :to="`/job-cards/${jobCardId}/estimate`" class="underline">Open the estimate</RouterLink>
+              </p>
+              <p v-if="isPlan && !options?.car_type" class="text-amber-700">
+                The vehicle has no car type, so the plan can't be priced.
+                <RouterLink v-if="form.vehicle_id" :to="`/vehicles/${form.vehicle_id}/edit`" class="underline">Set it on the vehicle</RouterLink>
+              </p>
+              <p v-else-if="isPlan && !oilOptions.length" class="text-amber-700">
+                This plan isn't priced for {{ options?.car_type?.name }} yet — set its prices in Price Masters.
+              </p>
+              <p v-if="packagePrice !== null">
+                Package price <span class="font-semibold text-gray-900">₹ {{ money(packagePrice) }}</span>
+                <span v-if="options?.car_type"> · {{ options.car_type.name }}</span>
+                <span class="text-gray-400"> (incl. GST)</span>
+              </p>
+              <p v-if="sheets.length">Job sheets: {{ sheets.join(', ') }}</p>
+            </div>
 
             <Input
               v-model.number="form.km_reading"

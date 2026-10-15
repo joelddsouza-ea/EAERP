@@ -2,10 +2,15 @@
 
 namespace App\Modules\Workshop\Http\Requests;
 
+use App\Modules\Workshop\Http\Requests\Concerns\ValidatesServicePlan;
+use App\Modules\Workshop\Models\JobCard;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Validator;
 
 class UpdateJobCardRequest extends FormRequest
 {
+    use ValidatesServicePlan;
+
     public function authorize(): bool
     {
         return $this->user()->hasPermission('workshop.job-cards.update');
@@ -18,18 +23,44 @@ class UpdateJobCardRequest extends FormRequest
             'oil_type_id' => 'nullable|exists:oil_types,id',
             'bay_id' => 'nullable|exists:bays,id',
             'technician_id' => 'nullable|exists:users,id',
-            'service_type' => 'nullable|in:scheduled,general_repair,ac_service,body_shop,electrical,detailing,home_service',
+            'service_type' => 'sometimes|required|in:' . self::SERVICE_TYPES,
             'km_reading' => 'nullable|integer|min:0',
             'fuel_level' => 'nullable|in:empty,quarter,half,three_quarter,full',
             'inventory_items' => 'nullable|array',
             'customer_complaints' => 'nullable|string',
             'advisor_observations' => 'nullable|string',
             'estimated_delivery' => 'nullable|date',
-            'priority' => 'nullable|in:low,normal,high,urgent',
             'discount' => 'nullable|numeric|min:0',
             'discount_reason' => 'nullable|string|max:255',
             'internal_notes' => 'nullable|string',
             'customer_approved' => 'nullable|boolean',
         ];
+    }
+
+    /**
+     * Check the plan rules against the job card as it will be after this update.
+     */
+    public function withValidator(Validator $validator): void
+    {
+        $validator->after(function (Validator $validator) {
+            $touched = $this->hasAny(['service_type', 'package_id', 'oil_type_id']);
+            if (!$touched || $validator->errors()->isNotEmpty()) {
+                return;
+            }
+
+            /** @var JobCard $jobCard */
+            $jobCard = $this->route('job_card');
+
+            $pick = fn (string $field) => $this->exists($field)
+                ? ($this->input($field) ?: null)
+                : $jobCard->{$field};
+
+            $this->checkServicePlan($validator, [
+                'service_type' => $pick('service_type'),
+                'package_id' => $pick('package_id') ? (int) $pick('package_id') : null,
+                'oil_type_id' => $pick('oil_type_id') ? (int) $pick('oil_type_id') : null,
+                'vehicle_id' => $jobCard->vehicle_id,
+            ]);
+        });
     }
 }

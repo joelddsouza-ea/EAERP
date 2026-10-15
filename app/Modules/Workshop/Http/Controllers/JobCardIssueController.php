@@ -120,6 +120,7 @@ class JobCardIssueController extends ApiController
         $data = $request->validate([
             'text' => 'required|string|max:1000',
             'customer_visible' => 'sometimes|boolean',
+            'severity' => ['sometimes', 'nullable', Rule::in(JobCardObservation::SEVERITIES)],
         ]);
 
         $observation = $jobCard->observations()->create([
@@ -138,6 +139,7 @@ class JobCardIssueController extends ApiController
         $data = $request->validate([
             'text' => 'sometimes|required|string|max:1000',
             'customer_visible' => 'sometimes|boolean',
+            'severity' => ['sometimes', 'nullable', Rule::in(JobCardObservation::SEVERITIES)],
         ]);
 
         // Activity-raised observations follow the activity's remarks

@@ -10,6 +10,7 @@ import { useUiStore } from '@/stores/ui.store'
 import { useAuthStore } from '@/stores/auth.store'
 import { useAuth } from '@/composables/useAuth'
 import BranchSelector from './BranchSelector.vue'
+import NotificationBell from './NotificationBell.vue'
 
 const uiStore = useUiStore()
 const authStore = useAuthStore()
@@ -64,7 +65,9 @@ function toggleMobileSidebar() {
       </div>
 
       <!-- Right side -->
-      <div class="flex items-center gap-4">
+      <div class="flex items-center gap-2 sm:gap-4">
+        <NotificationBell />
+
         <!-- User menu -->
         <Menu as="div" class="relative">
           <MenuButton

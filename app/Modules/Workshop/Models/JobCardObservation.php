@@ -15,12 +15,15 @@ class JobCardObservation extends Model
     public const SOURCE_ACTIVITY = 'activity';
     public const SOURCE_PRE_DELIVERY = 'pre_delivery';
 
+    public const SEVERITIES = ['minor', 'medium', 'major'];
+
     protected $fillable = [
         'job_card_id',
         'job_card_checklist_id',
         'source',
         'source_item_id',
         'text',
+        'severity',
         'sort_order',
         'customer_visible',
         'created_by',

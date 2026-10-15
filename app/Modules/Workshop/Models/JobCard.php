@@ -48,6 +48,10 @@ class JobCard extends BranchScopedModel
         'approved_at',
         'approval_signature',
         'priority',
+        'intake_trial_status',
+        'intake_trial_notes',
+        'intake_trial_by',
+        'intake_trial_at',
     ];
 
     protected $casts = [
@@ -58,6 +62,7 @@ class JobCard extends BranchScopedModel
         'work_completed_at' => 'datetime',
         'qc_completed_at' => 'datetime',
         'time_out' => 'datetime',
+        'intake_trial_at' => 'datetime',
         'status_changed_at' => 'datetime',
         'approved_at' => 'datetime',
         'customer_approved' => 'boolean',
@@ -207,6 +212,19 @@ class JobCard extends BranchScopedModel
         return $this->hasMany(JobCardMedia::class);
     }
 
+    /**
+     * Inventory photos/videos captured at intake (walk-in or pickup).
+     */
+    public function intakeMedia()
+    {
+        return $this->morphMany(JobCardMedia::class, 'attachable');
+    }
+
+    public function intakeTrialBy()
+    {
+        return $this->belongsTo(User::class, 'intake_trial_by');
+    }
+
     public function observations()
     {
         return $this->hasMany(JobCardObservation::class)->orderBy('sort_order')->orderBy('id');
@@ -228,6 +246,37 @@ class JobCard extends BranchScopedModel
     public function insuranceDetail()
     {
         return $this->hasOne(JobCardInsuranceDetail::class);
+    }
+
+    /**
+     * Customer estimates, newest version first.
+     */
+    public function estimates()
+    {
+        return $this->hasMany(JobCardEstimate::class)->orderByDesc('version');
+    }
+
+    /**
+     * The estimate the customer currently sees.
+     */
+    public function currentEstimate()
+    {
+        return $this->hasOne(JobCardEstimate::class)->where('status', JobCardEstimate::STATUS_SENT)->latestOfMany('version');
+    }
+
+    public function customerLinks()
+    {
+        return $this->hasMany(CustomerLink::class);
+    }
+
+    public function customerMessages()
+    {
+        return $this->hasMany(CustomerMessage::class)->orderByDesc('id');
+    }
+
+    public function report()
+    {
+        return $this->hasOne(JobCardReport::class);
     }
 
     /**

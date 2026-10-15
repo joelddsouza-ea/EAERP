@@ -16,6 +16,8 @@ import {
   UserGroupIcon,
   WrenchScrewdriverIcon,
   AdjustmentsHorizontalIcon,
+  CurrencyRupeeIcon,
+  CubeIcon,
 } from '@heroicons/vue/24/outline'
 
 const route = useRoute()
@@ -56,6 +58,14 @@ const navigation = computed<NavItem[]>(() => {
   }
   if (authStore.hasPermission('workshop.job-sheet-masters.view')) {
     items.push({ name: 'Job Sheet Masters', to: '/job-sheet-masters', icon: AdjustmentsHorizontalIcon })
+  }
+
+  if (authStore.hasPermission('workshop.spare-parts.view')) {
+    items.push({ name: 'Parts Desk', to: '/parts-desk', icon: CubeIcon })
+  }
+
+  if (authStore.hasPermission('workshop.pricing-masters.view')) {
+    items.push({ name: 'Price Masters', to: '/pricing-masters', icon: CurrencyRupeeIcon })
   }
 
   // Billing items

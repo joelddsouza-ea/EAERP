@@ -425,7 +425,7 @@ class JobCardController extends ApiController
         SparePartRequest $spareRequest
     ): JsonResponse {
         $request->validate([
-            'status' => 'required|in:approved,rejected,ordered,issued,received,returned',
+            'status' => 'required|in:approved,declined,ordered,issued,received,returned',
             'quantity' => 'nullable|numeric|min:0',
             'remarks' => 'nullable|string',
             'rejection_reason' => 'nullable|string',
@@ -438,7 +438,7 @@ class JobCardController extends ApiController
                 $updateData['approved_by'] = auth()->id();
                 $updateData['approved_at'] = now();
                 break;
-            case 'rejected':
+            case 'declined':
                 $updateData['rejection_reason'] = $request->rejection_reason;
                 break;
             case 'issued':

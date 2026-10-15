@@ -24,6 +24,7 @@ class JobCardStatusService
     public function __construct(
         protected JobCardWorkflow $workflow,
         protected NotificationService $notificationService,
+        protected CustomerMessageService $customerMessages,
     ) {}
 
     /**
@@ -35,6 +36,7 @@ class JobCardStatusService
         User $user,
         ?string $notes = null,
         bool $override = false,
+        array $meta = [],
     ): JobCard {
         $fromStatus = $jobCard->status;
         $edge = $this->workflow->edge($fromStatus, $toStatus);
@@ -54,7 +56,6 @@ class JobCardStatusService
         }
 
         $failures = $this->workflow->failedGuards($jobCard, $edge);
-        $meta = null;
 
         if ($failures) {
             if (!$override) {
@@ -66,12 +67,38 @@ class JobCardStatusService
             if (!$notes) {
                 throw new TransitionBlockedException('A note is required when overriding checks.', $failures);
             }
-            $meta = [
+            $meta += [
                 'override' => true,
                 'overridden_guards' => array_map(fn (GuardFailure $f) => $f->toArray(), $failures),
             ];
         }
 
+        $this->apply($jobCard, $fromStatus, $toStatus, $user, $notes, $meta ?: null);
+
+        return $jobCard->fresh();
+    }
+
+    /**
+     * A change the system makes on its own (e.g. back to work once the customer has
+     * answered every estimate line). Only taken when the edge exists and its guards
+     * pass; there is no user, so no permission check. Returns whether it moved.
+     */
+    public function changeBySystem(JobCard $jobCard, string $toStatus, string $via, ?string $notes = null): bool
+    {
+        $fromStatus = $jobCard->status;
+        $edge = $this->workflow->edge($fromStatus, $toStatus);
+
+        if (!$edge || $this->workflow->failedGuards($jobCard, $edge)) {
+            return false;
+        }
+
+        $this->apply($jobCard, $fromStatus, $toStatus, null, $notes, ['via' => $via]);
+
+        return true;
+    }
+
+    protected function apply(JobCard $jobCard, string $fromStatus, string $toStatus, ?User $user, ?string $notes, ?array $meta): void
+    {
         DB::transaction(function () use ($jobCard, $fromStatus, $toStatus, $user, $notes, $meta) {
             $jobCard->status = $toStatus;
             $jobCard->status_changed_at = now();
@@ -89,7 +116,7 @@ class JobCardStatusService
 
             $jobCard->save();
 
-            if ($fromStatus === JobCardStatus::WorkInProgress->value && $toStatus === JobCardStatus::PostWorkTrial->value) {
+            if ($user && $fromStatus === JobCardStatus::WorkInProgress->value && $toStatus === JobCardStatus::PostWorkTrial->value) {
                 $this->completeWorkSheets($jobCard, $user, $meta);
             }
 
@@ -99,13 +126,11 @@ class JobCardStatusService
                 'to_status' => $toStatus,
                 'notes' => $notes,
                 'meta' => $meta,
-                'changed_by' => $user->id,
+                'changed_by' => $user?->id,
             ]);
 
-            DB::afterCommit(fn () => $this->afterTransition($jobCard, $toStatus));
+            DB::afterCommit(fn () => $this->afterTransition($jobCard, $toStatus, $user));
         });
-
-        return $jobCard->fresh();
     }
 
     /**
@@ -125,7 +150,7 @@ class JobCardStatusService
             ]));
     }
 
-    protected function afterTransition(JobCard $jobCard, string $toStatus): void
+    protected function afterTransition(JobCard $jobCard, string $toStatus, ?User $user): void
     {
         $mode = config("workshop.workflow.notify_customer.{$toStatus}");
 
@@ -133,6 +158,7 @@ class JobCardStatusService
             $jobCard->loadMissing('customer');
             if ($jobCard->customer) {
                 $this->notificationService->notifyJobCardStatus($jobCard->customer, $jobCard->job_number, $toStatus);
+                $this->customerMessages->prepareForStatus($jobCard, $toStatus, $user);
             }
         }
 
