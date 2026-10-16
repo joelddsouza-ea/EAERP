@@ -27,6 +27,10 @@ export function mediaHint(item: JobSheetItem): string | null {
       return item.min_media_count > 1 ? `${item.min_media_count} videos required` : 'Video required'
     case 'photo_or_video':
       return 'Photo or video required'
+    case 'photo_and_video':
+      return item.min_media_count > 1
+        ? `${item.min_media_count} photos and ${item.min_media_count} videos required`
+        : 'Photo and video required'
     default:
       return null
   }

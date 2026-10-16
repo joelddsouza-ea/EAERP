@@ -14,12 +14,15 @@ class ChecklistItem extends Model
     public const MEDIA_PHOTO = 'photo';
     public const MEDIA_VIDEO = 'video';
     public const MEDIA_PHOTO_OR_VIDEO = 'photo_or_video';
+    // Both: at least the minimum count of photos AND of videos
+    public const MEDIA_PHOTO_AND_VIDEO = 'photo_and_video';
 
     public const MEDIA_REQUIREMENTS = [
         self::MEDIA_NONE,
         self::MEDIA_PHOTO,
         self::MEDIA_VIDEO,
         self::MEDIA_PHOTO_OR_VIDEO,
+        self::MEDIA_PHOTO_AND_VIDEO,
     ];
 
     public const INPUT_TYPES = ['tick', 'yes_no', 'repair_replace', 'panel_matrix', 'text', 'number', 'select'];

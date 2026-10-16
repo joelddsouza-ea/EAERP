@@ -34,7 +34,7 @@ const methodLabels: Record<string, string> = {
 </script>
 
 <template>
-  <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+  <div class="bg-white rounded-2xl shadow-sm ring-1 ring-gray-200/80">
     <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
       <h3 class="text-lg font-semibold text-gray-900">Recent Payments</h3>
       <RouterLink to="/payments" class="text-sm text-primary-600 hover:text-primary-700">

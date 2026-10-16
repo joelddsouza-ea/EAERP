@@ -194,9 +194,35 @@ class Invoice extends BranchScopedModel
 
         $this->total_tax = $this->cgst + $this->sgst + $this->igst;
         $this->total_amount = round((float) $this->taxable_amount + (float) $this->total_tax - (float) $this->discount);
-        $this->balance_amount = (float) $this->total_amount - (float) $this->paid_amount;
 
+        // A job's bill re-applies the job's payments to the new total (lines may have been removed)
+        if ($this->job_card_id) {
+            $this->updatePaymentStatus();
+
+            return;
+        }
+
+        $this->balance_amount = (float) $this->total_amount - (float) $this->paid_amount;
         $this->save();
+    }
+
+    /**
+     * Line discounts as shown above the taxable value: [value before discount, discount],
+     * both before GST, so "value − discount = taxable value" adds up on the bill.
+     *
+     * @return array{0: float, 1: float}
+     */
+    public function discountBreakup(): array
+    {
+        $before = 0.0;
+        foreach ($this->items as $item) {
+            $gross = (float) $item->quantity * (float) $item->unit_price;
+            [$taxable] = InvoiceItem::split($gross, (float) $item->tax_rate, (bool) $item->gst_inclusive, (bool) $this->is_igst);
+            $before += $taxable;
+        }
+        $before = round($before, 2);
+
+        return [$before, round(max(0, $before - (float) $this->taxable_amount), 2)];
     }
 
     /**
@@ -208,16 +234,22 @@ class Invoice extends BranchScopedModel
     }
 
     /**
-     * Paid so far. A job's bill counts every payment taken on the job (advance,
-     * during work and final); a stand-alone invoice its own payments.
+     * Paid so far. A job's bill counts every payment on the job (advance, during work,
+     * final, less refunds and amounts moved to the customer's credit), so a balance
+     * below zero is money to refund or keep as credit. A stand-alone invoice counts its
+     * own payments.
      */
     public function updatePaymentStatus(): void
     {
-        $payments = $this->job_card_id
-            ? Payment::withoutGlobalScopes()->where('job_card_id', $this->job_card_id)
-            : $this->payments();
+        if ($this->job_card_id) {
+            $this->paid_amount = (float) Payment::withoutGlobalScopes()
+                ->where('job_card_id', $this->job_card_id)
+                ->where('status', 'completed')
+                ->sum('amount');
+        } else {
+            $this->paid_amount = $this->payments()->where('status', 'completed')->sum('amount');
+        }
 
-        $this->paid_amount = $payments->where('status', 'completed')->sum('amount');
         $this->balance_amount = (float) $this->total_amount - (float) $this->paid_amount;
 
         // A tax invoice's status is its payment state; a proforma keeps its life-cycle status

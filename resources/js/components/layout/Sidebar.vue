@@ -1,108 +1,30 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+/**
+ * Desktop sidebar (lg and up): brand logo, grouped menu with a collapsible
+ * Masters group, and the signed-in user. Collapses to icons.
+ */
+import { ref, watch } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
+import { ChevronDownIcon } from '@heroicons/vue/20/solid'
 import { useAuthStore } from '@/stores/auth.store'
 import { useUiStore } from '@/stores/ui.store'
-import {
-  HomeIcon,
-  UsersIcon,
-  TruckIcon,
-  ClipboardDocumentListIcon,
-  CurrencyDollarIcon,
-  DocumentTextIcon,
-  ChartBarIcon,
-  Cog6ToothIcon,
-  BuildingOfficeIcon,
-  UserGroupIcon,
-  WrenchScrewdriverIcon,
-  AdjustmentsHorizontalIcon,
-  CurrencyRupeeIcon,
-  CubeIcon,
-} from '@heroicons/vue/24/outline'
+import { useNavigation } from './navigation'
 
 const route = useRoute()
 const authStore = useAuthStore()
 const uiStore = useUiStore()
+const { groups, isActive } = useNavigation()
 
-interface NavItem {
-  name: string
-  to: string
-  icon: any
-  permission?: string
-  roles?: string[]
-  children?: NavItem[]
-}
-
-const navigation = computed<NavItem[]>(() => {
-  const items: NavItem[] = [
-    { name: 'Dashboard', to: '/', icon: HomeIcon },
-  ]
-
-  // Technician-specific
-  if (authStore.hasAnyRole(['technician', 'body-shop-technician'])) {
-    items.push({ name: 'My Jobs', to: '/my-jobs', icon: WrenchScrewdriverIcon })
-  }
-
-  // Workshop items
-  if (authStore.hasPermission('workshop.customers.view')) {
-    items.push({ name: 'Customers', to: '/customers', icon: UsersIcon })
-  }
-  if (authStore.hasPermission('workshop.vehicles.view')) {
-    items.push({ name: 'Vehicles', to: '/vehicles', icon: TruckIcon })
-  }
-  if (authStore.hasPermission('workshop.job-cards.view')) {
-    items.push({ name: 'Job Cards', to: '/job-cards', icon: ClipboardDocumentListIcon })
-  }
-  if (authStore.hasPermission('workshop.bays.view')) {
-    items.push({ name: 'Bays', to: '/bays', icon: BuildingOfficeIcon })
-  }
-  if (authStore.hasPermission('workshop.job-sheet-masters.view')) {
-    items.push({ name: 'Job Sheet Masters', to: '/job-sheet-masters', icon: AdjustmentsHorizontalIcon })
-  }
-
-  if (authStore.hasPermission('workshop.spare-parts.view')) {
-    items.push({ name: 'Parts Desk', to: '/parts-desk', icon: CubeIcon })
-  }
-
-  if (authStore.hasPermission('workshop.pricing-masters.view')) {
-    items.push({ name: 'Price Masters', to: '/pricing-masters', icon: CurrencyRupeeIcon })
-  }
-
-  // Billing items
-  if (authStore.hasPermission('billing.invoices.view')) {
-    items.push({ name: 'Invoices', to: '/invoices', icon: DocumentTextIcon })
-  }
-  if (authStore.hasPermission('billing.payments.view')) {
-    items.push({ name: 'Payments', to: '/payments', icon: CurrencyDollarIcon })
-  }
-  if (authStore.hasPermission('billing.reports.view')) {
-    items.push({ name: 'Reports', to: '/reports', icon: ChartBarIcon })
-  }
-
-  // Admin items
-  if (authStore.hasPermission('user-admin.users.view')) {
-    items.push({ name: 'Users', to: '/users', icon: UserGroupIcon })
-  }
-  if (authStore.hasPermission('user-admin.branches.view')) {
-    items.push({ name: 'Branches', to: '/branches', icon: BuildingOfficeIcon })
-  }
-  if (authStore.hasPermission('user-admin.roles.view')) {
-    items.push({ name: 'Roles', to: '/roles', icon: Cog6ToothIcon })
-  }
-
-  return items
-})
-
-function isActive(path: string): boolean {
-  if (path === '/') {
-    return route.path === '/'
-  }
-  return route.path.startsWith(path)
-}
-
-function closeMobileSidebar() {
-  uiStore.closeMobileSidebar()
-}
+// Masters stays open while one of its screens is shown
+const mastersOpen = ref(false)
+watch(
+  () => route.fullPath,
+  () => {
+    const masters = groups.value.find((g) => g.key === 'masters')
+    if (masters?.items.some((i) => isActive(i.to))) mastersOpen.value = true
+  },
+  { immediate: true }
+)
 </script>
 
 <template>
@@ -112,69 +34,95 @@ function closeMobileSidebar() {
       uiStore.sidebarCollapsed ? 'w-20' : 'w-64',
     ]"
   >
-    <!-- Logo -->
-    <div class="flex items-center h-16 px-4 border-b border-gray-200">
-      <RouterLink to="/" class="flex items-center">
-        <div
-          class="flex items-center justify-center w-10 h-10 rounded-lg bg-primary-600 text-white font-bold text-lg"
-        >
-          EA
-        </div>
-        <span
+    <!-- Brand -->
+    <div class="relative flex items-center h-16 px-4 border-b border-gray-100">
+      <span class="absolute inset-x-0 top-0 h-1 bg-primary-600" />
+      <RouterLink to="/" class="flex items-center w-full" :title="'Express Autocare'">
+        <img
           v-if="!uiStore.sidebarCollapsed"
-          class="ml-3 text-xl font-bold text-gray-900"
-        >
-          EAERP
-        </span>
+          src="/images/logo.png"
+          alt="Express Autocare"
+          class="h-11 w-auto object-contain"
+        />
+        <img v-else src="/images/logo-mark.png" alt="Express Autocare" class="mx-auto h-12 w-12 object-contain" />
       </RouterLink>
     </div>
 
     <!-- Navigation -->
-    <nav class="flex-1 px-3 py-4 space-y-1 overflow-y-auto scrollbar-thin">
-      <RouterLink
-        v-for="item in navigation"
-        :key="item.to"
-        :to="item.to"
-        :class="[
-          'flex items-center px-3 py-2 rounded-lg text-sm font-medium transition-colors duration-200',
-          isActive(item.to)
-            ? 'bg-primary-50 text-primary-700'
-            : 'text-gray-700 hover:bg-gray-100',
-          uiStore.sidebarCollapsed ? 'justify-center' : '',
-        ]"
-        @click="closeMobileSidebar"
-      >
-        <component
-          :is="item.icon"
-          :class="[
-            'flex-shrink-0 w-5 h-5',
-            isActive(item.to) ? 'text-primary-600' : 'text-gray-400',
-          ]"
-        />
-        <span v-if="!uiStore.sidebarCollapsed" class="ml-3">{{ item.name }}</span>
-      </RouterLink>
+    <nav class="flex-1 px-3 py-4 overflow-y-auto scrollbar-thin">
+      <div v-for="group in groups" :key="group.key" class="mb-4">
+        <p
+          v-if="!uiStore.sidebarCollapsed && !group.collapsible"
+          class="px-3 mb-1 text-[11px] font-semibold uppercase tracking-wider text-gray-400"
+        >
+          {{ group.label }}
+        </p>
+
+        <!-- Collapsible group (Masters) -->
+        <template v-if="group.collapsible">
+          <button
+            type="button"
+            :class="[
+              'w-full flex items-center px-3 py-2 rounded-lg text-sm font-semibold transition-colors',
+              group.items.some((i) => isActive(i.to)) ? 'text-primary-700' : 'text-gray-700 hover:bg-gray-100',
+              uiStore.sidebarCollapsed ? 'justify-center' : '',
+            ]"
+            :title="group.label"
+            @click="mastersOpen = !mastersOpen; uiStore.sidebarCollapsed && uiStore.toggleSidebar()"
+          >
+            <component :is="group.icon" class="h-5 w-5 shrink-0" :class="group.items.some((i) => isActive(i.to)) ? 'text-primary-600' : 'text-gray-400'" />
+            <template v-if="!uiStore.sidebarCollapsed">
+              <span class="ml-3 flex-1 text-left">{{ group.label }}</span>
+              <ChevronDownIcon :class="['h-4 w-4 text-gray-400 transition-transform', mastersOpen ? 'rotate-180' : '']" />
+            </template>
+          </button>
+          <div v-if="mastersOpen && !uiStore.sidebarCollapsed" class="mt-1 ml-5 border-l border-gray-200 pl-2 space-y-0.5">
+            <RouterLink
+              v-for="item in group.items"
+              :key="item.to"
+              :to="item.to"
+              :class="[
+                'block px-3 py-1.5 rounded-md text-[13px] transition-colors',
+                isActive(item.to) ? 'bg-primary-50 text-primary-700 font-semibold' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900',
+              ]"
+            >
+              {{ item.name }}
+            </RouterLink>
+          </div>
+        </template>
+
+        <template v-else>
+          <RouterLink
+            v-for="item in group.items"
+            :key="item.to"
+            :to="item.to"
+            :title="uiStore.sidebarCollapsed ? item.name : undefined"
+            :class="[
+              'relative flex items-center px-3 py-2 rounded-lg text-sm font-medium transition-colors',
+              isActive(item.to) ? 'bg-primary-50 text-primary-700' : 'text-gray-700 hover:bg-gray-100',
+              uiStore.sidebarCollapsed ? 'justify-center' : '',
+            ]"
+          >
+            <span v-if="isActive(item.to)" class="absolute left-0 top-1.5 bottom-1.5 w-1 rounded-r bg-primary-600" />
+            <component
+              :is="item.icon"
+              :class="['shrink-0 h-5 w-5', isActive(item.to) ? 'text-primary-600' : 'text-gray-400']"
+            />
+            <span v-if="!uiStore.sidebarCollapsed" class="ml-3">{{ item.name }}</span>
+          </RouterLink>
+        </template>
+      </div>
     </nav>
 
-    <!-- User info -->
-    <div class="p-4 border-t border-gray-200">
-      <div
-        :class="[
-          'flex items-center',
-          uiStore.sidebarCollapsed ? 'justify-center' : '',
-        ]"
-      >
-        <div
-          class="flex items-center justify-center w-8 h-8 rounded-full bg-primary-100 text-primary-600 text-sm font-medium"
-        >
+    <!-- User -->
+    <div class="p-3 border-t border-gray-100">
+      <div :class="['flex items-center rounded-xl bg-gray-50 p-2', uiStore.sidebarCollapsed ? 'justify-center' : '']">
+        <div class="flex items-center justify-center w-9 h-9 rounded-full bg-gray-700 text-white text-sm font-semibold shrink-0">
           {{ authStore.userName?.charAt(0)?.toUpperCase() || 'U' }}
         </div>
         <div v-if="!uiStore.sidebarCollapsed" class="ml-3 overflow-hidden">
-          <p class="text-sm font-medium text-gray-900 truncate">
-            {{ authStore.userName }}
-          </p>
-          <p class="text-xs text-gray-500 truncate">
-            {{ authStore.roleDisplayName }}
-          </p>
+          <p class="text-sm font-semibold text-gray-900 truncate">{{ authStore.userName }}</p>
+          <p class="text-xs text-gray-500 truncate">{{ authStore.roleDisplayName }}</p>
         </div>
       </div>
     </div>

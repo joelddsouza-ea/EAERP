@@ -148,6 +148,7 @@ class PublicJobController extends ApiController
             'total' => (float) $bill->total_amount,
             'paid' => $summary['paid'],
             'balance' => max(0, $summary['balance']),
+            'refund_due' => $summary['refund_due'],
             'gate_pass' => $summary['gate_pass']['number'] ?? null,
         ];
     }

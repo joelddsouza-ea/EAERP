@@ -99,6 +99,11 @@
     </table>
 
     <table class="totals" style="margin-top:6px; width:50%; margin-left:50%">
+        @php([$beforeDiscount, $lineDiscount] = $bill->discountBreakup())
+        @if($lineDiscount >= 0.01)
+            <tr><td>Value before discount</td><td class="num">{{ number_format($beforeDiscount, 2) }}</td></tr>
+            <tr><td>Less: Discount</td><td class="num">-{{ number_format($lineDiscount, 2) }}</td></tr>
+        @endif
         <tr><td>Taxable value</td><td class="num">{{ number_format((float) $bill->taxable_amount, 2) }}</td></tr>
         @if($bill->is_igst)
             <tr><td>IGST</td><td class="num">{{ number_format((float) $bill->igst, 2) }}</td></tr>
@@ -112,7 +117,11 @@
         <tr class="grand"><td>TOTAL (₹)</td><td class="num">{{ number_format((float) $bill->total_amount, 2) }}</td></tr>
         @if($paid > 0)
             <tr><td>Paid</td><td class="num">{{ number_format($paid, 2) }}</td></tr>
-            <tr><td><b>{{ (float) $bill->balance_amount < 0 ? 'Excess paid' : 'Balance due' }}</b></td><td class="num"><b>{{ number_format(abs((float) $bill->balance_amount), 2) }}</b></td></tr>
+            @if((float) $bill->balance_amount < 0)
+                <tr><td><b>Refund due</b></td><td class="num"><b>{{ number_format(-(float) $bill->balance_amount, 2) }}</b></td></tr>
+            @else
+                <tr><td><b>Balance due</b></td><td class="num"><b>{{ number_format((float) $bill->balance_amount, 2) }}</b></td></tr>
+            @endif
         @endif
     </table>
     <div class="words">{{ $words }}</div>

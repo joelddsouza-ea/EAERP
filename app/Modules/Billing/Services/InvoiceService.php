@@ -194,20 +194,21 @@ class InvoiceService
     {
         $date = $date ?? today();
 
+        // Money received less refunds (credit moves are not money)
         $query = \App\Modules\Billing\Models\Payment::whereDate('payment_date', $date)
-            ->where('status', 'completed');
+            ->money();
 
         if ($branchId) {
             $query->where('branch_id', $branchId);
         }
 
-        $payments = $query->with(['invoice.customer', 'receivedBy'])->get();
+        $payments = $query->with(['invoice.customer', 'receivedBy', 'parts'])->get();
 
-        $byMethod = $payments->groupBy('method')->map(fn($p) => $p->sum('amount'));
+        $byMethod = \App\Modules\Billing\Models\Payment::totalsByMethod($payments);
 
         return [
             'date' => $date->toDateString(),
-            'total' => $payments->sum('amount'),
+            'total' => round(array_sum($byMethod), 2),
             'by_method' => $byMethod,
             'count' => $payments->count(),
             'payments' => $payments,

@@ -78,7 +78,7 @@ const panelFlags = computed<PanelFlags>(() => {
 // The camera opens straight away for what the master asks: photo, video, or a choice of both
 // (one file type per button; "image/*,video/*" makes phones open the gallery instead).
 const qcKinds = computed<('photo' | 'video')[]>(() =>
-  props.item.media_requirement === 'video' ? ['video'] : props.item.media_requirement === 'photo_or_video' ? ['photo', 'video'] : ['photo']
+  props.item.media_requirement === 'video' ? ['video'] : ['photo_or_video', 'photo_and_video'].includes(props.item.media_requirement) ? ['photo', 'video'] : ['photo']
 )
 
 const qcOpen = ref(false)

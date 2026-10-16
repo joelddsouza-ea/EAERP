@@ -46,53 +46,67 @@ async function handleSubmit() {
 </script>
 
 <template>
-  <div class="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
-    <div class="max-w-md w-full space-y-8">
-      <!-- Logo and title -->
-      <div class="text-center">
-        <div
-          class="mx-auto w-16 h-16 flex items-center justify-center rounded-xl bg-primary-600 text-white text-2xl font-bold"
-        >
-          EA
-        </div>
-        <h2 class="mt-6 text-3xl font-bold text-gray-900">Welcome back</h2>
-        <p class="mt-2 text-sm text-gray-600">Sign in to your EAERP account</p>
+  <div class="min-h-screen flex flex-col lg:flex-row bg-white">
+    <!-- Brand panel (desktop) -->
+    <aside class="hidden lg:flex lg:w-[46%] relative flex-col justify-between overflow-hidden bg-gray-800 p-12 text-white">
+      <div class="absolute inset-x-0 top-0 h-1.5 bg-primary-600" />
+      <div class="absolute -right-24 -bottom-24 h-96 w-96 rounded-full bg-primary-600/20" />
+      <div class="absolute -right-10 bottom-28 h-48 w-48 rounded-full bg-primary-600/30" />
+      <div class="relative inline-flex w-max rounded-2xl bg-white p-4 shadow-lg">
+        <img src="/images/logo.png" alt="Express Autocare" class="h-16 w-auto" />
       </div>
+      <div class="relative">
+        <p class="text-sm font-semibold uppercase tracking-[0.2em] text-primary-300">Workshop ERP</p>
+        <h1 class="mt-3 text-4xl font-bold leading-tight">Every car, every job,<br />every rupee — in one place.</h1>
+        <p class="mt-4 max-w-md text-gray-300">
+          Job cards, digital job sheets, estimates, parts, billing and delivery for all Express Autocare locations.
+        </p>
+      </div>
+      <p class="relative text-xs text-gray-400">Trusted since 2015 · Multi-brand car service center</p>
+    </aside>
 
-      <!-- Login form -->
-      <form class="mt-8 space-y-6" @submit.prevent="handleSubmit">
-        <!-- Error message -->
-        <div
-          v-if="error"
-          class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm"
-        >
-          {{ error }}
+    <!-- Sign in -->
+    <main class="flex-1 flex flex-col">
+      <div class="h-1 bg-primary-600 lg:hidden" />
+      <div class="flex-1 flex items-center justify-center px-5 py-10 sm:px-8">
+        <div class="w-full max-w-sm">
+          <div class="lg:hidden flex justify-center mb-8">
+            <img src="/images/logo.png" alt="Express Autocare" class="h-20 w-auto" />
+          </div>
+
+          <h2 class="text-2xl font-bold text-gray-900">Sign in</h2>
+          <p class="mt-1 text-sm text-gray-500">Use your Express Autocare staff account.</p>
+
+          <form class="mt-8 space-y-5" @submit.prevent="handleSubmit">
+            <div v-if="error" class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
+              {{ error }}
+            </div>
+
+            <Input
+              v-model="form.email"
+              type="email"
+              label="Email address"
+              placeholder="name@expressautocare.in"
+              :error="errors.email"
+              required
+              autocomplete="email"
+            />
+
+            <Input
+              v-model="form.password"
+              type="password"
+              label="Password"
+              placeholder="Your password"
+              :error="errors.password"
+              required
+              autocomplete="current-password"
+            />
+
+            <Button type="submit" size="lg" block :loading="loading">Sign in</Button>
+          </form>
         </div>
-
-        <div class="space-y-4">
-          <Input
-            v-model="form.email"
-            type="email"
-            label="Email address"
-            placeholder="Enter your email"
-            :error="errors.email"
-            required
-            autocomplete="email"
-          />
-
-          <Input
-            v-model="form.password"
-            type="password"
-            label="Password"
-            placeholder="Enter your password"
-            :error="errors.password"
-            required
-            autocomplete="current-password"
-          />
-        </div>
-
-        <Button type="submit" block :loading="loading"> Sign in </Button>
-      </form>
-    </div>
+      </div>
+      <p class="pb-[max(1.5rem,env(safe-area-inset-bottom))] text-center text-xs text-gray-400">© Express Autocare, Kalyan (W)</p>
+    </main>
   </div>
 </template>

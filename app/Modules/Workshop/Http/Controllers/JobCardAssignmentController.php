@@ -24,6 +24,31 @@ class JobCardAssignmentController extends ApiController
 
     public function __construct(protected JobCardService $jobCards) {}
 
+    /**
+     * Active technicians (optionally of one branch), for advisors and managers who
+     * assign work but don't hold the user-admin permission.
+     */
+    public function technicians(Request $request): JsonResponse
+    {
+        $branchId = $request->integer('branch_id') ?: null;
+
+        $technicians = User::active()
+            ->whereHas('roles', fn ($q) => $q->whereIn('slug', self::TECHNICIAN_ROLES))
+            ->when($branchId, fn ($q, $id) => $q->forBranch($id))
+            ->with('roles:id,slug,name')
+            ->orderBy('name')
+            ->get(['id', 'name', 'email', 'phone'])
+            ->map(fn (User $u) => [
+                'id' => $u->id,
+                'name' => $u->name,
+                'email' => $u->email,
+                'phone' => $u->phone,
+                'roles' => $u->roles->map(fn ($r) => ['slug' => $r->slug, 'name' => $r->name])->values(),
+            ]);
+
+        return $this->success($technicians);
+    }
+
     public function show(JobCard $jobCard): JsonResponse
     {
         return $this->success($this->present($jobCard));

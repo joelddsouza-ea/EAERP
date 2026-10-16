@@ -41,6 +41,9 @@ const methodLabels: Record<string, string> = {
   upi: 'UPI',
   bank_transfer: 'Bank Transfer',
   cheque: 'Cheque',
+  wallet: 'Wallet',
+  split: 'Split',
+  customer_credit: 'Customer credit',
 }
 
 function formatCurrency(amount: number | string): string {
@@ -97,7 +100,7 @@ watch(() => branchStore.currentBranchId, fetchPayments)
 
 <template>
   <div>
-    <div class="flex items-center justify-between mb-6">
+    <div class="flex flex-wrap items-center justify-between gap-3 mb-4 sm:mb-6">
       <div>
         <h1 class="text-2xl font-bold text-gray-900">Payments</h1>
         <p class="text-gray-500 mt-1">View payment records</p>
@@ -151,7 +154,8 @@ watch(() => branchStore.currentBranchId, fetchPayments)
       </template>
 
       <template #cell-amount="{ value }">
-        <span class="text-green-600 font-medium">{{ formatCurrency(value) }}</span>
+        <!-- Refunds and amounts moved to customer credit are negative -->
+        <span :class="Number(value) < 0 ? 'text-red-700' : 'text-green-600'" class="font-medium">{{ formatCurrency(value) }}</span>
       </template>
     </DataTable>
   </div>

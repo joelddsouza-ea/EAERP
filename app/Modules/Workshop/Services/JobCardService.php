@@ -7,6 +7,8 @@ use App\Modules\Workshop\Models\JobCardBayMove;
 use App\Modules\Workshop\Models\JobCardEstimate;
 use App\Modules\Workshop\Models\JobCardStatusHistory;
 use App\Modules\Workshop\Enums\JobCardStatus;
+use App\Modules\Workshop\Notifications\StaffAlert;
+use App\Core\Models\User;
 use Illuminate\Support\Facades\DB;
 
 class JobCardService
@@ -30,6 +32,9 @@ class JobCardService
             $data['status'] = $data['status'] ?? JobCardStatus::IntakePending->value;
             $data['status_changed_at'] = now();
             $data = $this->normalizeServiceType($data);
+            // A technician chosen on the form goes through addTechnician (pivot + notification)
+            $technicianId = $data['technician_id'] ?? null;
+            unset($data['technician_id']);
 
             // Complaint lines also kept as one text for older screens and documents
             $complaints = array_values(array_filter(array_map('trim', $data['complaints'] ?? []), fn ($c) => $c !== ''));
@@ -55,6 +60,10 @@ class JobCardService
             // Each complaint is a line under Additional Issues on the technician's sheet
             $this->issueLines->createComplaints($jobCard, $complaints, auth()->user());
 
+            if ($technicianId) {
+                $jobCard = $this->addTechnician($jobCard, (int) $technicianId, true);
+            }
+
             JobCardStatusHistory::create([
                 'job_card_id' => $jobCard->id,
                 'from_status' => null,
@@ -74,8 +83,13 @@ class JobCardService
         // Status changes go through JobCardStatusService
         unset($data['status']);
         $data = $this->normalizeServiceType($data);
+        $technicianId = $data['technician_id'] ?? null;
+        unset($data['technician_id']);
 
-        return DB::transaction(function () use ($jobCard, $data) {
+        return DB::transaction(function () use ($jobCard, $data, $technicianId) {
+            if ($technicianId && (int) $technicianId !== $jobCard->technician_id) {
+                $jobCard = $this->addTechnician($jobCard, (int) $technicianId, true);
+            }
             $jobCard->fill($data);
             $planChanged = $jobCard->isDirty(['package_id', 'oil_type_id']);
             $sheetsChanged = $jobCard->isDirty(['package_id', 'service_type']);
@@ -148,7 +162,10 @@ class JobCardService
      */
     public function addTechnician(JobCard $jobCard, int $technicianId, bool $lead = false): JobCard
     {
-        return DB::transaction(function () use ($jobCard, $technicianId, $lead) {
+        $alreadyOn = $jobCard->technician_id === $technicianId
+            || $jobCard->technicians()->where('users.id', $technicianId)->exists();
+
+        $jobCard = DB::transaction(function () use ($jobCard, $technicianId, $lead) {
             $makeLead = $lead || !$jobCard->technician_id;
 
             if ($makeLead) {
@@ -170,6 +187,14 @@ class JobCardService
 
             return $jobCard->fresh();
         });
+
+        // Tell the technician about a new job (not when someone already on it is only made lead)
+        if (!$alreadyOn && $technicianId !== auth()->id()) {
+            $jobCard->load('vehicle:id,registration_no,make_id,model_id', 'vehicle.make:id,name', 'vehicle.model:id,name');
+            User::find($technicianId)?->notify(StaffAlert::jobAssigned($jobCard, auth()->user()?->name));
+        }
+
+        return $jobCard;
     }
 
     /**

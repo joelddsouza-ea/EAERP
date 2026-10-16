@@ -5,7 +5,8 @@
  * with "Save changes" after a confirmation. They apply to estimates prepared from
  * now on; estimates already sent keep their prices.
  */
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { pricingApi } from '@/api/estimates.api'
 import { usePermissions } from '@/composables/usePermissions'
 import { usePendingChanges } from '@/composables/usePendingChanges'
@@ -26,7 +27,18 @@ const pending = usePendingChanges()
 const data = ref<PricingMasters | null>(null)
 const loading = ref(true)
 const savingAll = ref(false)
-const tab = ref<'plans' | 'prices' | 'items' | 'oil' | 'labour' | 'classes'>('plans')
+type PriceTab = 'plans' | 'prices' | 'items' | 'oil' | 'labour' | 'classes'
+const route = useRoute()
+const router = useRouter()
+const TAB_KEYS: PriceTab[] = ['plans', 'prices', 'items', 'oil', 'labour', 'classes']
+const tabFromRoute = () => (TAB_KEYS.includes(route.query.tab as PriceTab) ? (route.query.tab as PriceTab) : 'plans')
+// The open tab follows ?tab= so each master has its own menu link
+const tab = ref<PriceTab>(tabFromRoute())
+watch(() => route.query.tab, () => (tab.value = tabFromRoute()))
+function openTab(key: PriceTab) {
+  tab.value = key
+  router.replace({ query: { ...route.query, tab: key } })
+}
 /** Bumped after saving / discarding so the car classes tab reloads too */
 const reloadKey = ref(0)
 const planId = ref<number | null>(null)
@@ -392,13 +404,13 @@ onMounted(load)
       <p class="text-sm text-gray-500">All prices include GST. Edit, then “Save changes” at the bottom. Changes apply to estimates prepared from now on.</p>
     </div>
 
-    <div class="flex flex-wrap gap-2 mb-4">
+    <div class="-mx-3 sm:mx-0 px-3 sm:px-0 flex gap-2 mb-4 overflow-x-auto scrollbar-none">
       <button
         v-for="t in TABS"
         :key="t.key"
-        class="rounded-lg px-3 py-1.5 text-sm font-medium"
-        :class="tab === t.key ? 'bg-primary-600 text-white' : 'bg-white border border-gray-300 text-gray-700'"
-        @click="tab = t.key"
+        class="shrink-0 whitespace-nowrap rounded-full px-4 py-2 text-sm font-semibold transition-colors"
+        :class="tab === t.key ? 'bg-primary-600 text-white shadow-sm' : 'bg-white ring-1 ring-gray-300 text-gray-700 hover:bg-gray-50'"
+        @click="openTab(t.key)"
       >
         {{ t.label }}
       </button>

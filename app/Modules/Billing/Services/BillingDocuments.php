@@ -43,7 +43,7 @@ class BillingDocuments
     public function receiptPdf(Payment $payment)
     {
         $jobCard = $this->jobCard($payment->job_card_id);
-        $payment->loadMissing('receivedBy');
+        $payment->loadMissing(['receivedBy', 'parts']);
 
         return $this->export->toPdf('exports.payment-receipt', [
             'company' => $this->documents->company($jobCard),

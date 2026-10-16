@@ -288,14 +288,14 @@ onMounted(load)
 </script>
 
 <template>
-  <div class="-mx-4 sm:mx-0 pb-28">
+  <div class="-mx-3 sm:mx-0 pb-28">
     <div v-if="loading" class="flex justify-center py-12">
       <Spinner size="lg" />
     </div>
 
     <template v-else-if="jobCard">
       <!-- Header -->
-      <div class="sticky top-0 z-20 bg-gray-50/95 backdrop-blur px-4 sm:px-0 pt-2 pb-3 border-b border-gray-200">
+      <div class="sticky top-[calc(3.5rem+env(safe-area-inset-top))] lg:top-16 z-20 bg-gray-100/95 backdrop-blur px-4 sm:px-0 pt-2 pb-3 border-b border-gray-200">
         <div class="flex items-center gap-2">
           <button type="button" class="p-2 -ml-2 text-gray-500" aria-label="Back to job card" @click="router.push(`/job-cards/${jobCardId}`)">
             <ArrowLeftIcon class="h-5 w-5" />
@@ -420,7 +420,7 @@ onMounted(load)
       <!-- Submit bar -->
       <div
         v-if="(activeSheet && (canSubmit || (activeSheet.status === 'completed' && can('workshop.job-sheets.reopen')))) || (isAssignedTechnician && !jobClosed)"
-        class="fixed bottom-0 inset-x-0 z-30 bg-white border-t border-gray-200 px-4 py-3 flex gap-2"
+        class="fixed bottom-0 inset-x-0 z-30 bg-white/95 backdrop-blur border-t border-gray-200 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] flex gap-2 shadow-[0_-4px_12px_rgba(0,0,0,0.04)]"
         :class="uiStore.sidebarCollapsed ? 'lg:pl-24' : 'lg:pl-68'"
       >
         <!-- Observations go to the advisor for the customer's report -->

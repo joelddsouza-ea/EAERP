@@ -6,7 +6,9 @@ use App\Core\Models\User;
 use App\Modules\Billing\Models\GatePass;
 use App\Modules\Billing\Models\Invoice;
 use App\Modules\Billing\Models\InvoiceItem;
+use App\Modules\Billing\Models\CustomerCredit;
 use App\Modules\Billing\Models\Payment;
+use App\Modules\Billing\Models\PaymentPart;
 use App\Modules\Workshop\Enums\JobCardStatus;
 use App\Modules\Workshop\Models\JobCard;
 use App\Modules\Workshop\Models\JobCardEstimate;
@@ -23,7 +25,10 @@ use Illuminate\Support\Facades\DB;
  *    back office can trim and add "other items" to, then approves;
  *  - the proforma is converted into a GST tax invoice, or closed as it is once paid;
  *  - the gate pass is issued when the bill is paid (or by an owner/manager override),
- *    and "Vehicle out" on it delivers the job.
+ *    and "Vehicle out" on it delivers the job;
+ *  - every rupee is accounted for: a receipt may be split over several methods, and
+ *    money paid beyond the bill must be refunded or kept as the customer's credit
+ *    (the gate pass waits until it is).
  */
 class BillingService
 {
@@ -67,7 +72,7 @@ class BillingService
         return Payment::withoutGlobalScopes()
             ->where('job_card_id', $jobCard->id)
             ->where('status', 'completed')
-            ->with('receivedBy:id,name')
+            ->with(['receivedBy:id,name', 'parts'])
             ->orderBy('id')
             ->get();
     }
@@ -86,6 +91,7 @@ class BillingService
         $payable = $bill && $bill->isPayable() ? $bill : null;
         $payments = $this->payments($jobCard);
         $paid = round((float) $payments->sum('amount'), 2);
+        $balance = $payable ? round((float) $payable->total_amount - $paid, 2) : -$paid;
         $gatePass = $this->gatePass($jobCard);
         $estimate = $this->sentEstimate($jobCard);
 
@@ -94,16 +100,21 @@ class BillingService
             'bill' => $bill ? $this->presentBill($bill, $estimate) : null,
             'bill_total' => $payable ? (float) $payable->total_amount : null,
             'paid' => $paid,
-            'balance' => $payable ? round((float) $payable->total_amount - $paid, 2) : -$paid,
+            'balance' => $balance,
+            // Paid beyond the approved bill: refund it or keep it as the customer's credit
+            'refund_due' => $payable && $balance < 0 ? -$balance : 0.0,
+            'customer_credit' => $jobCard->customer_id ? CustomerCredit::balanceFor($jobCard->customer_id) : 0.0,
             'payments' => $payments->map(fn (Payment $p) => $this->presentPayment($p))->values(),
             'gate_pass' => $gatePass ? $this->presentGatePass($gatePass) : null,
             'proforma_from' => $bill ? null : $this->proformaBlocker($jobCard),
             'methods' => Payment::METHODS,
+            'credit_method' => Payment::METHOD_CREDIT,
             'gst_rates' => self::GST_RATES,
             'can' => $user ? [
                 'manage' => $user->hasPermission('billing.proforma.manage'),
                 'approve' => $user->hasPermission('billing.proforma.approve'),
                 'pay' => $user->hasPermission('billing.payments.create'),
+                'settle' => $user->hasPermission('billing.proforma.approve'),
                 'override_gate_pass' => $user->hasPermission('workshop.job-cards.override-guards'),
                 'vehicle_out' => $user->hasAnyPermission(['workshop.job-cards.change-status', 'billing.payments.create']),
             ] : null,
@@ -114,6 +125,10 @@ class BillingService
 
     /**
      * Money received on the job: an advance (no bill yet), a part payment, or the final one.
+     * One receipt may be split over several methods (cash + UPI + card...), including the
+     * customer's credit from an earlier overpayment.
+     *
+     * @param array{parts: array<int, array{method: string, amount: float|int|string, reference_number?: ?string, cheque_number?: ?string, bank_name?: ?string}>, payment_date?: ?string, notes?: ?string, cheque_date?: ?string} $data
      */
     public function recordPayment(JobCard $jobCard, array $data, User $user): Payment
     {
@@ -121,7 +136,15 @@ class BillingService
             throw new BillingException('This job is cancelled.');
         }
 
-        $amount = round((float) $data['amount'], 2);
+        $parts = collect($data['parts'])
+            ->map(fn (array $p) => [...$p, 'amount' => round((float) $p['amount'], 2)])
+            ->filter(fn (array $p) => $p['amount'] > 0)
+            ->values();
+        if ($parts->isEmpty()) {
+            throw new BillingException('Enter the amount received.');
+        }
+
+        $amount = round((float) $parts->sum('amount'), 2);
         $bill = $this->payableBill($jobCard);
         $balance = $bill ? round((float) $bill->total_amount - (float) $this->payments($jobCard)->sum('amount'), 2) : null;
 
@@ -131,24 +154,61 @@ class BillingService
                 : 'The bill is already paid in full.');
         }
 
-        $payment = DB::transaction(fn () => Payment::create([
-            'branch_id' => $jobCard->branch_id,
-            'job_card_id' => $jobCard->id,
-            'customer_id' => $jobCard->customer_id,
-            'invoice_id' => $bill?->id,
-            'payment_number' => Payment::generatePaymentNumber($jobCard->branch_id),
-            'amount' => $amount,
-            'stage' => !$bill ? Payment::STAGE_ADVANCE : ($amount >= $balance - 0.001 ? Payment::STAGE_FINAL : Payment::STAGE_PART),
-            'method' => $data['method'],
-            'reference_number' => $data['reference_number'] ?? null,
-            'payment_date' => $data['payment_date'] ?? now()->toDateString(),
-            'notes' => $data['notes'] ?? null,
-            'cheque_number' => $data['cheque_number'] ?? null,
-            'cheque_date' => $data['cheque_date'] ?? null,
-            'bank_name' => $data['bank_name'] ?? null,
-            'status' => 'completed',
-            'received_by' => $user->id,
-        ]));
+        $fromCredit = round((float) $parts->where('method', Payment::METHOD_CREDIT)->sum('amount'), 2);
+        if ($fromCredit > 0) {
+            $available = $jobCard->customer_id ? CustomerCredit::balanceFor($jobCard->customer_id) : 0.0;
+            if ($fromCredit > $available + 0.001) {
+                throw new BillingException('The customer has only Rs ' . number_format($available, 2) . ' of credit.');
+            }
+        }
+
+        $single = $parts->count() === 1 ? $parts->first() : null;
+        $cheque = $parts->firstWhere('method', 'cheque');
+
+        $payment = DB::transaction(function () use ($jobCard, $data, $user, $parts, $amount, $bill, $balance, $single, $cheque, $fromCredit) {
+            $payment = Payment::create([
+                'branch_id' => $jobCard->branch_id,
+                'job_card_id' => $jobCard->id,
+                'customer_id' => $jobCard->customer_id,
+                'invoice_id' => $bill?->id,
+                'payment_number' => Payment::generatePaymentNumber($jobCard->branch_id),
+                'amount' => $amount,
+                'stage' => !$bill ? Payment::STAGE_ADVANCE : ($amount >= $balance - 0.001 ? Payment::STAGE_FINAL : Payment::STAGE_PART),
+                'method' => $single ? $single['method'] : Payment::METHOD_SPLIT,
+                'reference_number' => $single['reference_number'] ?? null,
+                'payment_date' => $data['payment_date'] ?? now()->toDateString(),
+                'notes' => $data['notes'] ?? null,
+                'cheque_number' => $cheque['cheque_number'] ?? null,
+                'cheque_date' => $cheque ? ($data['cheque_date'] ?? null) : null,
+                'bank_name' => $cheque['bank_name'] ?? null,
+                'status' => 'completed',
+                'received_by' => $user->id,
+            ]);
+
+            foreach ($parts as $part) {
+                $payment->parts()->create([
+                    'method' => $part['method'],
+                    'amount' => $part['amount'],
+                    'reference_number' => $part['reference_number'] ?? null,
+                    'cheque_number' => $part['cheque_number'] ?? null,
+                    'bank_name' => $part['bank_name'] ?? null,
+                ]);
+            }
+
+            if ($fromCredit > 0) {
+                CustomerCredit::create([
+                    'branch_id' => $jobCard->branch_id,
+                    'customer_id' => $jobCard->customer_id,
+                    'job_card_id' => $jobCard->id,
+                    'payment_id' => $payment->id,
+                    'amount' => -$fromCredit,
+                    'note' => "Used on job {$jobCard->job_number} ({$payment->payment_number})",
+                    'created_by' => $user->id,
+                ]);
+            }
+
+            return $payment;
+        });
 
         $this->messages->prepare($jobCard, 'payment_received', [
             'amount' => number_format($amount, 0),
@@ -159,6 +219,88 @@ class BillingService
         app(JobLifecycleService::class)->sync($jobCard->fresh(), 'payment');
 
         return $payment;
+    }
+
+    /**
+     * Money paid beyond the approved bill (e.g. a line removed after the customer paid):
+     * refund it, or keep it as the customer's credit for a later job. Either way it is
+     * recorded against the job, so the job's payments equal its bill.
+     *
+     * @param array{mode: string, amount?: float|int|string|null, method?: ?string, reference_number?: ?string, notes?: ?string} $data
+     */
+    public function settleExcess(JobCard $jobCard, array $data, User $user): Payment
+    {
+        $bill = $this->payableBill($jobCard) ?? throw new BillingException('Approve the final bill first.');
+        $excess = round((float) $this->payments($jobCard)->sum('amount') - (float) $bill->total_amount, 2);
+
+        if ($excess <= 0) {
+            throw new BillingException('Nothing has been paid beyond the bill.');
+        }
+
+        $amount = round((float) ($data['amount'] ?? $excess), 2);
+        if ($amount <= 0 || $amount > $excess + 0.001) {
+            throw new BillingException('At most Rs ' . number_format($excess, 2) . ' can be settled.', ['amount' => ['Up to Rs ' . number_format($excess, 2) . '.']]);
+        }
+
+        $credit = $data['mode'] === 'credit';
+        if ($credit && !$jobCard->customer_id) {
+            throw new BillingException('This job has no customer to keep the credit for.');
+        }
+        if (!$credit && !in_array($data['method'] ?? null, Payment::METHODS, true)) {
+            throw new BillingException('Choose how the money was paid back.', ['method' => ['Choose how the money was paid back.']]);
+        }
+
+        $payment = DB::transaction(function () use ($jobCard, $bill, $data, $user, $amount, $credit) {
+            $method = $credit ? Payment::METHOD_CREDIT : $data['method'];
+            $payment = Payment::create([
+                'branch_id' => $jobCard->branch_id,
+                'job_card_id' => $jobCard->id,
+                'customer_id' => $jobCard->customer_id,
+                'invoice_id' => $bill->id,
+                'payment_number' => Payment::generatePaymentNumber($jobCard->branch_id),
+                'amount' => -$amount,
+                'stage' => $credit ? Payment::STAGE_CREDIT : Payment::STAGE_REFUND,
+                'method' => $method,
+                'reference_number' => $credit ? null : ($data['reference_number'] ?? null),
+                'payment_date' => now()->toDateString(),
+                'notes' => $data['notes'] ?? null,
+                'status' => 'completed',
+                'received_by' => $user->id,
+            ]);
+            $payment->parts()->create([
+                'method' => $method,
+                'amount' => -$amount,
+                'reference_number' => $payment->reference_number,
+            ]);
+
+            if ($credit) {
+                CustomerCredit::create([
+                    'branch_id' => $jobCard->branch_id,
+                    'customer_id' => $jobCard->customer_id,
+                    'job_card_id' => $jobCard->id,
+                    'payment_id' => $payment->id,
+                    'amount' => $amount,
+                    'note' => "Paid beyond bill {$bill->invoice_number} on job {$jobCard->job_number}" . (!empty($data['notes']) ? " — {$data['notes']}" : ''),
+                    'created_by' => $user->id,
+                ]);
+            }
+
+            return $payment;
+        });
+
+        app(JobLifecycleService::class)->sync($jobCard->fresh(), 'payment');
+
+        return $payment;
+    }
+
+    /**
+     * Money still to settle on the job's bill: > 0 to collect, < 0 to refund or credit.
+     */
+    protected function billBalance(Invoice $bill): float
+    {
+        $bill->updatePaymentStatus();
+
+        return round((float) $bill->balance_amount, 2);
     }
 
     // ---------------------------------------------------------------- proforma
@@ -395,10 +537,13 @@ class BillingService
     public function closeOnProforma(Invoice $proforma, User $user, ?string $note = null): Invoice
     {
         $this->assertProforma($proforma, [Invoice::APPROVED]);
-        $proforma->updatePaymentStatus();
+        $balance = $this->billBalance($proforma);
 
-        if ((float) $proforma->balance_amount > 0) {
-            throw new BillingException('Rs ' . number_format((float) $proforma->balance_amount, 2) . ' is still to be paid. Close the bill once it is paid in full.');
+        if ($balance > 0) {
+            throw new BillingException('Rs ' . number_format($balance, 2) . ' is still to be paid. Close the bill once it is paid in full.');
+        }
+        if ($balance < 0) {
+            throw new BillingException($this->refundDueMessage(-$balance));
         }
 
         $proforma->update([
@@ -429,9 +574,8 @@ class BillingService
             return null;
         }
 
-        $bill->updatePaymentStatus();
-
-        return (float) $bill->balance_amount <= 0 ? $this->issueGatePass($jobCard, $bill, null) : null;
+        // Exactly paid: an overpayment must be refunded or kept as credit first
+        return abs($this->billBalance($bill)) < 0.01 ? $this->issueGatePass($jobCard, $bill, null) : null;
     }
 
     /**
@@ -451,7 +595,9 @@ class BillingService
             throw new BillingException('Approve the final bill first.');
         }
 
-        $bill->updatePaymentStatus();
+        if ($this->billBalance($bill) < 0) {
+            throw new BillingException($this->refundDueMessage(-(float) $bill->balance_amount));
+        }
         $pass = $this->issueGatePass($jobCard, $bill, $user, $reason);
 
         app(JobLifecycleService::class)->sync($jobCard->fresh(), 'gate_pass_override');
@@ -499,6 +645,7 @@ class BillingService
     public function presentBill(Invoice $bill, ?JobCardEstimate $estimate = null): array
     {
         $bill->loadMissing(['items', 'approvedBy:id,name']);
+        [$beforeDiscount, $lineDiscount] = $bill->discountBreakup();
 
         return [
             'id' => $bill->id,
@@ -528,6 +675,8 @@ class BillingService
                 'from_estimate' => $i->estimate_line_key !== null,
                 'section' => $i->section ?? ($i->estimate_line_key ? 'additional' : 'other'),
             ])->values(),
+            'value_before_discount' => $beforeDiscount,
+            'discount' => $lineDiscount,
             'taxable_amount' => (float) $bill->taxable_amount,
             'cgst' => (float) $bill->cgst,
             'sgst' => (float) $bill->sgst,
@@ -552,6 +701,11 @@ class BillingService
             'amount' => (float) $p->amount,
             'stage' => $p->stage,
             'method' => $p->method,
+            'parts' => $p->parts->map(fn (PaymentPart $part) => [
+                'method' => $part->method,
+                'amount' => (float) $part->amount,
+                'reference_number' => $part->reference_number,
+            ])->values(),
             'reference_number' => $p->reference_number,
             'payment_date' => $p->payment_date?->toDateString(),
             'notes' => $p->notes,
@@ -684,6 +838,11 @@ class BillingService
         }
 
         $bill->refresh()->updatePaymentStatus();
+    }
+
+    protected function refundDueMessage(float $excess): string
+    {
+        return 'Rs ' . number_format($excess, 2) . " was paid beyond the bill. Refund it or keep it as the customer's credit first.";
     }
 
     protected function assertProforma(Invoice $bill, array $statuses): void

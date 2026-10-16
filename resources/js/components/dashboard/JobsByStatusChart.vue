@@ -66,7 +66,7 @@ const total = computed(() => {
 </script>
 
 <template>
-  <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+  <div class="bg-white rounded-2xl shadow-sm ring-1 ring-gray-200/80 p-6">
     <h3 class="text-lg font-semibold text-gray-900 mb-4">Jobs by Status</h3>
 
     <div v-if="loading" class="h-64 flex items-center justify-center">

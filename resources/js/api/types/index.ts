@@ -260,7 +260,7 @@ export type SheetKind =
   | 'observation_report'
   | 'pre_delivery'
 
-export type MediaRequirement = 'none' | 'photo' | 'video' | 'photo_or_video'
+export type MediaRequirement = 'none' | 'photo' | 'video' | 'photo_or_video' | 'photo_and_video'
 export type JobSheetItemStatus = 'pending' | 'done' | 'not_applicable' | 'not_done'
 export type SheetInputType = 'tick' | 'yes_no' | 'repair_replace' | 'panel_matrix' | 'text' | 'number' | 'select'
 
@@ -491,6 +491,8 @@ export interface JobBill {
   customer_gstin: string | null
   place_of_supply: string | null
   lines: BillLine[]
+  value_before_discount: number
+  discount: number
   taxable_amount: number
   cgst: number
   sgst: number
@@ -509,8 +511,10 @@ export interface JobPayment {
   id: number
   number: string
   amount: number
-  stage: 'advance' | 'part' | 'final' | null
+  stage: 'advance' | 'part' | 'final' | 'refund' | 'credit' | null
+  /** "split" when paid several ways; see parts */
   method: string
+  parts: { method: string; amount: number; reference_number: string | null }[]
   reference_number: string | null
   payment_date: string
   notes: string | null
@@ -536,12 +540,17 @@ export interface JobBillingSummary {
   bill_total: number | null
   paid: number
   balance: number
+  /** Paid beyond the approved bill: to refund or keep as the customer's credit */
+  refund_due: number
+  /** The customer's credit balance (usable as a payment method) */
+  customer_credit: number
+  credit_method: string
   payments: JobPayment[]
   gate_pass: JobGatePass | null
   proforma_from: string | null
   methods: string[]
   gst_rates: number[]
-  can: { manage: boolean; approve: boolean; pay: boolean; override_gate_pass: boolean; vehicle_out: boolean } | null
+  can: { manage: boolean; approve: boolean; pay: boolean; settle: boolean; override_gate_pass: boolean; vehicle_out: boolean } | null
 }
 
 export interface StatusHistoryEntry {
@@ -927,7 +936,7 @@ export interface PublicJobPage {
   version: string
   report: ServiceReport | null
   // Once back office approves the final bill
-  bill: { number: string; kind: 'proforma' | 'tax'; total: number; paid: number; balance: number; gate_pass: string | null } | null
+  bill: { number: string; kind: 'proforma' | 'tax'; total: number; paid: number; balance: number; refund_due: number; gate_pass: string | null } | null
 }
 
 export interface PlanMaster {

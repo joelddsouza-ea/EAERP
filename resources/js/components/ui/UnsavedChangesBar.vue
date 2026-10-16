@@ -23,7 +23,7 @@ function discard() {
 </script>
 
 <template>
-  <div v-if="count" class="sticky bottom-0 z-20 mt-4 -mx-4 sm:mx-0 border-t border-amber-200 bg-amber-50 px-4 py-3 sm:rounded-lg">
+  <div v-if="count" class="sticky bottom-[calc(4rem+env(safe-area-inset-bottom))] lg:bottom-0 z-20 mt-4 -mx-3 sm:mx-0 border-t border-amber-200 bg-amber-50 px-4 py-3 sm:rounded-xl shadow-[0_-4px_12px_rgba(0,0,0,0.05)]">
     <div class="flex flex-wrap items-center gap-3">
       <p class="mr-auto text-sm font-medium text-amber-900">{{ count }} unsaved change{{ count === 1 ? '' : 's' }}</p>
       <Button variant="secondary" size="sm" :disabled="saving" @click="discard">Discard</Button>

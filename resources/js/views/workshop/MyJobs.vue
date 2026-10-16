@@ -51,12 +51,12 @@ onMounted(fetchMyJobs)
 
 <template>
   <div>
-    <div class="flex items-center justify-between mb-6">
+    <div class="flex flex-wrap items-center justify-between gap-3 mb-4 sm:mb-6">
       <div>
         <h1 class="text-2xl font-bold text-gray-900">My Jobs</h1>
         <p class="text-gray-500 mt-1">Jobs assigned to you</p>
       </div>
-      <div class="w-48">
+      <div class="w-full sm:w-48">
         <Select
           v-model="statusFilter"
           :options="statusOptions"
@@ -83,17 +83,17 @@ onMounted(fetchMyJobs)
       <p class="text-gray-500">No jobs assigned to you at the moment.</p>
     </div>
 
-    <div v-else class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+    <div v-else class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-6">
       <Card
         v-for="job in jobCards"
         :key="job.id"
-        class="cursor-pointer hover:shadow-md transition-shadow"
+        class="cursor-pointer hover:shadow-md active:scale-[0.99] transition border-l-4 border-l-primary-600"
         @click="handleJobClick(job)"
       >
         <div class="flex items-start justify-between mb-3">
           <div>
-            <h3 class="text-lg font-semibold text-gray-900">{{ job.job_number }}</h3>
-            <p class="text-sm text-gray-500">{{ job.vehicle?.registration_no }}</p>
+            <h3 class="text-lg font-bold tracking-wide text-gray-900">{{ job.vehicle?.registration_no }}</h3>
+            <p class="text-xs text-gray-500">{{ job.job_number }}</p>
           </div>
           <Badge :variant="statusVariant(job.status)" size="sm">
             {{ statusLabel(job.status) }}

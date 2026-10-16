@@ -48,6 +48,12 @@ class JobSheetRuleEngine
             ChecklistItem::MEDIA_PHOTO_OR_VIDEO => ($photos + $videos) >= $required
                 ? null
                 : $this->plural($required, 'photo or video', 'photos or videos') . ' required',
+            ChecklistItem::MEDIA_PHOTO_AND_VIDEO => $photos >= $required && $videos >= $required
+                ? null
+                : implode(' and ', array_filter([
+                    $photos < $required ? $this->plural($required, 'photo') : null,
+                    $videos < $required ? $this->plural($required, 'video') : null,
+                ])) . ' required',
             default => null,
         };
     }

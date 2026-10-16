@@ -154,7 +154,7 @@ onMounted(load)
 </script>
 
 <template>
-  <div class="min-h-screen bg-gray-50 pb-28">
+  <div class="min-h-screen bg-gray-100 pb-28">
     <div v-if="updatedNote" class="fixed top-3 inset-x-0 z-50 mx-auto w-max rounded-full bg-gray-900/90 px-4 py-1.5 text-sm text-white shadow">
       Updated just now
     </div>
@@ -167,9 +167,14 @@ onMounted(load)
 
     <template v-else-if="page">
       <!-- Header -->
-      <header class="bg-primary-700 text-white px-4 pt-5 pb-6">
+      <div class="bg-white border-b border-gray-200">
+        <div class="max-w-xl mx-auto px-4 py-2 flex items-center justify-between">
+          <img src="/images/logo.png" alt="Express Autocare" class="h-10 w-auto" />
+          <span class="text-xs text-gray-500">{{ page.workshop.name }}</span>
+        </div>
+      </div>
+      <header class="bg-primary-600 text-white px-4 pt-5 pb-8">
         <div class="max-w-xl mx-auto">
-          <p class="text-sm opacity-80">{{ page.workshop.name }}</p>
           <h1 class="text-xl font-bold mt-1">{{ page.job.registration_no }}</h1>
           <p class="text-sm opacity-90">{{ page.job.car }} · Job {{ page.job.job_number }}</p>
           <div class="mt-3 inline-flex items-center rounded-full bg-white/15 px-3 py-1 text-sm font-medium">
@@ -179,9 +184,9 @@ onMounted(load)
         </div>
       </header>
 
-      <main class="max-w-xl mx-auto px-4 -mt-3 space-y-4">
+      <main class="max-w-xl mx-auto px-4 -mt-4 space-y-4">
         <!-- Estimate -->
-        <section v-if="estimate" class="rounded-xl bg-white shadow-sm border border-gray-200">
+        <section v-if="estimate" class="rounded-2xl bg-white shadow-sm ring-1 ring-gray-200/80">
           <div class="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
             <h2 class="font-semibold">Estimate <span v-if="estimate.version > 1" class="text-xs text-gray-500">(updated)</span></h2>
             <a :href="publicJobApi.estimatePdfUrl(token)" target="_blank" class="text-sm text-primary-600 inline-flex items-center gap-1">
@@ -315,12 +320,12 @@ onMounted(load)
           </div>
         </section>
 
-        <section v-else class="rounded-xl bg-white shadow-sm border border-gray-200 p-4 text-sm text-gray-600">
+        <section v-else class="rounded-2xl bg-white shadow-sm ring-1 ring-gray-200/80 p-4 text-sm text-gray-600">
           The estimate will appear here once the workshop has prepared it.
         </section>
 
         <!-- Photos & videos, section by section -->
-        <section v-if="page.gallery.length" class="rounded-xl bg-white shadow-sm border border-gray-200 p-4">
+        <section v-if="page.gallery.length" class="rounded-2xl bg-white shadow-sm ring-1 ring-gray-200/80 p-4">
           <h2 class="font-semibold mb-1">Photos &amp; videos</h2>
           <p class="text-xs text-gray-500 mb-3">New ones appear here by themselves while this page is open.</p>
           <details v-for="(area, ai) in page.gallery" :key="area.key" class="border-t border-gray-100 py-2" :open="ai === page.gallery.length - 1">
@@ -344,7 +349,7 @@ onMounted(load)
         </section>
 
         <!-- Final bill -->
-        <section v-if="page.bill" class="rounded-xl bg-white shadow-sm border border-gray-200 p-4">
+        <section v-if="page.bill" class="rounded-2xl bg-white shadow-sm ring-1 ring-gray-200/80 p-4">
           <div class="flex items-center justify-between mb-2">
             <h2 class="font-semibold">{{ page.bill.kind === 'tax' ? 'Tax invoice' : 'Bill' }} {{ page.bill.number }}</h2>
             <a :href="publicJobApi.billPdfUrl(token)" target="_blank" class="text-sm text-primary-600 inline-flex items-center gap-1">
@@ -354,13 +359,16 @@ onMounted(load)
           <dl class="text-sm space-y-1">
             <div class="flex justify-between"><dt class="text-gray-600">Total</dt><dd class="font-medium">Rs {{ page.bill.total.toLocaleString('en-IN') }}</dd></div>
             <div class="flex justify-between"><dt class="text-gray-600">Paid</dt><dd>Rs {{ page.bill.paid.toLocaleString('en-IN') }}</dd></div>
-            <div class="flex justify-between font-semibold"><dt>Balance to pay</dt><dd>Rs {{ page.bill.balance.toLocaleString('en-IN') }}</dd></div>
+            <div v-if="page.bill.refund_due > 0" class="flex justify-between font-semibold text-green-700">
+              <dt>To be refunded to you</dt><dd>Rs {{ page.bill.refund_due.toLocaleString('en-IN') }}</dd>
+            </div>
+            <div v-else class="flex justify-between font-semibold"><dt>Balance to pay</dt><dd>Rs {{ page.bill.balance.toLocaleString('en-IN') }}</dd></div>
           </dl>
           <p v-if="page.bill.gate_pass" class="mt-2 text-sm text-green-700">Gate pass {{ page.bill.gate_pass }} issued — your car is ready to collect.</p>
         </section>
 
         <!-- Service report -->
-        <section v-if="page.report" class="rounded-xl bg-white shadow-sm border border-gray-200 p-4">
+        <section v-if="page.report" class="rounded-2xl bg-white shadow-sm ring-1 ring-gray-200/80 p-4">
           <div class="flex items-center justify-between mb-2">
             <h2 class="font-semibold">{{ page.report.title }}</h2>
             <a :href="publicJobApi.reportPdfUrl(token)" target="_blank" class="text-sm text-primary-600 inline-flex items-center gap-1">
@@ -389,7 +397,7 @@ onMounted(load)
         </section>
 
         <!-- Timeline -->
-        <section class="rounded-xl bg-white shadow-sm border border-gray-200 p-4">
+        <section class="rounded-2xl bg-white shadow-sm ring-1 ring-gray-200/80 p-4">
           <h2 class="font-semibold mb-2">Progress</h2>
           <ol class="space-y-2">
             <li v-for="t in page.job.timeline" :key="t.at + t.status" class="flex justify-between text-sm">
@@ -409,7 +417,7 @@ onMounted(load)
       <!-- Save bar -->
       <div
         v-if="estimate && (changed.length || comment.trim() || notice)"
-        class="fixed inset-x-0 bottom-0 border-t border-gray-200 bg-white px-4 py-3 shadow-lg"
+        class="fixed inset-x-0 bottom-0 border-t border-gray-200 bg-white px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-lg"
       >
         <div class="max-w-xl mx-auto">
           <p v-if="notice && !changed.length && !comment.trim()" class="text-sm text-center text-gray-700">{{ notice }}</p>

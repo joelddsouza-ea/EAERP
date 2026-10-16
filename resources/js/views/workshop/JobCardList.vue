@@ -93,7 +93,7 @@ watch(() => branchStore.currentBranchId, fetchJobCards)
 
 <template>
   <div>
-    <div class="flex items-center justify-between mb-6">
+    <div class="flex flex-wrap items-center justify-between gap-3 mb-4 sm:mb-6">
       <div>
         <h1 class="text-2xl font-bold text-gray-900">Job Cards</h1>
         <p class="text-gray-500 mt-1">Manage workshop job cards</p>
@@ -123,14 +123,14 @@ watch(() => branchStore.currentBranchId, fetchJobCards)
     >
       <template #header>
         <div class="flex flex-wrap items-center gap-4">
-          <div class="w-64">
+          <div class="w-full sm:w-64">
             <SearchInput
               v-model="search"
               placeholder="Search job cards..."
               @search="handleSearch"
             />
           </div>
-          <div class="w-48">
+          <div class="w-full sm:w-48">
             <Select
               v-model="statusFilter"
               :options="statusOptions"

@@ -4,7 +4,9 @@
  * the final bill (proforma) made from the approved estimate — back office deletes
  * lines, adds other items and approves it — then a GST tax invoice or "close on
  * proforma", the gate pass (issued when paid; owner/manager may override) and
- * "Vehicle out", which delivers the job.
+ * "Vehicle out", which delivers the job. A payment may be split over several methods;
+ * money paid beyond the bill is refunded or kept as the customer's credit before the
+ * gate pass.
  */
 import { ref, computed, onMounted } from 'vue'
 import { TrashIcon, DocumentArrowDownIcon, PlusIcon, TruckIcon, ShieldCheckIcon } from '@heroicons/vue/20/solid'
@@ -28,9 +30,11 @@ const data = ref<JobBillingSummary | null>(null)
 const busy = ref<string | null>(null)
 
 const bill = computed(() => data.value?.bill ?? null)
-const can = computed(() => data.value?.can ?? { manage: false, approve: false, pay: false, override_gate_pass: false, vehicle_out: false })
+const can = computed(() => data.value?.can ?? { manage: false, approve: false, pay: false, settle: false, override_gate_pass: false, vehicle_out: false })
 const closed = computed(() => ['delivered', 'cancelled'].includes(props.jobStatus))
-const paidInFull = computed(() => data.value?.bill_total != null && data.value.balance <= 0)
+const refundDue = computed(() => data.value?.refund_due ?? 0)
+// Exactly paid: an overpayment still has to be refunded or kept as credit
+const paidInFull = computed(() => data.value?.bill_total != null && data.value.balance <= 0 && refundDue.value <= 0)
 
 const money = (n: number | null | undefined, digits = 2) =>
   new Intl.NumberFormat('en-IN', { minimumFractionDigits: digits, maximumFractionDigits: digits }).format(Number(n ?? 0))
@@ -44,8 +48,23 @@ const STATUS: Record<string, { label: string; variant: 'default' | 'info' | 'suc
   partial: { label: 'Part paid', variant: 'warning' },
   paid: { label: 'Paid', variant: 'success' },
 }
-const STAGES: Record<string, string> = { advance: 'Advance', part: 'Part payment', final: 'Final payment' }
-const METHODS: Record<string, string> = { cash: 'Cash', card: 'Card', upi: 'UPI', bank_transfer: 'Bank transfer', cheque: 'Cheque', wallet: 'Wallet' }
+const STAGES: Record<string, string> = {
+  advance: 'Advance',
+  part: 'Part payment',
+  final: 'Final payment',
+  refund: 'Refund',
+  credit: 'Kept as credit',
+}
+const METHODS: Record<string, string> = {
+  cash: 'Cash',
+  card: 'Card',
+  upi: 'UPI',
+  bank_transfer: 'Bank transfer',
+  cheque: 'Cheque',
+  wallet: 'Wallet',
+  split: 'Split',
+  customer_credit: 'Customer credit',
+}
 
 async function load() {
   try {
@@ -81,25 +100,77 @@ async function pdf(call: () => Promise<{ data: Blob }>) {
 }
 
 // ---------------------------------------------------------------- payments
+// A receipt is one or more parts (split payment: e.g. cash + UPI + card)
+interface PayPart {
+  method: string
+  amount: string | number
+  reference_number: string
+  cheque_number: string
+}
 const payOpen = ref(false)
-const pay = ref({ amount: '' as string | number, method: 'cash', reference_number: '', notes: '' })
+const payParts = ref<PayPart[]>([])
+const payNotes = ref('')
+const newPart = (amount: string | number = ''): PayPart => ({ method: 'cash', amount, reference_number: '', cheque_number: '' })
+const balanceToPay = computed(() => (data.value?.bill_total != null ? Math.max(0, data.value.balance) : 0))
+const payTotal = computed(() => Math.round(payParts.value.reduce((sum, p) => sum + (Number(p.amount) || 0), 0) * 100) / 100)
+const payLeft = computed(() => Math.round((balanceToPay.value - payTotal.value) * 100) / 100)
+const payMethods = computed(() => [
+  ...(data.value?.methods ?? []).map((m) => ({ value: m, label: METHODS[m] ?? m })),
+  ...((data.value?.customer_credit ?? 0) > 0
+    ? [{ value: data.value!.credit_method, label: `Customer credit (₹ ${money(data.value!.customer_credit, 0)} available)` }]
+    : []),
+])
+const payValid = computed(
+  () =>
+    payTotal.value > 0 &&
+    payParts.value.every((p) => Number(p.amount) > 0 && (p.method !== 'cheque' || p.cheque_number.trim())) &&
+    (data.value?.bill_total == null || payTotal.value <= balanceToPay.value + 0.001)
+)
 
 function openPay() {
-  const balance = data.value?.bill_total != null ? Math.max(0, data.value.balance) : 0
-  pay.value = { amount: balance > 0 ? balance : '', method: 'cash', reference_number: '', notes: '' }
+  payParts.value = [newPart(balanceToPay.value > 0 ? balanceToPay.value : '')]
+  payNotes.value = ''
   payOpen.value = true
+}
+
+function addPart() {
+  // The new part starts with what is still to pay
+  payParts.value.push(newPart(payLeft.value > 0 ? payLeft.value : ''))
 }
 
 async function savePayment() {
   const ok = await act('pay', () =>
     jobBillingApi.recordPayment(props.jobCardId, {
-      amount: Number(pay.value.amount),
-      method: pay.value.method,
-      reference_number: pay.value.reference_number || null,
-      notes: pay.value.notes || null,
+      parts: payParts.value.map((p) => ({
+        method: p.method,
+        amount: Number(p.amount),
+        reference_number: p.reference_number.trim() || null,
+        cheque_number: p.method === 'cheque' ? p.cheque_number.trim() : null,
+      })),
+      notes: payNotes.value || null,
     })
   )
   if (ok) payOpen.value = false
+}
+
+// Paid beyond the bill: refund it, or keep it as the customer's credit
+const settleOpen = ref(false)
+const settle = ref({ mode: 'refund' as 'refund' | 'credit', amount: '' as string | number, method: 'cash', reference_number: '', notes: '' })
+function openSettle() {
+  settle.value = { mode: 'refund', amount: refundDue.value, method: 'cash', reference_number: '', notes: '' }
+  settleOpen.value = true
+}
+async function saveSettle() {
+  const ok = await act('settle', () =>
+    jobBillingApi.settleExcess(props.jobCardId, {
+      mode: settle.value.mode,
+      amount: Number(settle.value.amount),
+      method: settle.value.mode === 'refund' ? settle.value.method : null,
+      reference_number: settle.value.reference_number.trim() || null,
+      notes: settle.value.notes.trim() || null,
+    })
+  )
+  if (ok) settleOpen.value = false
 }
 
 // ------------------------------------------------------------------ bill
@@ -216,7 +287,8 @@ const canOverrideGatePass = computed(
     !data.value?.gate_pass &&
     !!bill.value?.payable &&
     ['ready_for_delivery', 'invoiced'].includes(props.jobStatus) &&
-    !paidInFull.value
+    !paidInFull.value &&
+    refundDue.value <= 0
 )
 
 onMounted(load)
@@ -245,9 +317,14 @@ defineExpose({ reload: load })
         <p class="text-gray-500">Paid</p>
         <p class="font-semibold">₹ {{ money(data.paid, 0) }}</p>
       </div>
-      <div class="rounded-lg p-3" :class="data.bill_total == null ? 'bg-gray-50' : data.balance > 0 ? 'bg-amber-50' : 'bg-green-50'">
-        <p class="text-gray-500">{{ data.bill_total != null && data.balance < 0 ? 'Excess paid' : 'Balance' }}</p>
-        <p class="font-semibold">{{ data.bill_total == null ? '—' : `₹ ${money(Math.abs(data.balance), 0)}` }}</p>
+      <div
+        class="rounded-lg p-3"
+        :class="data.bill_total == null ? 'bg-gray-50' : refundDue > 0 ? 'bg-red-50' : data.balance > 0 ? 'bg-amber-50' : 'bg-green-50'"
+      >
+        <p class="text-gray-500">{{ refundDue > 0 ? 'Refund due' : 'Balance' }}</p>
+        <p class="font-semibold" :class="refundDue > 0 ? 'text-red-700' : ''">
+          {{ data.bill_total == null ? '—' : `₹ ${money(refundDue > 0 ? refundDue : Math.max(0, data.balance), 0)}` }}
+        </p>
       </div>
       <div class="rounded-lg p-3" :class="data.gate_pass ? 'bg-green-50' : 'bg-gray-50'">
         <p class="text-gray-500">Gate pass</p>
@@ -255,14 +332,33 @@ defineExpose({ reload: load })
       </div>
     </div>
 
+    <!-- Paid beyond the bill: must be refunded or kept as credit before the gate pass -->
+    <div v-if="refundDue > 0" class="mt-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm">
+      <p class="font-semibold text-red-800">₹ {{ money(refundDue, 2) }} paid beyond the bill</p>
+      <p class="mt-0.5 text-red-700">
+        The bill is less than what the customer paid (lines removed after payment). Refund the difference or keep it as the
+        customer's credit; the gate pass waits until this is settled.
+      </p>
+      <Button v-if="can.settle" class="mt-2" size="sm" @click="openSettle">Refund or keep as credit…</Button>
+      <p v-else class="mt-2 text-xs text-red-700">Back office settles this.</p>
+    </div>
+    <p v-if="data.customer_credit > 0 && refundDue <= 0" class="mt-3 text-xs text-gray-600">
+      Customer credit available: ₹ {{ money(data.customer_credit, 0) }} — choose “Customer credit” when recording a payment.
+    </p>
+
     <!-- Payments -->
     <div v-if="data.payments.length" class="mt-4">
       <h4 class="text-sm font-semibold text-gray-700 mb-1">Payments</h4>
       <ul class="divide-y divide-gray-100 text-sm">
         <li v-for="p in data.payments" :key="p.id" class="py-2 flex flex-wrap items-center gap-x-3 gap-y-1">
-          <span class="font-medium">₹ {{ money(p.amount, 0) }}</span>
-          <Badge size="sm" :variant="p.stage === 'final' ? 'success' : 'default'">{{ STAGES[p.stage ?? ''] ?? 'Payment' }}</Badge>
-          <span class="text-gray-600">{{ METHODS[p.method] ?? p.method }}<template v-if="p.reference_number"> · {{ p.reference_number }}</template></span>
+          <span class="font-medium" :class="p.amount < 0 ? 'text-red-700' : ''">{{ p.amount < 0 ? '−' : '' }}₹ {{ money(Math.abs(p.amount), 0) }}</span>
+          <Badge size="sm" :variant="p.stage === 'final' ? 'success' : p.amount < 0 ? 'danger' : 'default'">{{ STAGES[p.stage ?? ''] ?? 'Payment' }}</Badge>
+          <span class="text-gray-600">
+            <template v-if="p.parts.length > 1">
+              {{ p.parts.map((x) => `${METHODS[x.method] ?? x.method} ₹ ${money(Math.abs(x.amount), 0)}${x.reference_number ? ` (${x.reference_number})` : ''}`).join(' + ') }}
+            </template>
+            <template v-else>{{ METHODS[p.method] ?? p.method }}<template v-if="p.reference_number"> · {{ p.reference_number }}</template></template>
+          </span>
           <span class="text-gray-500">{{ p.payment_date }} · {{ p.number }}<template v-if="p.received_by"> · {{ p.received_by }}</template></span>
           <button type="button" class="ml-auto text-primary-600 hover:underline text-xs" @click="pdf(() => jobBillingApi.receiptPdf(jobCardId, p.id))">
             Receipt
@@ -364,6 +460,10 @@ defineExpose({ reload: load })
         </div>
 
         <dl class="mt-2 ml-auto max-w-xs text-sm space-y-0.5">
+          <template v-if="bill.discount >= 0.01">
+            <div class="flex justify-between"><dt class="text-gray-500">Value before discount</dt><dd>{{ money(bill.value_before_discount) }}</dd></div>
+            <div class="flex justify-between text-green-700"><dt>Less: Discount</dt><dd>-{{ money(bill.discount) }}</dd></div>
+          </template>
           <div class="flex justify-between"><dt class="text-gray-500">Taxable value</dt><dd>{{ money(bill.taxable_amount) }}</dd></div>
           <template v-if="bill.is_igst">
             <div class="flex justify-between"><dt class="text-gray-500">IGST</dt><dd>{{ money(bill.igst) }}</dd></div>
@@ -446,7 +546,8 @@ defineExpose({ reload: load })
       </template>
       <template v-else>
         <p class="text-gray-600">
-          No gate pass: it is issued by itself once the car is ready, the bill is approved and paid in full. Without it the car cannot leave.
+          <template v-if="refundDue > 0">No gate pass yet: settle the ₹ {{ money(refundDue, 0) }} paid beyond the bill first (refund or credit).</template>
+          <template v-else>No gate pass: it is issued by itself once the car is ready, the bill is approved and paid in full. Without it the car cannot leave.</template>
         </p>
         <Button v-if="canOverrideGatePass" class="mt-2" size="sm" variant="secondary" @click="overrideOpen = true">
           Issue gate pass before full payment…
@@ -461,14 +562,83 @@ defineExpose({ reload: load })
           <template v-if="data.bill_total == null">No approved bill yet: this is recorded as an advance.</template>
           <template v-else>Balance: ₹ {{ money(Math.max(0, data.balance), 0) }}</template>
         </p>
-        <Input v-model="pay.amount" type="number" label="Amount (₹)" required />
-        <Select v-model="pay.method" label="Mode" :options="data.methods.map((m) => ({ value: m, label: METHODS[m] ?? m }))" />
-        <Input v-model="pay.reference_number" label="Reference (UPI / card / cheque no.)" />
-        <Textarea v-model="pay.notes" label="Note" :rows="2" />
+        <!-- One block per way of paying (split payment) -->
+        <div v-for="(part, i) in payParts" :key="i" class="rounded-xl border border-gray-200 p-3 space-y-2">
+          <div class="flex items-center justify-between">
+            <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">{{ payParts.length > 1 ? `Part ${i + 1}` : 'Payment' }}</p>
+            <button v-if="payParts.length > 1" type="button" class="p-1 text-gray-400 hover:text-red-600" aria-label="Remove part" @click="payParts.splice(i, 1)">
+              <TrashIcon class="h-4 w-4" />
+            </button>
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <Input v-model="part.amount" type="number" label="Amount (₹)" required />
+            <Select v-model="part.method" label="Mode" :options="payMethods" />
+          </div>
+          <Input v-if="part.method === 'cheque'" v-model="part.cheque_number" label="Cheque no." required />
+          <Input
+            v-if="part.method !== 'cash' && part.method !== data.credit_method"
+            v-model="part.reference_number"
+            :label="part.method === 'upi' ? 'UPI reference' : part.method === 'card' ? 'Card / approval no.' : 'Reference'"
+          />
+        </div>
+        <button
+          v-if="payParts.length < 6"
+          type="button"
+          class="w-full rounded-xl border border-dashed border-gray-300 py-2.5 text-sm font-medium text-primary-700 hover:bg-primary-50"
+          @click="addPart"
+        >
+          + Split: add another way of paying
+        </button>
+        <div class="rounded-lg bg-gray-50 p-3 text-sm flex flex-wrap justify-between gap-2">
+          <span>Total of this receipt: <b>₹ {{ money(payTotal, 2) }}</b></span>
+          <span v-if="data.bill_total != null" :class="payLeft < 0 ? 'text-red-700 font-medium' : 'text-gray-600'">
+            {{ payLeft < 0 ? `₹ ${money(-payLeft, 2)} more than the balance` : `Still to pay after this: ₹ ${money(payLeft, 2)}` }}
+          </span>
+        </div>
+        <Textarea v-model="payNotes" label="Note" :rows="2" />
       </div>
       <template #footer>
         <Button variant="secondary" @click="payOpen = false">Cancel</Button>
-        <Button :loading="busy === 'pay'" :disabled="!(Number(pay.amount) > 0)" @click="savePayment">Save payment</Button>
+        <Button :loading="busy === 'pay'" :disabled="!payValid" @click="savePayment">Save payment</Button>
+      </template>
+    </Modal>
+
+    <!-- Paid beyond the bill: refund or keep as credit -->
+    <Modal :open="settleOpen" title="Paid beyond the bill" @close="settleOpen = false">
+      <div class="space-y-3">
+        <p class="text-sm text-gray-600">
+          The customer paid ₹ {{ money(refundDue, 2) }} more than the bill. Record how it is settled; a refund voucher or credit
+          note is printed for the customer.
+        </p>
+        <div class="grid grid-cols-2 gap-2">
+          <button
+            v-for="m in [{ v: 'refund', l: 'Refund to customer' }, { v: 'credit', l: 'Keep as credit' }]"
+            :key="m.v"
+            type="button"
+            class="rounded-xl border px-3 py-3 text-sm font-semibold"
+            :class="settle.mode === m.v ? 'border-primary-600 bg-primary-50 text-primary-700' : 'border-gray-300 text-gray-700'"
+            @click="settle.mode = m.v as 'refund' | 'credit'"
+          >
+            {{ m.l }}
+          </button>
+        </div>
+        <Input v-model="settle.amount" type="number" label="Amount (₹)" required />
+        <template v-if="settle.mode === 'refund'">
+          <Select v-model="settle.method" label="Paid back by" :options="data.methods.map((m) => ({ value: m, label: METHODS[m] ?? m }))" />
+          <Input v-if="settle.method !== 'cash'" v-model="settle.reference_number" label="Reference (UPI / bank / cheque no.)" />
+        </template>
+        <p v-else class="text-xs text-gray-500">The credit stays on the customer's account and can pay a later job (“Customer credit” in Record payment).</p>
+        <Textarea v-model="settle.notes" label="Reason / note" :rows="2" placeholder="e.g. Part returned, line removed from the bill" />
+      </div>
+      <template #footer>
+        <Button variant="secondary" @click="settleOpen = false">Cancel</Button>
+        <Button
+          :loading="busy === 'settle'"
+          :disabled="!(Number(settle.amount) > 0) || Number(settle.amount) > refundDue + 0.001"
+          @click="saveSettle"
+        >
+          {{ settle.mode === 'refund' ? 'Record refund' : 'Keep as credit' }}
+        </Button>
       </template>
     </Modal>
 

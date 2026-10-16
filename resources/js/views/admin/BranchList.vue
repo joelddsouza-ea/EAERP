@@ -35,7 +35,7 @@ onMounted(fetchBranches)
 
 <template>
   <div>
-    <div class="flex items-center justify-between mb-6">
+    <div class="flex flex-wrap items-center justify-between gap-3 mb-4 sm:mb-6">
       <div>
         <h1 class="text-2xl font-bold text-gray-900">Branches</h1>
         <p class="text-gray-500 mt-1">Manage workshop branches</p>

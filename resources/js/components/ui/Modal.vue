@@ -26,11 +26,11 @@ const emit = defineEmits<{
 }>()
 
 const sizeClasses = {
-  sm: 'max-w-sm',
-  md: 'max-w-lg',
-  lg: 'max-w-2xl',
-  xl: 'max-w-4xl',
-  full: 'max-w-full mx-4',
+  sm: 'sm:max-w-sm',
+  md: 'sm:max-w-lg',
+  lg: 'sm:max-w-2xl',
+  xl: 'sm:max-w-4xl',
+  full: 'sm:max-w-full sm:mx-4',
 }
 
 function close() {
@@ -78,31 +78,34 @@ watch(
         leave-from="opacity-100"
         leave-to="opacity-0"
       >
-        <div class="fixed inset-0 bg-black/30" aria-hidden="true" />
+        <div class="fixed inset-0 bg-gray-900/50 backdrop-blur-[2px]" aria-hidden="true" />
       </TransitionChild>
 
-      <!-- Modal container -->
+      <!-- Modal container: a bottom sheet on phones, a centred dialog from sm up -->
       <div class="fixed inset-0 overflow-y-auto">
-        <div class="flex min-h-full items-center justify-center p-4">
+        <div class="flex min-h-full items-end sm:items-center justify-center sm:p-4">
           <TransitionChild
             as="template"
             enter="ease-out duration-300"
-            enter-from="opacity-0 scale-95"
-            enter-to="opacity-100 scale-100"
+            enter-from="opacity-0 translate-y-8 sm:translate-y-0 sm:scale-95"
+            enter-to="opacity-100 translate-y-0 sm:scale-100"
             leave="ease-in duration-200"
-            leave-from="opacity-100 scale-100"
-            leave-to="opacity-0 scale-95"
+            leave-from="opacity-100 translate-y-0 sm:scale-100"
+            leave-to="opacity-0 translate-y-8 sm:translate-y-0 sm:scale-95"
           >
             <DialogPanel
               :class="[
-                'w-full bg-white rounded-xl shadow-xl transform transition-all',
+                'w-full bg-white shadow-xl transform transition-all rounded-t-2xl sm:rounded-2xl max-h-[92vh] flex flex-col',
                 sizeClasses[size],
               ]"
             >
+              <!-- Grab handle (phones) -->
+              <div class="sm:hidden flex justify-center pt-2"><span class="h-1 w-10 rounded-full bg-gray-300" /></div>
+
               <!-- Header -->
               <div
                 v-if="title || closeable"
-                class="flex items-center justify-between px-6 py-4 border-b border-gray-200"
+                class="flex items-center justify-between gap-3 px-4 sm:px-6 py-3 sm:py-4 border-b border-gray-100 shrink-0"
               >
                 <DialogTitle v-if="title" class="text-lg font-semibold text-gray-900">
                   {{ title }}
@@ -110,7 +113,8 @@ watch(
                 <button
                   v-if="closeable"
                   type="button"
-                  class="text-gray-400 hover:text-gray-500 focus:outline-none"
+                  class="-mr-2 p-2 rounded-full text-gray-400 hover:bg-gray-100 hover:text-gray-600 focus:outline-none"
+                  aria-label="Close"
                   @click="close"
                 >
                   <XMarkIcon class="h-6 w-6" />
@@ -118,14 +122,14 @@ watch(
               </div>
 
               <!-- Body -->
-              <div class="px-6 py-4">
+              <div class="px-4 sm:px-6 py-4 overflow-y-auto">
                 <slot />
               </div>
 
               <!-- Footer -->
               <div
                 v-if="$slots.footer"
-                class="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-200 bg-gray-50 rounded-b-xl"
+                class="flex flex-wrap items-center justify-end gap-3 px-4 sm:px-6 py-3 sm:py-4 border-t border-gray-100 bg-gray-50/70 sm:rounded-b-2xl shrink-0 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:pb-4"
               >
                 <slot name="footer" />
               </div>

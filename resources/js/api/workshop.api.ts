@@ -285,23 +285,14 @@ export const dashboardApi = {
   },
 }
 
-// Technicians
-// No technicians endpoint; technicians are users holding a technician role
-const TECHNICIAN_ROLES = ['technician', 'body-shop-technician']
-
+// Technicians: users holding a technician role (workshop endpoint, so advisors
+// don't need the user-admin permission)
 export const techniciansApi = {
-  async list(branchId?: number, activeOnly = false) {
-    const responses = await Promise.all(
-      TECHNICIAN_ROLES.map((role) =>
-        apiClient.get<PaginatedResponse<User>>('/user-admin/users', {
-          params: { role, branch_id: branchId, per_page: 100, ...(activeOnly ? { is_active: 1 } : {}) },
-        })
-      )
-    )
-    return { data: { data: responses.flatMap((r) => r.data.data) } }
+  list(branchId?: number) {
+    return apiClient.get<ApiResponse<User[]>>('/workshop/technicians', { params: { branch_id: branchId } })
   },
 
   available(branchId?: number) {
-    return techniciansApi.list(branchId, true)
+    return techniciansApi.list(branchId)
   },
 }

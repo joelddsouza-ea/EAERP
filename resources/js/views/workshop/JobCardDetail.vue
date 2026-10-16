@@ -3,7 +3,8 @@
  * Job card, laid out in the order the job progresses: what to do next, the car,
  * who and where, intake, complaints, job sheets, estimate & customer, report, billing.
  */
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
+import { useAuthStore } from '@/stores/auth.store'
 import { useRoute, useRouter } from 'vue-router'
 import { format } from 'date-fns'
 import { PencilIcon, DocumentTextIcon, ClipboardDocumentCheckIcon } from '@heroicons/vue/20/solid'
@@ -30,6 +31,9 @@ import JobBillingCard from '@/components/billing/JobBillingCard.vue'
 const route = useRoute()
 const router = useRouter()
 const { can } = usePermissions()
+const authStore = useAuthStore()
+// Technicians see their work, not who else is on the job or bay planning
+const isTechnician = computed(() => authStore.hasAnyRole(['technician', 'body-shop-technician']))
 const toast = useToast()
 
 const jobCardId = Number(route.params.id)
@@ -113,7 +117,7 @@ onMounted(fetchJobCard)
 
     <template v-else-if="jobCard">
       <!-- Header -->
-      <div class="flex flex-wrap items-center justify-between gap-4 mb-4">
+      <div class="flex flex-wrap items-center justify-between gap-3 sm:gap-4 mb-4 rounded-2xl bg-white ring-1 ring-gray-200/80 shadow-sm p-4 sm:p-5 border-l-4 border-l-primary-600">
         <div>
           <div class="flex items-center gap-3">
             <h1 class="text-2xl font-bold text-gray-900">{{ jobCard.job_number }}</h1>
@@ -132,7 +136,8 @@ onMounted(fetchJobCard)
           </p>
         </div>
 
-        <div class="flex flex-wrap gap-2">
+        <!-- Phones: the buttons share one row, each taking an equal part -->
+        <div class="flex w-full sm:w-auto gap-2 [&>*]:flex-1 sm:[&>*]:flex-none">
           <Button v-if="sheets.length" variant="secondary" @click="router.push(`/job-cards/${jobCard.id}/sheet`)">
             <ClipboardDocumentCheckIcon class="h-4 w-4 mr-1" />
             Job Sheet
@@ -149,7 +154,7 @@ onMounted(fetchJobCard)
       </div>
 
       <!-- 1. What to do next -->
-      <Card class="mb-6">
+      <Card class="mb-4 sm:mb-6">
         <div class="flex flex-wrap items-start gap-4">
           <div class="min-w-[10rem]">
             <h3 class="text-lg font-semibold">Next Step</h3>
@@ -163,7 +168,7 @@ onMounted(fetchJobCard)
         </div>
       </Card>
 
-      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
         <!-- Main column, in the order the job progresses -->
         <div class="lg:col-span-2 space-y-6">
           <!-- 2. Customer & vehicle -->
@@ -172,7 +177,7 @@ onMounted(fetchJobCard)
               <h3 class="text-lg font-semibold">Customer & Vehicle</h3>
             </template>
 
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6">
               <div>
                 <h4 class="text-sm font-medium text-gray-500 mb-2">Customer</h4>
                 <p class="font-medium">{{ jobCard.customer?.name }}</p>
@@ -196,7 +201,7 @@ onMounted(fetchJobCard)
           </Card>
 
           <!-- 3. Who and where -->
-          <AssignmentsCard :job-card-id="jobCard.id" @changed="refreshAfterChange" />
+          <AssignmentsCard v-if="!isTechnician" :job-card-id="jobCard.id" @changed="refreshAfterChange" />
 
           <!-- 4. Intake: trial drive + inventory photos/videos -->
           <IntakePanel :job-card-id="jobCard.id" @changed="refreshAfterChange" />

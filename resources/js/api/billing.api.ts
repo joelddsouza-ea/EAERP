@@ -98,11 +98,28 @@ export const jobBillingApi = {
     return apiClient.get<ApiResponse<JobBillingSummary>>(jb(jobCardId))
   },
 
+  /** One receipt: a single method (amount + method) or split over several (parts) */
   recordPayment(
     jobCardId: number,
-    data: { amount: number; method: string; reference_number?: string | null; payment_date?: string; notes?: string | null; cheque_number?: string | null }
+    data: {
+      amount?: number
+      method?: string
+      parts?: { method: string; amount: number; reference_number?: string | null; cheque_number?: string | null }[]
+      reference_number?: string | null
+      payment_date?: string
+      notes?: string | null
+      cheque_number?: string | null
+    }
   ) {
     return apiClient.post<ApiResponse<JobBillingSummary>>(`${jb(jobCardId)}/payments`, data)
+  },
+
+  /** Money paid beyond the bill: refund it or keep it as the customer's credit */
+  settleExcess(
+    jobCardId: number,
+    data: { mode: 'refund' | 'credit'; amount?: number | null; method?: string | null; reference_number?: string | null; notes?: string | null }
+  ) {
+    return apiClient.post<ApiResponse<JobBillingSummary>>(`${jb(jobCardId)}/settle-excess`, data)
   },
 
   createProforma(jobCardId: number) {

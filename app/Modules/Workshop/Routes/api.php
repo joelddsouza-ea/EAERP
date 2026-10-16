@@ -72,6 +72,10 @@ Route::prefix('v1/workshop')->middleware(['auth:sanctum', 'branch.context', 'job
     Route::post('job-cards/{jobCard}/assign-technician', [JobCardController::class, 'assignTechnician']);
     Route::post('job-cards/{jobCard}/assign-bay', [JobCardController::class, 'assignBay']);
 
+    // Technician list for assigning work (no user-admin permission needed)
+    Route::get('technicians', [JobCardAssignmentController::class, 'technicians'])
+        ->middleware('permission:workshop.job-cards.view');
+
     // Several technicians (one lead) and bay moves, with the candidates to choose from
     Route::get('job-cards/{jobCard}/assignments', [JobCardAssignmentController::class, 'show'])
         ->middleware('permission:workshop.job-cards.view');

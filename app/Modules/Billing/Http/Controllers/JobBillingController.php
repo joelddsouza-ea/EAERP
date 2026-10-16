@@ -30,24 +30,71 @@ class JobBillingController extends ApiController
         return $this->success($this->billing->summary($jobCard, $request->user()));
     }
 
+    /**
+     * One receipt: a single method (amount + method) or split over several (parts).
+     */
     public function recordPayment(Request $request, JobCard $jobCard): JsonResponse
     {
+        $methods = [...Payment::METHODS, Payment::METHOD_CREDIT];
         $data = $request->validate([
-            'amount' => 'required|numeric|min:1|max:10000000',
-            'method' => ['required', Rule::in(Payment::METHODS)],
+            'parts' => 'sometimes|array|min:1|max:6',
+            'parts.*.method' => ['required_with:parts', Rule::in($methods)],
+            'parts.*.amount' => 'required_with:parts|numeric|min:0|max:10000000',
+            'parts.*.reference_number' => 'nullable|string|max:100',
+            'parts.*.cheque_number' => 'nullable|string|max:50',
+            'parts.*.bank_name' => 'nullable|string|max:100',
+            'amount' => 'required_without:parts|numeric|min:1|max:10000000',
+            'method' => ['required_without:parts', Rule::in($methods)],
             'reference_number' => 'nullable|string|max:100',
             'payment_date' => 'nullable|date|before_or_equal:today',
             'notes' => 'nullable|string|max:500',
             'cheque_number' => 'required_if:method,cheque|nullable|string|max:50',
             'cheque_date' => 'nullable|date',
             'bank_name' => 'nullable|string|max:100',
-        ]);
+        ], ['parts.*.method.in' => 'Choose a payment method for each part.']);
+
+        foreach ($data['parts'] ?? [] as $i => $part) {
+            if ($part['method'] === 'cheque' && empty($part['cheque_number'])) {
+                throw new BillingException('Enter the cheque number.', ["parts.{$i}.cheque_number" => ['Enter the cheque number.']]);
+            }
+        }
+
+        $data['parts'] ??= [[
+            'method' => $data['method'],
+            'amount' => $data['amount'],
+            'reference_number' => $data['reference_number'] ?? null,
+            'cheque_number' => $data['cheque_number'] ?? null,
+            'bank_name' => $data['bank_name'] ?? null,
+        ]];
 
         $payment = $this->billing->recordPayment($jobCard, $data, $request->user());
 
         return $this->created(
             $this->billing->summary($jobCard->fresh(), $request->user()),
             'Payment ' . $payment->payment_number . ' recorded'
+        );
+    }
+
+    /**
+     * Money paid beyond the bill: refunded to the customer, or kept as their credit.
+     */
+    public function settleExcess(Request $request, JobCard $jobCard): JsonResponse
+    {
+        $data = $request->validate([
+            'mode' => 'required|in:refund,credit',
+            'amount' => 'nullable|numeric|min:1|max:10000000',
+            'method' => ['required_if:mode,refund', 'nullable', Rule::in(Payment::METHODS)],
+            'reference_number' => 'nullable|string|max:100',
+            'notes' => 'nullable|string|max:500',
+        ], ['method.required_if' => 'Choose how the money was paid back.']);
+
+        $payment = $this->billing->settleExcess($jobCard, $data, $request->user());
+
+        return $this->success(
+            $this->billing->summary($jobCard->fresh(), $request->user()),
+            $data['mode'] === 'credit'
+                ? 'Rs ' . number_format(-(float) $payment->amount, 2) . " kept as the customer's credit"
+                : 'Refund ' . $payment->payment_number . ' recorded'
         );
     }
 

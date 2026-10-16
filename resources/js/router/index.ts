@@ -51,6 +51,8 @@ declare module 'vue-router' {
     permissions?: string[]
     roles?: string[]
     title?: string
+    /** Phones: hide the bottom tab bar (the screen has its own action bar) */
+    hideTabBar?: boolean
   }
 }
 
@@ -149,7 +151,7 @@ const routes: RouteRecordRaw[] = [
         path: 'job-cards/:id/sheet',
         name: 'job-card-sheet',
         component: JobSheet,
-        meta: { title: 'Job Sheet', permission: 'workshop.job-sheets.view' },
+        meta: { title: 'Job Sheet', permission: 'workshop.job-sheets.view', hideTabBar: true },
       },
       {
         path: 'job-cards/:id/estimate',
@@ -326,7 +328,7 @@ router.beforeEach(async (to, _from, next) => {
   const authStore = useAuthStore()
 
   // Update document title
-  document.title = to.meta.title ? `${to.meta.title} | EAERP` : 'EAERP'
+  document.title = to.meta.title ? `${to.meta.title} | Express Autocare` : 'Express Autocare'
 
   // Initialize auth if needed
   if (authStore.token && !authStore.user) {

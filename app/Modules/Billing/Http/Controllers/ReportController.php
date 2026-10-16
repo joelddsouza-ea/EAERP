@@ -27,9 +27,7 @@ class ReportController extends ApiController
         $stats = [
             // Today's stats
             'today' => [
-                'collection' => Payment::whereDate('payment_date', $today)
-                    ->where('status', 'completed')
-                    ->sum('amount'),
+                'collection' => Payment::moneySum(Payment::whereDate('payment_date', $today)),
                 'invoices_created' => Invoice::whereDate('created_at', $today)->count(),
                 'invoices_paid' => Invoice::whereDate('updated_at', $today)
                     ->where('status', 'paid')
@@ -41,9 +39,7 @@ class ReportController extends ApiController
                 'total_billing' => Invoice::whereBetween('invoice_date', [$monthStart, $today])
                     ->whereIn('status', ['issued', 'paid', 'partial'])
                     ->sum('total_amount'),
-                'total_collection' => Payment::whereBetween('payment_date', [$monthStart, $today])
-                    ->where('status', 'completed')
-                    ->sum('amount'),
+                'total_collection' => Payment::moneySum(Payment::whereBetween('payment_date', [$monthStart, $today])),
                 'invoices_count' => Invoice::whereBetween('invoice_date', [$monthStart, $today])
                     ->whereIn('status', ['issued', 'paid', 'partial'])
                     ->count(),
@@ -147,9 +143,10 @@ class ReportController extends ApiController
             'to_date' => 'required|date|after_or_equal:from_date',
         ]);
 
-        $query = Payment::with(['invoice.customer', 'receivedBy'])
+        // Money received less refunds; moves into / out of customer credit are not money
+        $query = Payment::with(['invoice.customer', 'receivedBy', 'parts'])
             ->dateRange($request->from_date, $request->to_date)
-            ->where('status', 'completed')
+            ->money()
             ->when($request->branch_id, fn($q, $branchId) =>
                 $q->where('branch_id', $branchId)
             )
@@ -163,11 +160,13 @@ class ReportController extends ApiController
 
         $summary = [
             'total_payments' => $payments->count(),
-            'total_amount' => $payments->sum('amount'),
-            'by_method' => $payments->groupBy('method')->map(fn($group) => [
-                'count' => $group->count(),
-                'amount' => $group->sum('amount'),
+            'total_amount' => round(array_sum(Payment::totalsByMethod($payments)), 2),
+            // Split receipts counted under each of their methods
+            'by_method' => collect(Payment::totalsByMethod($payments))->map(fn ($amount, $method) => [
+                'count' => $payments->filter(fn ($p) => $p->parts->contains('method', $method) || $p->method === $method)->count(),
+                'amount' => $amount,
             ]),
+            'refunds' => $payments->where('stage', Payment::STAGE_REFUND)->sum('amount'),
             'by_date' => $payments->groupBy(fn($p) => $p->payment_date->toDateString())
                 ->map(fn($group) => $group->sum('amount')),
         ];

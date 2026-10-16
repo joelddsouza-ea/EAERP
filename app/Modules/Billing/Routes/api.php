@@ -62,6 +62,8 @@ Route::prefix('v1/workshop/job-cards/{jobCard}/billing')
             Route::post('bills/{invoice}/approve', [JobBillingController::class, 'approve']);
             Route::post('bills/{invoice}/convert', [JobBillingController::class, 'convert']);
             Route::post('bills/{invoice}/close', [JobBillingController::class, 'close']);
+            // Paid beyond the bill: refund or keep as the customer's credit
+            Route::post('settle-excess', [JobBillingController::class, 'settleExcess']);
         });
 
         Route::post('gate-pass/override', [JobBillingController::class, 'overrideGatePass'])

@@ -5,17 +5,22 @@
 @source "../js/**/*.ts";
 
 @theme {
-  --color-primary-50: #eff6ff;
-  --color-primary-100: #dbeafe;
-  --color-primary-200: #bfdbfe;
-  --color-primary-300: #93c5fd;
-  --color-primary-400: #60a5fa;
-  --color-primary-500: #3b82f6;
-  --color-primary-600: #2563eb;
-  --color-primary-700: #1d4ed8;
-  --color-primary-800: #1e40af;
-  --color-primary-900: #1e3a8a;
-  --color-primary-950: #172554;
+  /* Express Autocare brand: red (#C4161C), white and grey (#565B62) */
+  --color-primary-50: #fef2f2;
+  --color-primary-100: #fde3e4;
+  --color-primary-200: #fbcbcd;
+  --color-primary-300: #f6a3a6;
+  --color-primary-400: #ee6b70;
+  --color-primary-500: #e03a40;
+  --color-primary-600: #c4161c;
+  --color-primary-700: #a51217;
+  --color-primary-800: #881317;
+  --color-primary-900: #721619;
+  --color-primary-950: #3f0709;
+
+  --color-brand-red: #c4161c;
+  --color-brand-grey: #565b62;
+  --color-brand-ink: #1f2328;
 
   --color-status-draft: #6b7280;
   --color-status-received: #3b82f6;
@@ -25,6 +30,7 @@
   --color-status-delivered: #059669;
   --color-status-cancelled: #ef4444;
 
+  --font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --font-family-sans: 'Inter', system-ui, sans-serif;
 }
 
@@ -32,11 +38,47 @@
   html {
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    -webkit-tap-highlight-color: transparent;
+    text-size-adjust: 100%;
   }
 
   body {
-    background-color: var(--color-gray-50);
+    background-color: var(--color-gray-100);
     color: var(--color-gray-900);
+    overscroll-behavior-y: none;
+  }
+
+  /* Buttons and links feel like an app: no 300 ms delay, hand cursor */
+  button, [role='button'], a {
+    touch-action: manipulation;
+  }
+  button:not(:disabled), [role='button'] {
+    cursor: pointer;
+  }
+
+  /* Phones: 16px form text stops iOS zooming into fields; tables and headings fit the screen */
+  @media (max-width: 639px) {
+    input:not([type='checkbox']):not([type='radio']), select, textarea {
+      font-size: 16px !important;
+    }
+    main h1.text-2xl, main h1.text-3xl {
+      font-size: 1.25rem;
+      line-height: 1.75rem;
+    }
+    main table th, main table td {
+      padding-left: 0.75rem;
+      padding-right: 0.75rem;
+    }
+  }
+
+  /* Larger tick boxes for fingers */
+  input[type='checkbox'], input[type='radio'] {
+    accent-color: var(--color-primary-600);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-primary-500);
+    outline-offset: 2px;
   }
 }
 
@@ -93,11 +135,14 @@
   .input {
     display: block;
     width: 100%;
+    min-height: 2.5rem;
     padding: 0.5rem 0.75rem;
     font-size: 0.875rem;
+    background-color: white;
     border: 1px solid var(--color-gray-300);
     border-radius: 0.5rem;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+    transition: border-color 150ms, box-shadow 150ms;
   }
 
   .input::placeholder {
@@ -134,8 +179,8 @@
 
   .card {
     background-color: white;
-    border-radius: 0.75rem;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+    border-radius: 0.875rem;
+    box-shadow: 0 1px 2px rgba(16, 24, 40, 0.05);
     border: 1px solid var(--color-gray-200);
   }
 
@@ -153,4 +198,11 @@
   .scrollbar-thin {
     scrollbar-width: thin;
   }
+}
+
+@layer utilities {
+  .pb-safe { padding-bottom: env(safe-area-inset-bottom); }
+  .pt-safe { padding-top: env(safe-area-inset-top); }
+  .scrollbar-none { scrollbar-width: none; }
+  .scrollbar-none::-webkit-scrollbar { display: none; }
 }

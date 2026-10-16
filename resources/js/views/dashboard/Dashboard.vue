@@ -1,11 +1,17 @@
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
+import { RouterLink } from 'vue-router'
 import {
   ClipboardDocumentListIcon,
-  CurrencyDollarIcon,
+  BanknotesIcon,
   DocumentTextIcon,
   ExclamationCircleIcon,
+  PlusIcon,
+  WrenchScrewdriverIcon,
+  CubeIcon,
+  UserPlusIcon,
 } from '@heroicons/vue/24/outline'
+import { useAuthStore } from '@/stores/auth.store'
 import { dashboardApi } from '@/api/workshop.api'
 import { useBranchStore } from '@/stores/branch.store'
 import { useToast } from '@/composables/useToast'
@@ -16,7 +22,26 @@ import RecentJobCards from '@/components/dashboard/RecentJobCards.vue'
 import RecentPayments from '@/components/dashboard/RecentPayments.vue'
 
 const branchStore = useBranchStore()
+const authStore = useAuthStore()
 const toast = useToast()
+
+const greeting = computed(() => {
+  const h = new Date().getHours()
+  return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening'
+})
+const firstName = computed(() => authStore.userName?.split(' ')[0] ?? '')
+const today = new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })
+
+// One-tap shortcuts for what this user does most
+const quickActions = computed(() => {
+  const list: { label: string; to: string; icon: any }[] = []
+  if (authStore.hasAnyRole(['technician', 'body-shop-technician'])) list.push({ label: 'My jobs', to: '/my-jobs', icon: WrenchScrewdriverIcon })
+  if (authStore.hasPermission('workshop.job-cards.create')) list.push({ label: 'New job card', to: '/job-cards/create', icon: PlusIcon })
+  if (authStore.hasPermission('workshop.customers.create')) list.push({ label: 'New customer', to: '/customers/create', icon: UserPlusIcon })
+  if (authStore.hasPermission('workshop.spare-parts.view')) list.push({ label: 'Parts desk', to: '/parts-desk', icon: CubeIcon })
+  if (authStore.hasPermission('billing.payments.view')) list.push({ label: 'Payments', to: '/payments', icon: BanknotesIcon })
+  return list.slice(0, 4)
+})
 
 const loading = ref(true)
 const stats = ref<DashboardStats>({
@@ -56,54 +81,40 @@ watch(() => branchStore.currentBranchId, fetchDashboardStats)
 
 <template>
   <div>
-    <div class="mb-6">
-      <h1 class="text-2xl font-bold text-gray-900">Dashboard</h1>
-      <p class="text-gray-500 mt-1">
-        Welcome back! Here's an overview of your workshop.
+    <!-- Greeting -->
+    <section class="relative mb-4 sm:mb-6 overflow-hidden rounded-2xl bg-gray-800 px-5 py-5 sm:px-6 sm:py-6 text-white shadow-sm">
+      <span class="absolute inset-y-0 left-0 w-1.5 bg-primary-600" />
+      <span class="absolute -right-12 -top-12 h-40 w-40 rounded-full bg-primary-600/25" />
+      <span class="absolute right-16 -bottom-16 h-32 w-32 rounded-full bg-white/5" />
+      <p class="relative text-xs font-medium uppercase tracking-wider text-gray-300">{{ today }}</p>
+      <h1 class="relative mt-1 text-xl sm:text-2xl font-bold">{{ greeting }}{{ firstName ? `, ${firstName}` : '' }}</h1>
+      <p class="relative mt-0.5 text-sm text-gray-300">
+        {{ branchStore.currentBranch?.name ? `${branchStore.currentBranch.name} · ` : '' }}Here's how the workshop is doing today.
       </p>
+      <div v-if="quickActions.length" class="relative mt-4 flex gap-2 overflow-x-auto scrollbar-none -mx-1 px-1">
+        <RouterLink
+          v-for="a in quickActions"
+          :key="a.to"
+          :to="a.to"
+          class="shrink-0 inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3.5 py-2 text-sm font-medium ring-1 ring-white/15 hover:bg-white/20 active:bg-white/25"
+        >
+          <component :is="a.icon" class="h-4 w-4" />
+          {{ a.label }}
+        </RouterLink>
+      </div>
+    </section>
+
+    <!-- Stats: 2 × 2 on phones -->
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-5 mb-4 sm:mb-6">
+      <StatCard title="Jobs in progress" :value="stats.jobs_in_progress" :icon="ClipboardDocumentListIcon" color="amber" :loading="loading" />
+      <StatCard title="Today's collection" :value="formatCurrency(stats.daily_collection)" :icon="BanknotesIcon" color="green" :loading="loading" />
+      <StatCard title="Billing till date" :value="formatCurrency(stats.billing_till_date)" :icon="DocumentTextIcon" color="blue" :loading="loading" />
+      <StatCard title="Total outstanding" :value="formatCurrency(stats.total_outstanding)" :icon="ExclamationCircleIcon" color="red" :loading="loading" />
     </div>
 
-    <!-- Stats Grid -->
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-      <StatCard
-        title="Jobs in Progress"
-        :value="stats.jobs_in_progress"
-        :icon="ClipboardDocumentListIcon"
-        color="amber"
-        :loading="loading"
-      />
-      <StatCard
-        title="Daily Collection"
-        :value="formatCurrency(stats.daily_collection)"
-        :icon="CurrencyDollarIcon"
-        color="green"
-        :loading="loading"
-      />
-      <StatCard
-        title="Billing Till Date"
-        :value="formatCurrency(stats.billing_till_date)"
-        :icon="DocumentTextIcon"
-        color="blue"
-        :loading="loading"
-      />
-      <StatCard
-        title="Total Outstanding"
-        :value="formatCurrency(stats.total_outstanding)"
-        :icon="ExclamationCircleIcon"
-        color="red"
-        :loading="loading"
-      />
-    </div>
-
-    <!-- Charts and Lists -->
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-      <!-- Jobs by Status Chart -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
       <JobsByStatusChart :data="stats.jobs_by_status" :loading="loading" />
-
-      <!-- Recent Job Cards -->
       <RecentJobCards :job-cards="stats.recent_job_cards" :loading="loading" />
-
-      <!-- Recent Payments -->
       <RecentPayments :payments="stats.recent_payments" :loading="loading" />
     </div>
   </div>

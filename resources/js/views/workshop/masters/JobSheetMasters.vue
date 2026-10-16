@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { ArrowUpIcon, ArrowDownIcon, PlusIcon } from '@heroicons/vue/20/solid'
 import { jobSheetMastersApi } from '@/api/jobSheets.api'
 import { intakeApi, type JobSheetMediaSettings } from '@/api/estimates.api'
@@ -31,6 +32,23 @@ const newSectionName = ref('')
 
 const canEdit = computed(() => can('workshop.job-sheet-masters.update'))
 
+// Each master has its own menu link: the open tab follows ?tab=
+type MasterTab = 'sheets' | 'stages' | 'remarks'
+const TABS: { key: MasterTab; label: string }[] = [
+  { key: 'sheets', label: 'Job sheets & activities' },
+  { key: 'stages', label: 'Job stages & messages' },
+  { key: 'remarks', label: 'Observation remarks' },
+]
+const route = useRoute()
+const router = useRouter()
+const tabFromRoute = (): MasterTab => (TABS.some((t) => t.key === route.query.tab) ? (route.query.tab as MasterTab) : 'sheets')
+const tab = ref<MasterTab>(tabFromRoute())
+watch(() => route.query.tab, () => (tab.value = tabFromRoute()))
+function openTab(key: MasterTab) {
+  tab.value = key
+  router.replace({ query: { ...route.query, tab: key } })
+}
+
 const KIND_LABELS: Record<SheetKind, string> = {
   service_activities: 'Service plan job sheets',
   ac_service: 'AC service',
@@ -45,6 +63,7 @@ const MEDIA_OPTIONS: { value: MediaRequirement; label: string }[] = [
   { value: 'photo', label: 'Photo' },
   { value: 'video', label: 'Video' },
   { value: 'photo_or_video', label: 'Photo or video' },
+  { value: 'photo_and_video', label: 'Photo and video' },
 ]
 
 const grouped = computed(() => {
@@ -105,6 +124,15 @@ function updateItem(section: ChecklistMasterSection, item: ChecklistMasterItem, 
     pending.queue(`item:${item.id}:${field}`, `${item.item_name}: ${field.replace(/_/g, ' ')} → ${val ?? '—'}`, () =>
       jobSheetMastersApi.updateItem(section.id, item.id, { [field]: val } as Partial<ChecklistMasterItem>)
     )
+  }
+}
+
+function setSectionMedia(section: ChecklistMasterSection, event: Event) {
+  const select = event.target as HTMLSelectElement
+  const value = select.value as MediaRequirement
+  select.value = ''
+  for (const item of section.items) {
+    if (item.media_requirement !== value) updateItem(section, item, { media_requirement: value })
   }
 }
 
@@ -327,10 +355,23 @@ onMounted(async () => {
     <div class="mb-6">
       <h1 class="text-2xl font-bold text-gray-900">Job Sheet Masters</h1>
       <p class="text-gray-500 mt-1">
-        Activities on each technician job sheet, and whether a photo or video is required or N/A is allowed.
+        Activities on each job sheet and which need a photo, a video or both; job stages and their customer messages; observation remarks.
       </p>
     </div>
 
+    <div class="-mx-3 sm:mx-0 px-3 sm:px-0 flex gap-2 mb-4 overflow-x-auto scrollbar-none">
+      <button
+        v-for="t in TABS"
+        :key="t.key"
+        class="shrink-0 whitespace-nowrap rounded-full px-4 py-2 text-sm font-semibold transition-colors"
+        :class="tab === t.key ? 'bg-primary-600 text-white shadow-sm' : 'bg-white ring-1 ring-gray-300 text-gray-700 hover:bg-gray-50'"
+        @click="openTab(t.key)"
+      >
+        {{ t.label }}
+      </button>
+    </div>
+
+    <template v-if="tab === 'sheets'">
     <Card v-if="intakeReq" class="mb-6">
       <div class="flex flex-wrap items-center gap-3 text-sm">
         <span class="font-medium text-gray-700">Intake inventory: at least</span>
@@ -462,7 +503,17 @@ onMounted(async () => {
 
           <Card v-for="section in selected.sections" :key="section.id" :padding="false">
             <template #header>
-              <h3 class="text-base font-semibold">{{ section.name }}</h3>
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <h3 class="text-base font-semibold">{{ section.name }}</h3>
+                <!-- Photo / video for every activity of the section at once (each row can still differ) -->
+                <label v-if="canEdit && section.items[0]?.input_type !== 'yes_no'" class="flex items-center gap-2 text-xs text-gray-600">
+                  <span>Set all to</span>
+                  <select class="input py-1 text-xs w-36" value="" @change="setSectionMedia(section, $event)">
+                    <option value="" disabled>Photo / video…</option>
+                    <option v-for="o in MEDIA_OPTIONS" :key="o.value" :value="o.value">{{ o.label }}</option>
+                  </select>
+                </label>
+              </div>
             </template>
 
             <div class="overflow-x-auto">
@@ -599,9 +650,11 @@ onMounted(async () => {
         </template>
       </div>
     </div>
+    </template>
 
     <!-- Remarks for observations (on the report) -->
-    <Card class="mt-6" :padding="false">
+    <template v-if="tab === 'remarks'">
+    <Card :padding="false">
       <template #header>
         <h3 class="text-base font-semibold">Observation remarks</h3>
         <p class="text-xs text-gray-500">Chosen per observation on the job sheet and printed on the report. Use “_” for a number of days, e.g. “Fix within _ days”.</p>
@@ -646,9 +699,11 @@ onMounted(async () => {
         </form>
       </template>
     </Card>
+    </template>
 
     <!-- Job stages: what moves a job on by itself, and the WhatsApp message on each stage -->
-    <Card v-if="stages.length" class="mt-6" :padding="false">
+    <template v-if="tab === 'stages'">
+    <Card v-if="stages.length" :padding="false">
       <template #header>
         <h3 class="text-base font-semibold">Job stages &amp; customer messages</h3>
         <p class="text-xs text-gray-500">
@@ -697,6 +752,7 @@ onMounted(async () => {
         </div>
       </div>
     </Card>
+    </template>
 
     <UnsavedChangesBar
       :count="pending.count.value"

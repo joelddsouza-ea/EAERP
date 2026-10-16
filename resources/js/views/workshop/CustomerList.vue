@@ -69,7 +69,7 @@ watch(() => pagination.currentPage.value, fetchCustomers)
 
 <template>
   <div>
-    <div class="flex items-center justify-between mb-6">
+    <div class="flex flex-wrap items-center justify-between gap-3 mb-4 sm:mb-6">
       <div>
         <h1 class="text-2xl font-bold text-gray-900">Customers</h1>
         <p class="text-gray-500 mt-1">Manage your customer database</p>
@@ -99,7 +99,7 @@ watch(() => pagination.currentPage.value, fetchCustomers)
     >
       <template #header>
         <div class="flex items-center gap-4">
-          <div class="w-64">
+          <div class="w-full sm:w-64">
             <SearchInput
               v-model="search"
               placeholder="Search customers..."

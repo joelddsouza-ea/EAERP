@@ -50,7 +50,7 @@ onMounted(fetchCustomer)
 
     <template v-else-if="customer">
       <!-- Header -->
-      <div class="flex items-center justify-between mb-6">
+      <div class="flex flex-wrap items-center justify-between gap-3 mb-4 sm:mb-6">
         <div>
           <h1 class="text-2xl font-bold text-gray-900">{{ customer.name }}</h1>
           <div class="flex items-center gap-2 mt-1">

@@ -82,6 +82,23 @@ class StaffAlert extends Notification
         );
     }
 
+    public static function jobAssigned(JobCard $jobCard, ?string $assignedBy): self
+    {
+        $car = trim(implode(' ', array_filter([
+            $jobCard->vehicle?->registration_no,
+            $jobCard->vehicle?->make?->name,
+            $jobCard->vehicle?->model?->name,
+        ])));
+
+        return new self(
+            'job_assigned',
+            "New job assigned — {$jobCard->job_number}",
+            trim(($car ? "{$car}. " : '') . ($assignedBy ? "Assigned by {$assignedBy}. " : '') . 'Open the job sheet to start.'),
+            "/job-cards/{$jobCard->id}/sheet",
+            $jobCard->id,
+        );
+    }
+
     public static function partsReceived(JobCard $jobCard, array $partNames, bool $forTechnician): self
     {
         return new self(

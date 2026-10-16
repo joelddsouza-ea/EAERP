@@ -126,6 +126,8 @@ class PaymentController extends ApiController
             'status' => 'completed',
             'received_by' => auth()->id(),
         ]);
+        // Collections are added up from the parts
+        $payment->parts()->create($payment->only(['method', 'amount', 'reference_number', 'cheque_number', 'bank_name']));
 
         return $this->created([
             'payment' => $payment->load('receivedBy'),
