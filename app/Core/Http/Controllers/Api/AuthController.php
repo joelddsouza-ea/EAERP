@@ -55,6 +55,7 @@ class AuthController extends ApiController
                     'is_primary' => (bool) $b->pivot->is_primary,
                 ]),
                 'primary_branch_id' => $user->primaryBranch()?->id,
+                'features' => self::features(),
             ],
             'token' => $token->plainTextToken,
             'token_type' => 'Bearer',
@@ -103,7 +104,16 @@ class AuthController extends ApiController
                 'is_primary' => (bool) $b->pivot->is_primary,
             ]),
             'primary_branch_id' => $user->primaryBranch()?->id,
+            'features' => self::features(),
         ]);
+    }
+
+    /**
+     * Optional modules switched on for the organisation (menus and screens follow them).
+     */
+    private static function features(): array
+    {
+        return ['purchases' => \App\Modules\Workshop\Support\Purchases::enabled()];
     }
 
     /**

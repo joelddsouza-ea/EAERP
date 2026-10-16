@@ -23,6 +23,8 @@ use App\Modules\Workshop\Http\Controllers\CarClassController;
 use App\Modules\Workshop\Http\Controllers\ObservationRemarkController;
 use App\Modules\Workshop\Http\Controllers\WorkflowStageController;
 use App\Modules\Workshop\Http\Controllers\PostServiceController;
+use App\Modules\Workshop\Http\Controllers\PurchasesController;
+use App\Modules\Workshop\Http\Controllers\StockController;
 
 // job.lifecycle: after a change to a job card, the job moves on to the stage the facts allow
 Route::prefix('v1/workshop')->middleware(['auth:sanctum', 'branch.context', 'job.lifecycle'])->group(function () {
@@ -321,7 +323,58 @@ Route::prefix('v1/workshop')->middleware(['auth:sanctum', 'branch.context', 'job
             Route::post('sections/{section}/items/reorder', [JobSheetMasterController::class, 'reorderItems']);
         });
     });
+
+    // ---- Purchases module (optional): the switch is always reachable by the owner / manager
+    Route::get('purchases/settings', [PurchasesController::class, 'settings']);
+    Route::put('purchases/settings', [PurchasesController::class, 'updateSettings'])->middleware('permission:purchases.settings.manage');
+
+    Route::middleware('purchases')->group(function () {
+        // GRNs and the purchase register
+        Route::prefix('purchases')->group(function () {
+            Route::get('receivables', [PurchasesController::class, 'receivables'])->middleware('permission:purchases.grn.create');
+            Route::get('grns', [PurchasesController::class, 'index'])->middleware('permission:purchases.grn.view');
+            Route::get('grns/{goodsReceipt}', [PurchasesController::class, 'show'])->middleware('permission:purchases.grn.view');
+            Route::post('grns', [PurchasesController::class, 'store'])->middleware('permission:purchases.grn.create');
+            Route::post('grns/{goodsReceipt}/cancel', [PurchasesController::class, 'cancel'])->middleware('permission:purchases.grn.cancel');
+            Route::post('grn-lines/{line}/return', [PurchasesController::class, 'returnLine'])->middleware('permission:purchases.grn.create');
+
+            // Suppliers' dues
+            Route::get('suppliers', [PurchasesController::class, 'suppliers'])->middleware('permission:purchases.grn.view|purchases.suppliers.pay');
+            Route::get('suppliers/{supplier}', [PurchasesController::class, 'supplier'])->middleware('permission:purchases.grn.view|purchases.suppliers.pay');
+            Route::post('suppliers/{supplier}/payments', [PurchasesController::class, 'paySupplier'])->middleware('permission:purchases.suppliers.pay');
+
+            // Stock
+            Route::get('stock', [StockController::class, 'index'])->middleware('permission:purchases.stock.view');
+            Route::get('stock/{stockItem}/movements', [StockController::class, 'movements'])->middleware('permission:purchases.stock.view');
+            Route::post('stock/{stockItem}/adjust', [StockController::class, 'adjust'])->middleware('permission:purchases.stock.adjust');
+
+            // Masters: stock items and plan kits
+            Route::get('stock-items', [StockController::class, 'items'])->middleware('permission:purchases.stock.view');
+            Route::get('plan-kits', [StockController::class, 'kits'])->middleware('permission:purchases.stock.view');
+            Route::middleware('permission:purchases.stock-items.manage')->group(function () {
+                Route::post('stock-items', [StockController::class, 'storeItem']);
+                Route::put('stock-items/{stockItem}', [StockController::class, 'updateItem']);
+                Route::put('plan-kits/{package}', [StockController::class, 'saveKit']);
+            });
+        });
+
+        // A job's stock (plan kit, issues, returns, parts cost) and the technician's part check
+        Route::prefix('job-cards/{jobCard}')->group(function () {
+            Route::get('stock', [StockController::class, 'job'])->middleware('permission:purchases.stock.view');
+            Route::middleware('permission:purchases.stock.issue')->group(function () {
+                Route::post('stock/issue', [StockController::class, 'issue']);
+                Route::post('stock/return', [StockController::class, 'returnToStock']);
+            });
+            Route::post('grn-lines/{line}/verify', [PurchasesController::class, 'verify'])
+                ->middleware('permission:workshop.job-sheets.update');
+        });
+    });
 });
+
+// GRN photos (bill, parts): authorised by a short-lived URL signature
+Route::get('v1/workshop/purchases/media/{media}/stream', [PurchasesController::class, 'streamMedia'])
+    ->middleware('signed')
+    ->name('workshop.grn-media.stream');
 
 // Job-sheet media files: authorised by a short-lived URL signature instead of the bearer token
 Route::get('v1/workshop/media/{media}/stream', [JobSheetController::class, 'stream'])

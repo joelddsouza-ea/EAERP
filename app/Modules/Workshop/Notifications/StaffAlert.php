@@ -110,6 +110,17 @@ class StaffAlert extends Notification
         );
     }
 
+    public static function wrongPart(JobCard $jobCard, string $partName, string $technician, ?string $note): self
+    {
+        return new self(
+            'wrong_part',
+            "Wrong part received — {$jobCard->job_number}",
+            "{$technician} says {$partName} is not the right part" . ($note ? ": {$note}" : '') . '. Return it to the supplier and get the right one.',
+            '/parts-desk?tab=procure',
+            $jobCard->id,
+        );
+    }
+
     public static function jobSheetSubmitted(JobCard $jobCard, string $sheetName, string $technician): self
     {
         return new self(

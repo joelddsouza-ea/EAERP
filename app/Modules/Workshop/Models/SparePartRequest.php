@@ -75,6 +75,23 @@ class SparePartRequest extends Model
         'ordered_at' => 'datetime',
     ];
 
+    /**
+     * Its lines on posted GRNs, newest first (with the purchases module on, a part
+     * arrives through a GRN and the technician verifies it).
+     */
+    public function grnLines()
+    {
+        return $this->hasMany(GoodsReceiptLine::class)
+            ->whereHas('receipt', fn ($q) => $q->where('status', GoodsReceipt::POSTED))
+            ->orderByDesc('id');
+    }
+
+    /** The GRN line the part arrived on, if any (needs grnLines loaded) */
+    public function arrivalLine(): ?GoodsReceiptLine
+    {
+        return $this->grnLines->first(fn (GoodsReceiptLine $l) => !$l->isReturned());
+    }
+
     public function quotes()
     {
         return $this->hasMany(SparePartQuote::class);

@@ -10,6 +10,7 @@ import { formatDistanceToNow } from 'date-fns'
 import { TrashIcon } from '@heroicons/vue/20/solid'
 import { partsApi } from '@/api/estimates.api'
 import { usePermissions } from '@/composables/usePermissions'
+import { useAuthStore } from '@/stores/auth.store'
 import { useToast } from '@/composables/useToast'
 import type { SparePartRequest, Supplier, GstMode } from '@/api/types'
 import Card from '@/components/ui/Card.vue'
@@ -31,6 +32,13 @@ const loading = ref(true)
 const busy = ref(false)
 
 const canQuote = computed(() => can('workshop.spare-parts.update'))
+// Purchases module on: parts arrive on a GRN (supplier bill, photos) instead of "Mark received"
+const authStore = useAuthStore()
+const grnMode = computed(() => authStore.hasFeature('purchases'))
+const canGrn = computed(() => grnMode.value && can('purchases.grn.create'))
+function receiveOnGrn(ids: number[]) {
+  router.push({ path: '/purchases/grns/new', query: { parts: ids.join(',') } })
+}
 
 /** Quote chosen per part (before sending to the advisor) */
 const chosen = reactive<Record<number, number>>({})
@@ -201,17 +209,24 @@ onMounted(() => {
 
 <template>
   <div class="max-w-5xl mx-auto">
-    <div class="mb-4">
-      <h1 class="text-2xl font-bold text-gray-900">Parts Desk</h1>
-      <p class="text-sm text-gray-500">Get prices for the parts advisors need, and order the parts customers approve.</p>
+    <div class="mb-4 flex flex-wrap items-start justify-between gap-3">
+      <div>
+        <h1 class="text-2xl font-bold text-gray-900">Parts Desk</h1>
+        <p class="text-sm text-gray-500">Get prices for the parts advisors need, and order the parts customers approve.</p>
+      </div>
+      <div v-if="grnMode" class="flex flex-wrap gap-2">
+        <Button v-if="canGrn" size="sm" @click="receiveOnGrn([])">Receive goods (GRN)</Button>
+        <Button v-if="can('purchases.grn.view')" size="sm" variant="secondary" @click="router.push('/purchases/grns')">GRNs</Button>
+        <Button v-if="can('purchases.stock.view')" size="sm" variant="secondary" @click="router.push('/stock')">Stock</Button>
+      </div>
     </div>
 
-    <div class="flex gap-2 mb-4">
+    <div class="-mx-3 sm:mx-0 px-3 sm:px-0 flex gap-2 mb-4 overflow-x-auto scrollbar-none">
       <button
         v-for="t in ([{ key: 'requests', label: 'Price requests' }, { key: 'procure', label: 'To procure' }, { key: 'all', label: 'All parts' }] as const)"
         :key="t.key"
-        class="rounded-lg px-3 py-1.5 text-sm font-medium"
-        :class="tab === t.key ? 'bg-primary-600 text-white' : 'bg-white border border-gray-300 text-gray-700'"
+        class="shrink-0 whitespace-nowrap rounded-full px-4 py-2 text-sm font-semibold"
+        :class="tab === t.key ? 'bg-primary-600 text-white shadow-sm' : 'bg-white ring-1 ring-gray-300 text-gray-700'"
         @click="setTab(t.key)"
       >
         {{ t.label }}
@@ -343,12 +358,16 @@ onMounted(() => {
             <template v-else>
               <Badge v-if="r.status === 'ordered'" size="sm" variant="info">Ordered {{ ago(r.ordered_at) }}</Badge>
               <Button v-else-if="canQuote" size="sm" variant="secondary" @click="markOrdered(r)">Mark ordered</Button>
-              <Button v-if="canQuote" size="sm" @click="markReceived(r)">Mark received</Button>
+              <Button v-if="canGrn" size="sm" @click="receiveOnGrn([r.id])">Receive (GRN)</Button>
+              <Button v-else-if="canQuote && !grnMode" size="sm" @click="markReceived(r)">Mark received</Button>
             </template>
           </span>
         </li>
       </ul>
-      <p class="px-4 py-2 text-xs text-gray-400 border-t border-gray-100">When a part arrives, mark it received: the technician is told to fit it. (The full GRN with supplier bills comes in the next phase.)</p>
+      <p class="px-4 py-2 text-xs text-gray-400 border-t border-gray-100">
+        <template v-if="grnMode">When parts arrive, record the supplier's bill on a GRN with a photo of each part: the technician checks it and fits it.</template>
+        <template v-else>When a part arrives, mark it received: the technician is told to fit it.</template>
+      </p>
     </Card>
   </div>
 </template>

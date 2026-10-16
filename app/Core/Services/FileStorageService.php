@@ -194,8 +194,16 @@ class FileStorageService
         string $folder,
         ?UploadedFile $poster = null
     ): array {
+        return $this->uploadPrivateMedia($file, "job_cards/{$jobCardId}/{$folder}", $poster);
+    }
+
+    /**
+     * Store a photo/video (or a PDF bill) in a folder of the private job_media disk, with a
+     * thumbnail for photos (and for videos from the poster frame).
+     */
+    public function uploadPrivateMedia(UploadedFile $file, string $directory, ?UploadedFile $poster = null): array
+    {
         $disk = 'job_media';
-        $directory = "job_cards/{$jobCardId}/{$folder}";
         $name = (string) Str::uuid();
         $extension = $file->guessExtension() ?: 'bin';
 

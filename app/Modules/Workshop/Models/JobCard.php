@@ -65,6 +65,7 @@ class JobCard extends BranchScopedModel
         'estimated_delivery' => 'datetime',
         'time_in' => 'datetime',
         'work_started_at' => 'datetime',
+        'kit_issued_at' => 'datetime',
         'work_completed_at' => 'datetime',
         'qc_completed_at' => 'datetime',
         'time_out' => 'datetime',

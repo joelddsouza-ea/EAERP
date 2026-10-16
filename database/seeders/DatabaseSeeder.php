@@ -20,6 +20,8 @@ class DatabaseSeeder extends Seeder
             VehicleCategoriesSeeder::class,
             VehicleMakesSeeder::class,
             OilTypesSeeder::class,
+            // Again after the oil grades: gives each grade its stock item
+            PurchasesPermissionsSeeder::class,
             ServicePackagesSeeder::class,
             LabourChargesSeeder::class,
             ServiceAddonsSeeder::class,

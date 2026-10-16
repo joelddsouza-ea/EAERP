@@ -57,6 +57,14 @@ return [
     |--------------------------------------------------------------------------
     */
 
+    // Phase 3 purchases module (GRN, part verification, consumables stock, supplier dues).
+    // Optional: switched on by the owner in Masters › Purchases & Stock.
+    'purchases' => [
+        'enabled' => false,
+        // Photos of each job part on its GRN line (the technician checks it against these)
+        'min_part_photos' => 1,
+    ],
+
     'intake' => [
         // Inventory media the advisor (or driver) must capture before work can start
         'min_photos' => 4,

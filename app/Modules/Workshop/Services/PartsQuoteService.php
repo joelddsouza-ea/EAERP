@@ -170,40 +170,63 @@ class PartsQuoteService
     }
 
     /**
-     * Coordinator marks a part as received (until the Phase 3 GRN does this); the job's
+     * Coordinator marks a part as received (purchases module off; with it on, the GRN does this); the job's
      * technician and advisor are told it has arrived.
      */
     public function markReceived(SparePartRequest $request, User $user): SparePartRequest
     {
+        // With the purchases module on, parts arrive only through a GRN (supplier, bill, photos)
+        if (\App\Modules\Workshop\Support\Purchases::enabled()) {
+            throw new EstimateException('Record the part on a GRN (Receive on the Parts Desk) instead.');
+        }
         if (!in_array($request->status, [SparePartRequest::APPROVED, SparePartRequest::ORDERED], true)) {
             throw new EstimateException('Only approved or ordered parts can be marked received.');
         }
 
-        $request->update([
-            'status' => SparePartRequest::RECEIVED,
-            'received_by' => $user->id,
-            'received_at' => now(),
-            'received_quantity' => $request->quantity,
-            'ordered_by' => $request->ordered_by ?? $user->id,
-            'ordered_at' => $request->ordered_at ?? now(),
-        ]);
+        $this->partsArrived(collect([$request]), $user);
 
-        $jobCard = $request->jobCard()->withoutGlobalScopes()->first();
-        if ($jobCard) {
+        return $request->fresh();
+    }
+
+    /**
+     * Parts are here (marked received, or posted on a GRN): technicians and the advisor are
+     * told once per job, and a job waiting for parts goes back to work when the last one is in.
+     *
+     * @param Collection<int, SparePartRequest> $requests
+     * @param array<int, float> $quantities received quantity per request id (default: the requested quantity)
+     */
+    public function partsArrived(Collection $requests, User $user, array $quantities = []): void
+    {
+        foreach ($requests as $request) {
+            $request->update([
+                'status' => SparePartRequest::RECEIVED,
+                'received_by' => $user->id,
+                'received_at' => now(),
+                'received_quantity' => $quantities[$request->id] ?? $request->quantity,
+                'ordered_by' => $request->ordered_by ?? $user->id,
+                'ordered_at' => $request->ordered_at ?? now(),
+            ]);
+        }
+
+        foreach ($requests->groupBy('job_card_id') as $jobCardId => $parts) {
+            $jobCard = JobCard::withoutGlobalScopes()->find($jobCardId);
+            if (!$jobCard) {
+                continue;
+            }
+            $names = $parts->pluck('part_name')->all();
+
             // Every technician on the job (lead and co-technicians)
             $technicianIds = $jobCard->technicians()->pluck('users.id')->push($jobCard->technician_id)->filter()->unique();
             foreach (User::whereIn('id', $technicianIds)->get() as $technician) {
-                $technician->notify(StaffAlert::partsReceived($jobCard, [$request->part_name], true));
+                $technician->notify(StaffAlert::partsReceived($jobCard, $names, true));
             }
             if ($jobCard->service_advisor_id && !$technicianIds->contains($jobCard->service_advisor_id)) {
-                User::find($jobCard->service_advisor_id)?->notify(StaffAlert::partsReceived($jobCard, [$request->part_name], false));
+                User::find($jobCard->service_advisor_id)?->notify(StaffAlert::partsReceived($jobCard, $names, false));
             }
 
             // Last part in: Awaiting Parts → back to work
             app(JobLifecycleService::class)->sync($jobCard, 'parts_received');
         }
-
-        return $request;
     }
 
     /**
@@ -440,7 +463,7 @@ class PartsQuoteService
         return User::whereIn('id', $ids)->get()->concat($managers)->unique('id')->values();
     }
 
-    protected function notifyCoordinators(JobCard $jobCard, StaffAlert $alert): void
+    public function notifyCoordinators(JobCard $jobCard, StaffAlert $alert): void
     {
         $coordinators = User::active()
             ->withRole(Role::SPARE_PARTS_COORDINATOR)

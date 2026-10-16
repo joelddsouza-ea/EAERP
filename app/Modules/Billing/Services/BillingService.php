@@ -13,6 +13,9 @@ use App\Modules\Workshop\Enums\JobCardStatus;
 use App\Modules\Workshop\Models\JobCard;
 use App\Modules\Workshop\Models\JobCardEstimate;
 use App\Modules\Workshop\Models\JobCardEstimateLine as Line;
+use App\Modules\Workshop\Models\GoodsReceipt;
+use App\Modules\Workshop\Models\GoodsReceiptLine;
+use App\Modules\Workshop\Support\Purchases;
 use App\Modules\Workshop\Services\CustomerMessageService;
 use App\Modules\Workshop\Services\JobLifecycleService;
 use Illuminate\Support\Collection;
@@ -326,7 +329,56 @@ class BillingService
 
         $pending = $estimate->lines->where('approval_status', Line::PENDING)->count();
 
-        return $pending ? "The customer has not answered {$pending} estimate item(s) yet." : null;
+        if ($pending) {
+            return "The customer has not answered {$pending} estimate item(s) yet.";
+        }
+
+        // Purchases module: parts and outside services are billed only once they are on a GRN
+        $missing = $this->linesWithoutGrn($estimate);
+
+        return $missing ? 'Not received on a GRN yet: ' . implode(', ', $missing) . '. The spare parts coordinator records them first.' : null;
+    }
+
+    /**
+     * Approved part / third-party lines of the estimate with no posted GRN line (purchases module on).
+     *
+     * @return array<int, string>
+     */
+    protected function linesWithoutGrn(JobCardEstimate $estimate): array
+    {
+        if (!Purchases::enabled()) {
+            return [];
+        }
+
+        $lines = $estimate->lines->filter(fn (Line $l) => in_array($l->kind, ['part', 'third_party'], true) && $l->approval_status === Line::APPROVED);
+        if ($lines->isEmpty()) {
+            return [];
+        }
+
+        $received = $this->grnNumbers($estimate->job_card_id);
+
+        return $lines->reject(fn (Line $l) => isset($received[$l->line_key]))->pluck('description')->values()->all();
+    }
+
+    /**
+     * GRN number per estimate line key for the job's received parts and services.
+     *
+     * @return array<string, string>
+     */
+    protected function grnNumbers(int $jobCardId): array
+    {
+        return GoodsReceiptLine::query()
+            ->join('goods_receipts', 'goods_receipts.id', '=', 'goods_receipt_lines.goods_receipt_id')
+            ->leftJoin('spare_part_requests', 'spare_part_requests.id', '=', 'goods_receipt_lines.spare_part_request_id')
+            ->where('goods_receipts.status', GoodsReceipt::POSTED)
+            ->where('goods_receipt_lines.job_card_id', $jobCardId)
+            ->where('goods_receipt_lines.returned_quantity', 0)
+            ->where(fn ($q) => $q->whereNull('goods_receipt_lines.verification')->orWhere('goods_receipt_lines.verification', '!=', GoodsReceiptLine::WRONG_PART))
+            ->selectRaw('COALESCE(goods_receipt_lines.estimate_line_key, spare_part_requests.estimate_line_key) AS line_key, goods_receipts.grn_number')
+            ->get()
+            ->filter(fn ($row) => $row->line_key)
+            ->pluck('grn_number', 'line_key')
+            ->all();
     }
 
     public function createProforma(JobCard $jobCard, User $user): Invoice
@@ -646,6 +698,8 @@ class BillingService
     {
         $bill->loadMissing(['items', 'approvedBy:id,name']);
         [$beforeDiscount, $lineDiscount] = $bill->discountBreakup();
+        // Internal: the GRN each billed part / service came in on (purchases module)
+        $grns = Purchases::enabled() && $bill->job_card_id ? $this->grnNumbers($bill->job_card_id) : [];
 
         return [
             'id' => $bill->id,
@@ -673,6 +727,7 @@ class BillingService
                 'tax' => round((float) $i->cgst + (float) $i->sgst + (float) $i->igst, 2),
                 'total' => (float) $i->total,
                 'from_estimate' => $i->estimate_line_key !== null,
+                'grn_number' => $i->estimate_line_key ? ($grns[$i->estimate_line_key] ?? null) : null,
                 'section' => $i->section ?? ($i->estimate_line_key ? 'additional' : 'other'),
             ])->values(),
             'value_before_discount' => $beforeDiscount,

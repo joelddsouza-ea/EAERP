@@ -17,6 +17,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'permission' => \App\Core\Http\Middleware\CheckPermission::class,
             'role' => \App\Core\Http\Middleware\CheckRole::class,
             'job.lifecycle' => \App\Modules\Workshop\Http\Middleware\SyncJobLifecycle::class,
+            'purchases' => \App\Modules\Workshop\Http\Middleware\PurchasesEnabled::class,
         ]);
 
         // Using pure token-based API authentication

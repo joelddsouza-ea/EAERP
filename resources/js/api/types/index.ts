@@ -32,6 +32,8 @@ export interface User {
   branches: Branch[]
   primary_branch_id?: number | null
   permissions: string[]
+  /** Optional modules switched on for the organisation */
+  features?: { purchases?: boolean }
   is_active: boolean
   created_at: string
   updated_at: string
@@ -389,7 +391,26 @@ export interface JobCardIssue {
   parts_awaited?: boolean
   /** New part arrived: photo/video of it fitted, then Done */
   parts_arrived?: boolean
-  part_requests?: { id: number; part_name: string; part_number: string | null; quantity: number; status: SparePartStatus }[]
+  /** Purchases module: received on a GRN, the technician still has to check it */
+  parts_to_verify?: boolean
+  part_requests?: {
+    id: number
+    part_name: string
+    part_number: string | null
+    quantity: number
+    status: SparePartStatus
+    /** The GRN line it arrived on, with the coordinator's photos (purchases module) */
+    grn?: {
+      line_id: number
+      description: string
+      part_number: string | null
+      brand: string | null
+      quantity: number
+      verification: 'pending' | 'verified' | 'wrong_part' | null
+      verification_note: string | null
+      photos: { id: number; url: string; thumbnail_url: string }[]
+    } | null
+  }[]
   /** Parts were approved: a photo/video of the fitted part is needed before Done */
   needs_fitted_media?: boolean
   /** The customer declined all its parts: it is listed under Observations */
@@ -476,6 +497,8 @@ export interface BillLine {
   tax: number
   total: number
   from_estimate: boolean
+  /** Internal: the GRN it came in on (purchases module) */
+  grn_number?: string | null
   section: 'plan' | 'additional' | 'other'
 }
 

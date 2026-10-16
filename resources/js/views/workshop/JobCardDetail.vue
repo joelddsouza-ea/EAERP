@@ -27,6 +27,7 @@ import EstimateSummaryCard from '@/components/estimate/EstimateSummaryCard.vue'
 import CustomerChannelCard from '@/components/estimate/CustomerChannelCard.vue'
 import ServiceReportCard from '@/components/estimate/ServiceReportCard.vue'
 import JobBillingCard from '@/components/billing/JobBillingCard.vue'
+import JobStockCard from '@/components/jobcard/JobStockCard.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -287,6 +288,13 @@ onMounted(fetchJobCard)
             :job-card-id="jobCard.id"
             :job-status="jobCard.status"
             @changed="onBillingChanged"
+          />
+
+          <!-- Purchases module: plan kit from stock, parts cost -->
+          <JobStockCard
+            v-if="authStore.hasFeature('purchases') && can('purchases.stock.view')"
+            :job-card-id="jobCard.id"
+            :closed="['delivered', 'cancelled'].includes(jobCard.status)"
           />
 
           <!-- 11. Billing items -->

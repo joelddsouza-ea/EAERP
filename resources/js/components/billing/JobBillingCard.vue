@@ -426,6 +426,8 @@ defineExpose({ reload: load })
               <tr class="border-b border-gray-50">
                 <td class="py-1.5 pr-2">
                   {{ l.description }}
+                  <!-- Internal: the GRN the part / service came in on (purchases module) -->
+                  <span v-if="l.grn_number" class="ml-1 rounded bg-gray-100 px-1 text-[10px] font-medium text-gray-500">{{ l.grn_number }}</span>
                   <span class="block text-xs text-gray-400">
                     <template v-if="hsnEditing === l.id">
                       HSN/SAC

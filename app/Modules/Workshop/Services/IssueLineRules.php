@@ -6,13 +6,16 @@ use App\Core\Support\WorkshopSettings;
 use App\Modules\Workshop\Models\JobCard;
 use App\Modules\Workshop\Models\JobCardIssue;
 use App\Modules\Workshop\Models\JobCardMedia;
+use App\Modules\Workshop\Models\GoodsReceiptLine;
 use App\Modules\Workshop\Models\SparePartRequest;
+use App\Modules\Workshop\Support\Purchases;
 
 /**
  * The order of work on an Additional Issues line:
  * 1. photo/video evidence of the faulty part (a flagged activity's own photos count);
  * 2. the parts required, sent to the advisor → coordinator prices → estimate → customer approval → procurement;
- * 3. once the new part has arrived, a photo/video of it fitted;
+ * 3. once the new part has arrived (with the purchases module on: received on a GRN and
+ *    checked by the technician against it), a photo/video of it fitted;
  * 4. Done. Every line must be Done, Deferred, or declined by the customer before the final job sheet submit.
  * Expects issues with media, partRequests and sourceItem.media loaded.
  */
@@ -25,7 +28,7 @@ class IssueLineRules
     /** Here, to be fitted */
     private const ARRIVED = [SparePartRequest::RECEIVED, SparePartRequest::ISSUED];
 
-    public const RELATIONS = ['media', 'partRequests', 'sourceItem.media'];
+    public const RELATIONS = ['media', 'partRequests.grnLines.media', 'sourceItem.media'];
 
     public static function minProblemMedia(): int
     {
@@ -74,15 +77,31 @@ class IssueLineRules
         return $this->partsIn($issue, self::AWAITED);
     }
 
+    /** Here, and (purchases module on) checked by the technician against its GRN */
     public function partsArrived(JobCardIssue $issue): bool
     {
-        return $this->partsIn($issue, self::ARRIVED);
+        return $issue->partRequests->contains(fn (SparePartRequest $p) => in_array($p->status, self::ARRIVED, true) && !$this->awaitsVerification($p));
+    }
+
+    /** Received on a GRN, the technician still has to confirm it is the right part */
+    public function partsToVerify(JobCardIssue $issue): bool
+    {
+        return $issue->partRequests->contains(fn (SparePartRequest $p) => $this->awaitsVerification($p));
+    }
+
+    public function awaitsVerification(SparePartRequest $part): bool
+    {
+        if (!Purchases::enabled() || $part->status !== SparePartRequest::RECEIVED || !$part->relationLoaded('grnLines')) {
+            return false;
+        }
+
+        return $part->arrivalLine()?->verification === GoodsReceiptLine::PENDING;
     }
 
     /** Approved parts on the line: a photo/video of the new part fitted is needed before Done */
     public function hasPartsToFit(JobCardIssue $issue): bool
     {
-        return $this->partsAwaited($issue) || $this->partsArrived($issue);
+        return $this->partsAwaited($issue) || $this->partsToVerify($issue) || $this->partsArrived($issue);
     }
 
     /**
@@ -101,6 +120,10 @@ class IssueLineRules
 
         if ($this->partsAwaited($issue)) {
             return 'Waiting for the new part to arrive.';
+        }
+
+        if ($this->partsToVerify($issue)) {
+            return 'Check the new part against its GRN photo: Right part or Wrong part.';
         }
 
         if ($this->partsArrived($issue) && $this->fittedMediaCount($issue) < self::minFittedMedia()) {

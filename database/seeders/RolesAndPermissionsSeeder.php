@@ -116,6 +116,9 @@ class RolesAndPermissionsSeeder extends Seeder
 
         // Final bill, payments, gate pass
         $this->call(Phase3BillingPermissionsSeeder::class);
+
+        // Purchases module: GRN, stock, supplier dues
+        $this->call(PurchasesPermissionsSeeder::class);
     }
 
     protected function assignRolePermissions(): void

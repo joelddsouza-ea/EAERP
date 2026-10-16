@@ -11,10 +11,12 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { CameraIcon, TrashIcon, WrenchScrewdriverIcon } from '@heroicons/vue/20/solid'
 import { jobCardIssuesApi } from '@/api/jobSheets.api'
+import { purchasesApi } from '@/api/purchases.api'
 import { useToast } from '@/composables/useToast'
 import type { JobCardIssue, JobCardAdditionalJob, SparePartStatus, JobCardMedia } from '@/api/types'
 import Button from '@/components/ui/Button.vue'
 import Badge from '@/components/ui/Badge.vue'
+import Modal from '@/components/ui/Modal.vue'
 import VoiceInput from '@/components/ui/VoiceInput.vue'
 import MediaStrip from './MediaStrip.vue'
 import { prepareMedia } from './media'
@@ -30,6 +32,23 @@ interface Props {
 const props = withDefaults(defineProps<Props>(), { readonly: false, jobsReadonly: false })
 const emit = defineEmits<{ partsChanged: [] }>()
 const toast = useToast()
+
+// Purchases module: the technician checks a part received on a GRN against its photos
+const checking = ref<{ lineId: number; grnLineId: number; partName: string; note: string } | null>(null)
+async function checkPart(grnLineId: number, right: boolean, note: string | null = null) {
+  saving.value = true
+  try {
+    const res = await purchasesApi.verify(props.jobCardId, grnLineId, right, note)
+    toast.success(res.data.message ?? 'Saved')
+    checking.value = null
+    await load()
+    emit('partsChanged')
+  } catch (err) {
+    toast.apiError(err)
+  } finally {
+    saving.value = false
+  }
+}
 
 const lines = ref<JobCardIssue[]>([])
 const legacyJobs = ref<JobCardAdditionalJob[]>([])
@@ -321,6 +340,26 @@ defineExpose({ reload: load })
               >
                 <TrashIcon class="h-4 w-4" />
               </button>
+              <!-- Received on a GRN: compare with the coordinator's photos, then accept or report it -->
+              <div v-if="part.grn" class="w-full rounded-lg border p-2" :class="part.grn.verification === 'pending' ? 'border-amber-300 bg-amber-50' : 'border-gray-200 bg-gray-50'">
+                <p class="text-xs text-gray-700">
+                  Arrived: <b>{{ part.grn.description }}</b>
+                  <template v-if="part.grn.brand || part.grn.part_number"> · {{ [part.grn.brand, part.grn.part_number].filter(Boolean).join(' ') }}</template>
+                  · qty {{ part.grn.quantity }}
+                </p>
+                <div v-if="part.grn.photos.length" class="mt-1 flex flex-wrap gap-1.5">
+                  <a v-for="ph in part.grn.photos" :key="ph.id" :href="ph.url" target="_blank" class="block h-14 w-14 overflow-hidden rounded ring-1 ring-gray-200">
+                    <img :src="ph.thumbnail_url" class="h-full w-full object-cover" alt="Part as received" />
+                  </a>
+                </div>
+                <div v-if="part.grn.verification === 'pending' && isTechnician" class="mt-2 flex flex-wrap gap-2">
+                  <Button size="sm" :loading="saving" @click="checkPart(part.grn.line_id, true)">Right part</Button>
+                  <Button size="sm" variant="danger" @click="checking = { lineId: line.id, grnLineId: part.grn.line_id, partName: part.part_name, note: '' }">Wrong part</Button>
+                </div>
+                <p v-else-if="part.grn.verification === 'pending'" class="mt-1 text-xs text-amber-700">The technician is to check this part.</p>
+                <p v-else-if="part.grn.verification === 'verified'" class="mt-1 text-xs text-green-700">Checked: right part.</p>
+                <p v-else-if="part.grn.verification === 'wrong_part'" class="mt-1 text-xs text-red-700">Wrong part: {{ part.grn.verification_note }}</p>
+              </div>
             </li>
           </ul>
           <template v-if="isTechnician && !['resolved', 'deferred'].includes(line.status)">
@@ -367,6 +406,7 @@ defineExpose({ reload: load })
               <input type="file" accept="image/*,video/*" capture="environment" multiple class="hidden" @change="(e) => upload(line, e, null)" />
             </label>
             <Badge v-if="line.parts_awaited && !line.parts_arrived" size="sm" variant="info">Waiting for the new part</Badge>
+            <Badge v-if="line.parts_to_verify" size="sm" variant="warning">Check the new part</Badge>
             <label
               v-if="line.parts_arrived"
               class="inline-flex min-h-10 cursor-pointer items-center gap-1 rounded-lg border px-3 text-xs font-medium"
@@ -444,5 +484,15 @@ defineExpose({ reload: load })
         </li>
       </ul>
     </section>
+
+    <!-- Wrong part: say what is wrong (the coordinator returns it and gets the right one) -->
+    <Modal :open="!!checking" title="Wrong part" @close="checking = null">
+      <p class="text-sm text-gray-600 mb-2">{{ checking?.partName }}: what is wrong with it?</p>
+      <textarea v-if="checking" v-model="checking.note" rows="2" class="input" placeholder="e.g. Rear pads sent, front needed" />
+      <template #footer>
+        <Button variant="secondary" @click="checking = null">Cancel</Button>
+        <Button variant="danger" :loading="saving" :disabled="!checking?.note.trim()" @click="checkPart(checking!.grnLineId, false, checking!.note)">Report wrong part</Button>
+      </template>
+    </Modal>
   </div>
 </template>

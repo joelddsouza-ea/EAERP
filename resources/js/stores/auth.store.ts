@@ -24,6 +24,8 @@ export const useAuthStore = defineStore('auth', () => {
   )
   const userName = computed(() => user.value?.name || '')
   const userEmail = computed(() => user.value?.email || '')
+  /** Optional module switched on (e.g. 'purchases': GRN, stock, supplier dues) */
+  const hasFeature = (name: 'purchases') => !!user.value?.features?.[name]
 
   // Actions
   async function login(credentials: LoginRequest) {
@@ -83,8 +85,11 @@ export const useAuthStore = defineStore('auth', () => {
       permissions.value = user.value.permissions || []
       branches.value = user.value.branches || []
       localStorage.setItem(USER_KEY, JSON.stringify(user.value))
-    } catch {
-      clearAuth()
+    } catch (err: any) {
+      // Signed out only when the token is no longer valid, not on a flaky mobile connection
+      if (!err?.response || err.response.status === 401) {
+        if (err?.response?.status === 401 || !user.value) clearAuth()
+      }
     } finally {
       loading.value = false
     }
@@ -128,6 +133,9 @@ export const useAuthStore = defineStore('auth', () => {
   async function initialize() {
     if (token.value && !user.value) {
       await fetchUser()
+    } else if (token.value) {
+      // Refresh in the background: new permissions and modules switched on show without signing in again
+      fetchUser()
     }
   }
 
@@ -158,6 +166,7 @@ export const useAuthStore = defineStore('auth', () => {
     hasRole,
     hasAnyRole,
     hasBranchAccess,
+    hasFeature,
     initialize,
   }
 })

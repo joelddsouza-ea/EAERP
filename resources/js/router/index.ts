@@ -53,6 +53,8 @@ declare module 'vue-router' {
     title?: string
     /** Phones: hide the bottom tab bar (the screen has its own action bar) */
     hideTabBar?: boolean
+    /** Only while this optional module is switched on */
+    feature?: 'purchases'
   }
 }
 
@@ -185,6 +187,50 @@ const routes: RouteRecordRaw[] = [
         name: 'parts-desk',
         component: PartsDesk,
         meta: { title: 'Parts Desk', permission: 'workshop.spare-parts.view' },
+      },
+
+      // Purchases module (optional; feature-gated)
+      {
+        path: 'purchases/grns',
+        name: 'grns',
+        component: () => import('@/views/workshop/purchases/GoodsReceiptList.vue'),
+        meta: { title: 'GRNs', permission: 'purchases.grn.view', feature: 'purchases' },
+      },
+      {
+        path: 'purchases/grns/new',
+        name: 'grn-new',
+        component: () => import('@/views/workshop/purchases/GoodsReceiptForm.vue'),
+        meta: { title: 'Receive Goods', permission: 'purchases.grn.create', feature: 'purchases' },
+      },
+      {
+        path: 'purchases/grns/:id',
+        name: 'grn-detail',
+        component: () => import('@/views/workshop/purchases/GoodsReceiptDetail.vue'),
+        meta: { title: 'GRN', permission: 'purchases.grn.view', feature: 'purchases' },
+      },
+      {
+        path: 'stock',
+        name: 'stock',
+        component: () => import('@/views/workshop/purchases/StockList.vue'),
+        meta: { title: 'Stock', permission: 'purchases.stock.view', feature: 'purchases' },
+      },
+      {
+        path: 'suppliers',
+        name: 'suppliers',
+        component: () => import('@/views/workshop/purchases/SupplierList.vue'),
+        meta: { title: 'Suppliers', permissions: ['purchases.grn.view', 'purchases.suppliers.pay'], feature: 'purchases' },
+      },
+      {
+        path: 'stock-masters',
+        name: 'stock-masters',
+        component: () => import('@/views/workshop/masters/StockMasters.vue'),
+        meta: { title: 'Stock Items & Plan Kits', permission: 'purchases.stock.view', feature: 'purchases' },
+      },
+      {
+        path: 'purchases-settings',
+        name: 'purchases-settings',
+        component: () => import('@/views/workshop/masters/PurchasesSettings.vue'),
+        meta: { title: 'Purchases & Stock', permission: 'purchases.settings.manage' },
       },
 
       {
@@ -359,6 +405,10 @@ router.beforeEach(async (to, _from, next) => {
     if (!authStore.hasPermission(to.meta.permission)) {
       return next({ name: 'forbidden' })
     }
+  }
+
+  if (to.meta.feature && !authStore.hasFeature(to.meta.feature)) {
+    return next({ name: 'not-found' })
   }
 
   if (to.meta.permissions && to.meta.permissions.length > 0) {

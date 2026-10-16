@@ -29,6 +29,10 @@ import {
   CalculatorIcon,
   TagIcon,
   HomeModernIcon,
+  InboxArrowDownIcon,
+  ArchiveBoxIcon,
+  BuildingStorefrontIcon,
+  ShoppingCartIcon,
 } from '@heroicons/vue/24/outline'
 import { useAuthStore } from '@/stores/auth.store'
 
@@ -68,6 +72,13 @@ export function useNavigation() {
 
     const operations: NavItem[] = []
     if (can('workshop.spare-parts.view')) operations.push({ name: 'Parts Desk', short: 'Parts', to: '/parts-desk', icon: CubeIcon })
+    // Purchases module (optional)
+    const purchases = auth.hasFeature('purchases')
+    if (purchases && can('purchases.grn.view')) operations.push({ name: 'GRNs', short: 'GRNs', to: '/purchases/grns', icon: InboxArrowDownIcon })
+    if (purchases && can('purchases.stock.view')) operations.push({ name: 'Stock', short: 'Stock', to: '/stock', icon: ArchiveBoxIcon })
+    if (purchases && (can('purchases.grn.view') || can('purchases.suppliers.pay'))) {
+      operations.push({ name: 'Suppliers', short: 'Suppliers', to: '/suppliers', icon: BuildingStorefrontIcon })
+    }
 
     const billing: NavItem[] = []
     if (can('billing.invoices.view')) billing.push({ name: 'Invoices', short: 'Invoices', to: '/invoices', icon: DocumentTextIcon })
@@ -93,6 +104,8 @@ export function useNavigation() {
       )
     }
     if (can('workshop.bays.view')) masters.push({ name: 'Bays', to: '/bays', icon: HomeModernIcon })
+    if (purchases && can('purchases.stock.view')) masters.push({ name: 'Stock Items & Plan Kits', to: '/stock-masters', icon: ShoppingCartIcon })
+    if (can('purchases.settings.manage')) masters.push({ name: 'Purchases & Stock (module)', to: '/purchases-settings', icon: InboxArrowDownIcon })
 
     const admin: NavItem[] = []
     if (can('user-admin.users.view')) admin.push({ name: 'Users', to: '/users', icon: UserGroupIcon })

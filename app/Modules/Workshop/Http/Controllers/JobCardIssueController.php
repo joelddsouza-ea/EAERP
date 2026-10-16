@@ -44,6 +44,8 @@ class JobCardIssueController extends ApiController
                 'media',
                 'sourceItem.media',
                 'partRequests' => fn ($q) => $q->where('status', '!=', 'cancelled')->orderBy('id'),
+                // Purchases module: the GRN line each part arrived on (photos for the technician's check)
+                'partRequests.grnLines.media',
                 'resolvedBy:id,name',
                 'reportedBy:id,name',
             ])
@@ -126,17 +128,33 @@ class JobCardIssueController extends ApiController
             'activity_media' => $issue->relationLoaded('sourceItem') && $issue->sourceItem
                 ? JobCardMediaResource::collection($issue->sourceItem->media)->resolve()
                 : [],
-            'part_requests' => $issue->partRequests->map(fn ($p) => [
-                'id' => $p->id,
-                'part_name' => $p->part_name,
-                'part_number' => $p->part_number,
-                'quantity' => (float) $p->quantity,
-                'status' => $p->status,
-            ])->values(),
+            'part_requests' => $issue->partRequests->map(function ($p) {
+                $line = $p->relationLoaded('grnLines') ? $p->arrivalLine() : null;
+
+                return [
+                    'id' => $p->id,
+                    'part_name' => $p->part_name,
+                    'part_number' => $p->part_number,
+                    'quantity' => (float) $p->quantity,
+                    'status' => $p->status,
+                    // Purchases module: the GRN line it arrived on, for the technician's check
+                    'grn' => $line ? [
+                        'line_id' => $line->id,
+                        'description' => $line->description,
+                        'part_number' => $line->part_number,
+                        'brand' => $line->brand,
+                        'quantity' => (float) $line->quantity,
+                        'verification' => $line->verification,
+                        'verification_note' => $line->verification_note,
+                        'photos' => $line->media->map(fn ($m) => $m->present())->values(),
+                    ] : null,
+                ];
+            })->values(),
             'needs_fitted_media' => $this->lineRules->hasPartsToFit($issue),
             'can_list_parts' => $this->lineRules->canListParts($issue),
             'parts_awaited' => $this->lineRules->partsAwaited($issue),
             'parts_arrived' => $this->lineRules->partsArrived($issue),
+            'parts_to_verify' => $this->lineRules->partsToVerify($issue),
             'declined_by_customer' => $this->lineRules->declinedByCustomer($issue),
             'done_shortfall' => $this->lineRules->doneShortfall($issue),
         ];
