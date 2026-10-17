@@ -25,6 +25,7 @@ use App\Modules\Workshop\Http\Controllers\WorkflowStageController;
 use App\Modules\Workshop\Http\Controllers\PostServiceController;
 use App\Modules\Workshop\Http\Controllers\PurchasesController;
 use App\Modules\Workshop\Http\Controllers\StockController;
+use App\Modules\Workshop\Http\Controllers\TripController;
 
 // job.lifecycle: after a change to a job card, the job moves on to the stage the facts allow
 Route::prefix('v1/workshop')->middleware(['auth:sanctum', 'branch.context', 'job.lifecycle'])->group(function () {
@@ -56,7 +57,11 @@ Route::prefix('v1/workshop')->middleware(['auth:sanctum', 'branch.context', 'job
     Route::get('bays/status/all', [BayController::class, 'allStatus']);
 
     // Job Cards
-    Route::apiResource('job-cards', JobCardController::class);
+    Route::get('job-cards', [JobCardController::class, 'index'])->middleware('permission:workshop.job-cards.view');
+    Route::get('job-cards/{jobCard}', [JobCardController::class, 'show'])->middleware('permission:workshop.job-cards.view');
+    Route::post('job-cards', [JobCardController::class, 'store']);
+    Route::match(['put', 'patch'], 'job-cards/{jobCard}', [JobCardController::class, 'update']);
+    Route::delete('job-cards/{jobCard}', [JobCardController::class, 'destroy'])->middleware('permission:workshop.job-cards.delete');
 
     // Create / Edit Job Card choices: plans with oil grades + prices for the car, repair types, job sheets
     Route::get('job-card-options', [JobCardFormController::class, 'options'])
@@ -322,6 +327,34 @@ Route::prefix('v1/workshop')->middleware(['auth:sanctum', 'branch.context', 'job
             Route::put('sections/{section}/items/{item}', [JobSheetMasterController::class, 'updateItem']);
             Route::post('sections/{section}/items/reorder', [JobSheetMasterController::class, 'reorderItems']);
         });
+    });
+
+    // ---- Pickup / drop and home service (Phase 5)
+    Route::get('trips/mine', [TripController::class, 'mine'])->middleware('permission:workshop.trips.drive|workshop.trips.manage');
+    Route::get('trips/board', [TripController::class, 'board'])->middleware('permission:workshop.trips.view|workshop.trips.manage');
+    Route::get('trip-settings', [TripController::class, 'settings'])->middleware('permission:workshop.trips.manage|workshop.trips.settings');
+    Route::put('trip-settings', [TripController::class, 'updateSettings'])->middleware('permission:workshop.trips.settings');
+    Route::get('customers/{customer}/addresses', [TripController::class, 'addresses'])->middleware('permission:workshop.customers.view');
+    Route::get('job-cards/{jobCard}/trips', [TripController::class, 'forJob'])->middleware('permission:workshop.job-cards.view');
+    Route::middleware('permission:workshop.trips.manage')->group(function () {
+        Route::post('job-cards/{jobCard}/trips', [TripController::class, 'store']);
+        Route::patch('trips/{trip}', [TripController::class, 'update']);
+        Route::post('trips/{trip}/cancel', [TripController::class, 'cancel']);
+    });
+    // Driver / home technician steps (TripService::canDrive checks the trip is theirs)
+    Route::middleware('permission:workshop.trips.drive|workshop.trips.manage')->group(function () {
+        Route::get('trips/{trip}', [TripController::class, 'show']);
+        Route::post('trips/{trip}/start', [TripController::class, 'start']);
+        Route::post('trips/{trip}/collect', [TripController::class, 'collect']);
+        Route::post('trips/{trip}/reach-workshop', [TripController::class, 'reachWorkshop']);
+        Route::post('trips/{trip}/arrive', [TripController::class, 'arrive']);
+        Route::post('trips/{trip}/deliver', [TripController::class, 'deliver']);
+        Route::post('trips/{trip}/close', [TripController::class, 'close']);
+        Route::post('trips/{trip}/turn-back', [TripController::class, 'turnBack']);
+        Route::post('trips/{trip}/readings', [TripController::class, 'readings']);
+        Route::post('trips/{trip}/payment', [TripController::class, 'payment']);
+        Route::post('trips/{trip}/media', [TripController::class, 'uploadMedia']);
+        Route::delete('trips/{trip}/media/{media}', [TripController::class, 'deleteMedia']);
     });
 
     // ---- Purchases module (optional): the switch is always reachable by the owner / manager

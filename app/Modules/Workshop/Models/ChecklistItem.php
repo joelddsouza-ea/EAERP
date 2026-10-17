@@ -27,6 +27,16 @@ class ChecklistItem extends Model
 
     public const INPUT_TYPES = ['tick', 'yes_no', 'repair_replace', 'panel_matrix', 'text', 'number', 'select'];
 
+    /**
+     * Activities only possible at the workshop, by name (seeded; the owner edits the flag).
+     */
+    private const WORKSHOP_ONLY_PATTERN = '/(body|exterior) wash|wash completed|engine compartment washed|wheel arcs washed|wheel alignment|wheel balancing|alignment (&|and) balancing/i';
+
+    public static function looksWorkshopOnly(string $name): bool
+    {
+        return (bool) preg_match(self::WORKSHOP_ONLY_PATTERN, $name);
+    }
+
     protected $fillable = [
         'section_id',
         'code',
@@ -39,6 +49,7 @@ class ChecklistItem extends Model
         'media_requirement',
         'min_media_count',
         'na_allowed',
+        'workshop_only',
         'expected_answer',
         'applies_to_package_ids',
         'source_marker',
@@ -53,6 +64,7 @@ class ChecklistItem extends Model
         'is_required' => 'boolean',
         'requires_photo' => 'boolean',
         'na_allowed' => 'boolean',
+        'workshop_only' => 'boolean',
         'is_active' => 'boolean',
         'min_media_count' => 'integer',
         'rules_customized_at' => 'datetime',

@@ -202,7 +202,7 @@ async function saveItem() {
   if (ok) itemOpen.value = false
 }
 
-const SECTIONS: Record<string, string> = { plan: 'Service plan', additional: 'Additional parts & labour', other: 'Other items' }
+const SECTIONS: Record<string, string> = { plan: 'Service plan', additional: 'Additional parts & labour', trips: 'Pickup, drop & home visit', other: 'Other items' }
 const showSection = (i: number) => !!bill.value && (i === 0 || bill.value.lines[i - 1].section !== bill.value.lines[i].section)
 
 // HSN/SAC of a line, editable while the bill can change

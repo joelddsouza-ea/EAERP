@@ -161,7 +161,7 @@ class LifecycleAndBillingTest extends TestCase
         $this->as($this->advisor)->getJson('/api/v1/workshop/job-sheet-masters/workflow-stages')->assertForbidden();
 
         $stages = collect($this->as($this->owner)->getJson('/api/v1/workshop/job-sheet-masters/workflow-stages')->assertOk()->json('data.stages'));
-        $this->assertSame(12, $stages->count());
+        $this->assertSame(17, $stages->count()); // 12 workshop stages + 3 pickup + 2 home visit
         $this->assertFalse($stages->firstWhere('status', 'intake_pending')['auto_capable']);
         $this->assertTrue($stages->firstWhere('status', 'qc_pending')['auto']);
 

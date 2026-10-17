@@ -49,7 +49,7 @@ class UpdateJobCardRequest extends FormRequest
             }
 
             /** @var JobCard $jobCard */
-            $jobCard = $this->route('job_card');
+            $jobCard = $this->route('jobCard');
 
             $pick = fn (string $field) => $this->exists($field)
                 ? ($this->input($field) ?: null)

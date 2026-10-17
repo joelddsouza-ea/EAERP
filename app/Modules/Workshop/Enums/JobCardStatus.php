@@ -13,6 +13,8 @@ enum JobCardStatus: string
     case PickupScheduled = 'pickup_scheduled';
     case PickupEnRoute = 'pickup_en_route';
     case VehicleCollected = 'vehicle_collected';
+    case HomeVisitScheduled = 'home_visit_scheduled';
+    case HomeVisitEnRoute = 'home_visit_en_route';
     case IntakePending = 'intake_pending';
     case IntakeInProgress = 'intake_in_progress';
     case AwaitingApproval = 'awaiting_approval';
@@ -33,6 +35,8 @@ enum JobCardStatus: string
             self::PickupScheduled => 'Pickup Scheduled',
             self::PickupEnRoute => 'Pickup En Route',
             self::VehicleCollected => 'Vehicle Collected',
+            self::HomeVisitScheduled => 'Home Visit Scheduled',
+            self::HomeVisitEnRoute => 'Home Visit En Route',
             self::IntakePending => 'Intake Pending',
             self::IntakeInProgress => 'Intake In Progress',
             self::AwaitingApproval => 'Awaiting Approval',
@@ -55,7 +59,8 @@ enum JobCardStatus: string
     public function group(): string
     {
         return match ($this) {
-            self::PickupScheduled, self::PickupEnRoute, self::VehicleCollected => 'pickup',
+            self::PickupScheduled, self::PickupEnRoute, self::VehicleCollected,
+            self::HomeVisitScheduled, self::HomeVisitEnRoute => 'pickup',
             self::IntakePending, self::IntakeInProgress => 'intake',
             self::AwaitingApproval, self::WorkInProgress, self::AwaitingParts => 'work',
             self::PostWorkTrial, self::WashPending, self::QcPending => 'qc',

@@ -12,6 +12,8 @@ class JobCardMediaResource extends JsonResource
         return [
             'id' => $this->id,
             'media_type' => $this->media_type,
+            // e.g. fitted_part, or the side of the car on drop photos (front/rear/left/right)
+            'tag' => $this->tag,
             // Short-lived signed URLs: <img>/<video> can't send the API bearer token
             'url' => $this->url(),
             'thumbnail_url' => $this->url(true),

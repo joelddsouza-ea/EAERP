@@ -126,7 +126,7 @@ defineExpose({ reload: load })
     <div v-else-if="intake" class="space-y-6">
       <!-- Trial drive -->
       <section>
-        <h4 class="text-sm font-medium text-gray-700 mb-2">Trial drive by the advisor</h4>
+        <h4 class="text-sm font-medium text-gray-700 mb-2">Trial drive (advisor, or the pickup driver)</h4>
 
         <p v-if="intake.trial.status === 'done'" class="text-sm text-gray-700">
           Done<span v-if="intake.trial.by"> by {{ intake.trial.by }}</span>.

@@ -14,11 +14,7 @@ return [
     */
 
     'workflow' => [
-        'disabled_statuses' => [
-            'pickup_scheduled',
-            'pickup_en_route',
-            'vehicle_collected',
-        ],
+        'disabled_statuses' => [],
 
         // Customer notification on entering a status: 'always' or 'first_entry'.
         // Fallback only: the Job stages master (workflow_stages) decides for its stages.
@@ -63,6 +59,21 @@ return [
         'enabled' => false,
         // Photos of each job part on its GRN line (the technician checks it against these)
         'min_part_photos' => 1,
+    ],
+
+    // Phase 5 pickup / drop and home service
+    'trips' => [
+        // GST-inclusive charges offered when a trip is booked (0 = free); ticked per trip
+        'pickup_charge' => 0,
+        'drop_charge' => 0,
+        'home_visit_charge' => 0,
+        // Sent with the pickup / home-visit booking message
+        'policy_text' => "Pickup & drop policy: please keep the RC, insurance and spare key ready, and remove valuables from the car. "
+            . "Photos and videos of the car are taken at pickup and shared with you. The car is returned only after the bill is paid.",
+        // Photos the driver must take when handing the car back (front, rear, left, right)
+        'min_drop_photos' => 4,
+        // Photos the technician must take to close a home visit
+        'min_home_close_photos' => 2,
     ],
 
     'intake' => [
@@ -127,6 +138,11 @@ return [
 
         // Message template for each status the customer is told about (see lang/en/customer_messages.php)
         'status_templates' => [
+            'pickup_scheduled' => 'pickup_booked',
+            'pickup_en_route' => 'pickup_on_the_way',
+            'vehicle_collected' => 'pickup_collected',
+            'home_visit_scheduled' => 'home_visit_booked',
+            'home_visit_en_route' => 'home_visit_on_the_way',
             'intake_in_progress' => 'car_received',
             'work_in_progress' => 'work_started',
             'ready_for_delivery' => 'ready_for_delivery',

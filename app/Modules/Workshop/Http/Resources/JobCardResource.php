@@ -16,6 +16,7 @@ class JobCardResource extends JsonResource
             'status_changed_at' => $this->status_changed_at?->toIso8601String(),
             'cancel_reason' => $this->cancel_reason,
             'service_type' => $this->service_type,
+            'service_mode' => $this->service_mode ?? 'drive_in',
             'priority' => $this->priority,
             'customer_id' => $this->customer_id,
             'vehicle_id' => $this->vehicle_id,

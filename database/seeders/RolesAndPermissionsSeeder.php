@@ -119,6 +119,9 @@ class RolesAndPermissionsSeeder extends Seeder
 
         // Purchases module: GRN, stock, supplier dues
         $this->call(PurchasesPermissionsSeeder::class);
+
+        // Pickup / drop and home service
+        $this->call(Phase5TripPermissionsSeeder::class);
     }
 
     protected function assignRolePermissions(): void

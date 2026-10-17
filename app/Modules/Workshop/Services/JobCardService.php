@@ -26,10 +26,19 @@ class JobCardService
         return DB::transaction(function () use ($data) {
             // Generate job number
             $data['job_number'] = JobCard::generateJobNumber($data['branch_id']);
-            $data['time_in'] = $data['time_in'] ?? now();
+            $data['service_mode'] = $data['service_mode'] ?? JobCard::MODE_DRIVE_IN;
+            $driveIn = $data['service_mode'] === JobCard::MODE_DRIVE_IN;
+            // Pickup / home visit: the car is "in" when intake starts
+            $data['time_in'] = $data['time_in'] ?? ($driveIn ? now() : null);
             $data['service_advisor_id'] = $data['service_advisor_id'] ?? auth()->id();
             // Set explicitly: the DB default isn't loaded into the model, and logStatusChange needs it
-            $data['status'] = $data['status'] ?? JobCardStatus::IntakePending->value;
+            $data['status'] = $data['status'] ?? match ($data['service_mode']) {
+                JobCard::MODE_PICKUP_DROP => JobCardStatus::PickupScheduled->value,
+                JobCard::MODE_HOME => JobCardStatus::HomeVisitScheduled->value,
+                default => JobCardStatus::IntakePending->value,
+            };
+            $trip = $data['trip'] ?? null;
+            unset($data['trip']);
             $data['status_changed_at'] = now();
             $data = $this->normalizeServiceType($data);
             // A technician chosen on the form goes through addTechnician (pivot + notification)
@@ -71,7 +80,12 @@ class JobCardService
                 'changed_by' => auth()->id(),
             ]);
 
-            return $jobCard->load(['customer', 'vehicle', 'package', 'oilType']);
+            // Pickup & drop / home service: the trips the driver or home technician will do
+            if (!$driveIn) {
+                app(TripService::class)->bookForNewJob($jobCard->fresh(), $trip ?? [], auth()->user());
+            }
+
+            return $jobCard->fresh()->load(['customer', 'vehicle', 'package', 'oilType']);
         });
     }
 

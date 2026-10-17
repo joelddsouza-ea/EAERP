@@ -28,6 +28,7 @@ import CustomerChannelCard from '@/components/estimate/CustomerChannelCard.vue'
 import ServiceReportCard from '@/components/estimate/ServiceReportCard.vue'
 import JobBillingCard from '@/components/billing/JobBillingCard.vue'
 import JobStockCard from '@/components/jobcard/JobStockCard.vue'
+import TripsCard from '@/components/jobcard/TripsCard.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -203,6 +204,14 @@ onMounted(fetchJobCard)
 
           <!-- 3. Who and where -->
           <AssignmentsCard v-if="!isTechnician" :job-card-id="jobCard.id" @changed="refreshAfterChange" />
+
+          <!-- Pickup / drop / home visit -->
+          <TripsCard
+            v-if="!isTechnician || jobCard.service_mode === 'home'"
+            :job-card-id="jobCard.id"
+            :job-status="jobCard.status"
+            @changed="onStatusChanged"
+          />
 
           <!-- 4. Intake: trial drive + inventory photos/videos -->
           <IntakePanel :job-card-id="jobCard.id" @changed="refreshAfterChange" />

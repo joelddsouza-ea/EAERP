@@ -13,6 +13,7 @@ use App\Modules\Workshop\Workflow\Guards\GatePassIssued;
 use App\Modules\Workshop\Workflow\Guards\IntakeCaptured;
 use App\Modules\Workshop\Workflow\Guards\JobSheetActivitiesResolved;
 use App\Modules\Workshop\Workflow\Guards\NoOpenCriticalIssues;
+use App\Modules\Workshop\Workflow\Guards\PickupHandoverCaptured;
 use App\Modules\Workshop\Workflow\Guards\PostTrialPassed;
 use App\Modules\Workshop\Workflow\Guards\WashRecorded;
 use App\Modules\Workshop\Workflow\Guards\PreDeliveryChecklistComplete;
@@ -38,19 +39,34 @@ class JobCardWorkflow
     private const QC = 'workshop.qc.update';
     private const PRE_DELIVERY = 'workshop.pre-delivery.update';
     private const PARTS = 'workshop.spare-parts.update';
+    private const DRIVE = 'workshop.trips.drive';
+    private const TRIPS = 'workshop.trips.manage';
 
     /**
      * @var array<string, array<string, array{perms: string[], guards?: class-string<Guard>[], requires_notes?: bool}>>
      */
     public const EDGES = [
+        // Pickup by a driver (the trip screen takes these edges); the driver's photos are the intake
         'pickup_scheduled' => [
-            'pickup_en_route' => ['perms' => [self::CHANGE]],
+            'pickup_en_route' => ['trip' => true, 'perms' => [self::DRIVE, self::TRIPS]],
+            // The customer brought the car in after all (the pickup is cancelled)
+            'intake_pending' => ['perms' => [self::CHANGE], 'requires_notes' => true],
         ],
         'pickup_en_route' => [
-            'vehicle_collected' => ['perms' => [self::CHANGE]],
+            'vehicle_collected' => ['trip' => true, 'perms' => [self::DRIVE, self::TRIPS], 'guards' => [PickupHandoverCaptured::class]],
+            'pickup_scheduled' => ['trip' => true, 'perms' => [self::DRIVE, self::TRIPS, self::CHANGE], 'requires_notes' => true],
         ],
         'vehicle_collected' => [
-            'intake_pending' => ['perms' => [self::CHANGE]],
+            'intake_pending' => ['trip' => true, 'perms' => [self::DRIVE, self::TRIPS, self::CHANGE]],
+        ],
+        // Home service: the technician travels to the customer, then the job runs as usual
+        'home_visit_scheduled' => [
+            'home_visit_en_route' => ['trip' => true, 'perms' => [self::DRIVE, self::TRIPS]],
+            'intake_pending' => ['perms' => [self::CHANGE], 'requires_notes' => true],
+        ],
+        'home_visit_en_route' => [
+            'intake_pending' => ['trip' => true, 'perms' => [self::DRIVE, self::TRIPS, self::CHANGE]],
+            'home_visit_scheduled' => ['trip' => true, 'perms' => [self::DRIVE, self::TRIPS, self::CHANGE], 'requires_notes' => true],
         ],
         'intake_pending' => [
             'intake_in_progress' => ['perms' => [self::CHANGE]],
@@ -169,6 +185,9 @@ class JobCardWorkflow
         $options = [];
 
         foreach ($this->edgesFrom($jobCard->status) as $to => $edge) {
+            if ($edge['trip']) {
+                continue;
+            }
             $manual = $this->isManualCorrection($jobCard, $to);
             $permitted = $this->mayTake($jobCard, $user, $to, $edge);
             $failures = $this->failedGuards($jobCard, $edge);
@@ -295,6 +314,8 @@ class JobCardWorkflow
             'perms' => $edge['perms'],
             'guards' => $edge['guards'] ?? [],
             'requires_notes' => $edge['requires_notes'] ?? false,
+            // Taken only from the trip screen (TripService), so the trip and the job move together
+            'trip' => $edge['trip'] ?? false,
         ];
     }
 }

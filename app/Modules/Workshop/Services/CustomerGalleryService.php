@@ -86,6 +86,14 @@ class CustomerGalleryService
             $areas[] = $this->area('additional', 'Additional work', $groups);
         }
 
+        // Drop / home-visit closing photos (front, rear, left, right…)
+        if ($handover = $byType->get('job_trip')) {
+            $areas[] = $this->area('handover', 'Your car at delivery', [[
+                'title' => null,
+                'items' => $this->items($handover, fn (JobCardMedia $m) => $m->tag ? ucfirst($m->tag) : null),
+            ]]);
+        }
+
         return $areas;
     }
 

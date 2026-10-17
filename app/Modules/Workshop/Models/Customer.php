@@ -46,6 +46,14 @@ class Customer extends BaseModel
     /**
      * Follow-up calls for this customer.
      */
+    /**
+     * Saved pickup / drop / home-service addresses.
+     */
+    public function addresses()
+    {
+        return $this->hasMany(CustomerAddress::class)->orderByDesc('is_default')->orderByDesc('id');
+    }
+
     public function followUpCalls()
     {
         return $this->hasMany(FollowUpCall::class);

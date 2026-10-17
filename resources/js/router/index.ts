@@ -24,6 +24,10 @@ const EstimateEditor = () => import('@/views/workshop/EstimateEditor.vue')
 const CustomerJob = () => import('@/views/public/CustomerJob.vue')
 const BayList = () => import('@/views/workshop/BayList.vue')
 const MyJobs = () => import('@/views/workshop/MyJobs.vue')
+const MyTrips = () => import('@/views/workshop/MyTrips.vue')
+const TripDetail = () => import('@/views/workshop/TripDetail.vue')
+const TripBoard = () => import('@/views/workshop/TripBoard.vue')
+const TripSettings = () => import('@/views/workshop/masters/TripSettings.vue')
 
 // Billing views
 const InvoiceList = () => import('@/views/billing/InvoiceList.vue')
@@ -84,6 +88,11 @@ const routes: RouteRecordRaw[] = [
         name: 'dashboard',
         component: Dashboard,
         meta: { title: 'Dashboard' },
+        // Drivers work from My Trips
+        beforeEnter: () => {
+          const auth = useAuthStore()
+          return auth.hasPermission('workshop.trips.drive') && !auth.hasPermission('workshop.job-cards.view') ? { name: 'my-trips' } : true
+        },
       },
 
       // Workshop routes
@@ -238,6 +247,32 @@ const routes: RouteRecordRaw[] = [
         name: 'bays',
         component: BayList,
         meta: { title: 'Bays', permission: 'workshop.bays.view' },
+      },
+
+      // Pickup / drop / home visit
+      {
+        path: 'trips',
+        name: 'my-trips',
+        component: MyTrips,
+        meta: { title: 'My Trips', permission: 'workshop.trips.drive' },
+      },
+      {
+        path: 'trips/board',
+        name: 'trip-board',
+        component: TripBoard,
+        meta: { title: 'Pickups & Drops', permissions: ['workshop.trips.view', 'workshop.trips.manage'] },
+      },
+      {
+        path: 'trips/:id(\d+)',
+        name: 'trip-detail',
+        component: TripDetail,
+        meta: { title: 'Trip', permissions: ['workshop.trips.drive', 'workshop.trips.manage'] },
+      },
+      {
+        path: 'trip-settings',
+        name: 'trip-settings',
+        component: TripSettings,
+        meta: { title: 'Pickup, Drop & Home Service', permissions: ['workshop.trips.settings', 'workshop.trips.manage'] },
       },
 
       {

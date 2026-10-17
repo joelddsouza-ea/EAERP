@@ -110,6 +110,7 @@ class JobSheetTemplatesSeeder extends Seeder
                     'na_allowed' => ($row['na'] ?? false) || $parsed['na_allowed'],
                     'is_required' => $required,
                     'expected_answer' => $row['expect'] ?? null,
+                    'workshop_only' => ChecklistItem::looksWorkshopOnly($name),
                 ];
 
                 $item = ChecklistItem::where('code', $code)->first();

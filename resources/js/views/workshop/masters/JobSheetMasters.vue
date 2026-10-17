@@ -526,6 +526,7 @@ onMounted(async () => {
                     <th v-if="section.items[0]?.input_type === 'tick'" class="px-3 py-2 text-center font-medium text-gray-500">N/A</th>
                     <th v-if="section.items[0]?.input_type === 'yes_no'" class="px-3 py-2 text-left font-medium text-gray-500">Passing answer</th>
                     <th class="px-3 py-2 text-center font-medium text-gray-500">Required</th>
+                    <th class="px-3 py-2 text-center font-medium text-gray-500" title="Not done on a home-service visit (body wash, wheel alignment…)">Workshop only</th>
                     <th class="px-3 py-2 text-center font-medium text-gray-500">Active</th>
                     <th v-if="canEdit" class="px-3 py-2" />
                   </tr>
@@ -601,6 +602,15 @@ onMounted(async () => {
                         :checked="item.is_required"
                         :disabled="!canEdit"
                         @change="updateItem(section, item, { is_required: ($event.target as HTMLInputElement).checked })"
+                      />
+                    </td>
+                    <td class="px-3 py-2 text-center">
+                      <input
+                        type="checkbox"
+                        class="h-4 w-4 rounded border-gray-300"
+                        :checked="item.workshop_only"
+                        :disabled="!canEdit"
+                        @change="updateItem(section, item, { workshop_only: ($event.target as HTMLInputElement).checked })"
                       />
                     </td>
                     <td class="px-3 py-2 text-center">

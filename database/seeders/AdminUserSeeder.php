@@ -73,6 +73,12 @@ class AdminUserSeeder extends Seeder
                 'phone' => '+919876543216',
                 'role' => Role::SPARE_PARTS_COORDINATOR,
             ],
+            [
+                'name' => 'Driver One',
+                'email' => 'driver@expressautocare.com',
+                'phone' => '+919876543217',
+                'role' => Role::DRIVER,
+            ],
         ];
 
         $firstBranch = Branch::first();

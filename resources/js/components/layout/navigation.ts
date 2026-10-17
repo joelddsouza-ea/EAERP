@@ -33,6 +33,8 @@ import {
   ArchiveBoxIcon,
   BuildingStorefrontIcon,
   ShoppingCartIcon,
+  MapIcon,
+  MapPinIcon,
 } from '@heroicons/vue/24/outline'
 import { useAuthStore } from '@/stores/auth.store'
 
@@ -64,13 +66,19 @@ export function useNavigation() {
   const groups = computed<NavGroup[]>(() => {
     const isTechnician = auth.hasAnyRole(TECHNICIAN_ROLES)
 
-    const main: NavItem[] = [{ name: 'Dashboard', short: 'Home', to: '/', icon: HomeIcon }]
+    // Drivers work from My Trips only (the dashboard sends them there)
+    const driverOnly = can('workshop.trips.drive') && !can('workshop.job-cards.view')
+    const main: NavItem[] = driverOnly ? [] : [{ name: 'Dashboard', short: 'Home', to: '/', icon: HomeIcon }]
     if (isTechnician) main.push({ name: 'My Jobs', short: 'My Jobs', to: '/my-jobs', icon: WrenchScrewdriverIcon })
+    if (can('workshop.trips.drive')) main.push({ name: 'My Trips', short: 'Trips', to: '/trips', icon: MapPinIcon })
     if (can('workshop.job-cards.view')) main.push({ name: 'Job Cards', short: 'Jobs', to: '/job-cards', icon: ClipboardDocumentListIcon })
     if (can('workshop.customers.view')) main.push({ name: 'Customers', short: 'Customers', to: '/customers', icon: UsersIcon })
     if (can('workshop.vehicles.view')) main.push({ name: 'Vehicles', short: 'Vehicles', to: '/vehicles', icon: TruckIcon })
 
     const operations: NavItem[] = []
+    if (can('workshop.trips.view') || can('workshop.trips.manage')) {
+      operations.push({ name: 'Pickups & Drops', short: 'Pickups', to: '/trips/board', icon: MapIcon })
+    }
     if (can('workshop.spare-parts.view')) operations.push({ name: 'Parts Desk', short: 'Parts', to: '/parts-desk', icon: CubeIcon })
     // Purchases module (optional)
     const purchases = auth.hasFeature('purchases')
@@ -103,6 +111,7 @@ export function useNavigation() {
         { name: 'Car Classes & Models', to: '/pricing-masters?tab=classes', icon: TagIcon },
       )
     }
+    if (can('workshop.trips.settings')) masters.push({ name: 'Pickup, Drop & Home Service', to: '/trip-settings', icon: TruckIcon })
     if (can('workshop.bays.view')) masters.push({ name: 'Bays', to: '/bays', icon: HomeModernIcon })
     if (purchases && can('purchases.stock.view')) masters.push({ name: 'Stock Items & Plan Kits', to: '/stock-masters', icon: ShoppingCartIcon })
     if (can('purchases.settings.manage')) masters.push({ name: 'Purchases & Stock (module)', to: '/purchases-settings', icon: InboxArrowDownIcon })
@@ -124,13 +133,15 @@ export function useNavigation() {
   /** Up to four everyday screens for the mobile bottom bar (the fifth slot is "More") */
   const primary = computed<NavItem[]>(() => {
     const all = groups.value.flatMap((g) => (g.key === 'masters' || g.key === 'admin' ? [] : g.items))
-    const order = ['/', '/my-jobs', '/job-cards', '/parts-desk', '/customers', '/payments', '/invoices', '/vehicles', '/reports']
+    const order = ['/', '/my-jobs', '/trips', '/job-cards', '/parts-desk', '/customers', '/payments', '/invoices', '/vehicles', '/reports']
     return order.map((to) => all.find((i) => i.to === to)).filter((i): i is NavItem => !!i).slice(0, 4)
   })
 
   function isActive(to: string): boolean {
     const [path, query] = to.split('?')
     if (path === '/') return route.path === '/'
+    // My Trips is not the board
+    if (path === '/trips') return route.path === '/trips' || /^\/trips\/\d+/.test(route.path)
     if (!route.path.startsWith(path)) return false
     if (!query) return true
     const tab = new URLSearchParams(query).get('tab')

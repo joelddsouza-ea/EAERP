@@ -76,7 +76,7 @@
             <th class="num">GST</th>
             <th class="num">Amount</th>
         </tr>
-        @php($headings = ['plan' => $planName ? $planName . ' — service plan' : 'Service plan', 'additional' => 'Additional parts & labour', 'other' => 'Other items'])
+        @php($headings = ['plan' => $planName ? $planName . ' — service plan' : 'Service plan', 'additional' => 'Additional parts & labour', 'trips' => 'Pickup, drop & home visit', 'other' => 'Other items'])
         @php($current = null)
         @foreach($bill->items as $i => $item)
             @php($section = $item->section ?? ($item->estimate_line_key ? 'additional' : 'other'))

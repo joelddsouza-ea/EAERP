@@ -10,6 +10,7 @@ use App\Modules\Workshop\Models\JobCard;
 use App\Modules\Workshop\Models\JobCardChecklist;
 use App\Modules\Workshop\Models\JobCardEstimate;
 use App\Modules\Workshop\Models\JobCardEstimateLine as Line;
+use App\Modules\Workshop\Models\JobTrip;
 use App\Modules\Workshop\Models\SparePartRequest;
 use App\Modules\Workshop\Models\WorkflowStage;
 use App\Modules\Workshop\Workflow\Guards\IntakeCaptured;
@@ -111,7 +112,10 @@ class JobLifecycleService
 
             S::Invoiced->value => $this->gatePass($jobCard) ? S::GatePassGenerated->value : null,
 
-            S::GatePassGenerated->value => $this->gatePass($jobCard)?->vehicle_out_at ? S::Delivered->value : null,
+            // Out of the gate, and handed over at the customer's place when there is a drop / home visit
+            S::GatePassGenerated->value => $this->gatePass($jobCard)?->vehicle_out_at && !$this->handoverPending($jobCard)
+                ? S::Delivered->value
+                : null,
 
             default => null,
         };
@@ -130,12 +134,17 @@ class JobLifecycleService
      */
     public function postTrialResult(JobCard $jobCard): ?string
     {
+        // Home service: no trial drive or wash at the customer's place
+        if ($jobCard->isHomeService()) {
+            return 'ok';
+        }
+
         return $jobCard->post_trial_at ? $jobCard->post_trial_result : null;
     }
 
     public function washDone(JobCard $jobCard): bool
     {
-        return $jobCard->wash_done_at !== null;
+        return $jobCard->isHomeService() || $jobCard->wash_done_at !== null;
     }
 
     public function intakeStarted(JobCard $jobCard): bool
@@ -183,6 +192,17 @@ class JobLifecycleService
         $sheets = $jobCard->checklists()->where('sheet_kind', ChecklistTemplate::KIND_PRE_DELIVERY)->get(['id', 'status']);
 
         return $sheets->isNotEmpty() && $sheets->every(fn (JobCardChecklist $s) => $s->isCompleted());
+    }
+
+    /**
+     * A drop or home visit not yet closed by the driver / technician.
+     */
+    public function handoverPending(JobCard $jobCard): bool
+    {
+        return JobTrip::where('job_card_id', $jobCard->id)
+            ->whereIn('kind', [JobTrip::KIND_DROP, JobTrip::KIND_HOME_VISIT])
+            ->whereIn('status', [JobTrip::EN_ROUTE, JobTrip::ARRIVED])
+            ->exists();
     }
 
     protected function gatePass(JobCard $jobCard): ?GatePass

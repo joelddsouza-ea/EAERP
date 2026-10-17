@@ -99,7 +99,9 @@ class CustomerMessageService
             $text .= "\n" . $extra;
         }
 
-        return $this->prepareText($jobCard, "stage:{$status}", $text, $this->billingParams($jobCard), $user);
+        $params = [...$this->billingParams($jobCard), ...app(TripService::class)->messageParams($jobCard)];
+
+        return $this->prepareText($jobCard, "stage:{$status}", $text, $params, $user);
     }
 
     /**

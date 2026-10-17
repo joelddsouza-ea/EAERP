@@ -14,6 +14,8 @@ export const JOB_CARD_STATUS_META: Record<JobCardStatus, StatusMeta> = {
   pickup_scheduled: { label: 'Pickup Scheduled', variant: 'info', group: 'pickup', color: '#93c5fd' },
   pickup_en_route: { label: 'Pickup En Route', variant: 'info', group: 'pickup', color: '#60a5fa' },
   vehicle_collected: { label: 'Vehicle Collected', variant: 'info', group: 'pickup', color: '#3b82f6' },
+  home_visit_scheduled: { label: 'Home Visit Scheduled', variant: 'info', group: 'pickup', color: '#a5b4fc' },
+  home_visit_en_route: { label: 'Home Visit En Route', variant: 'info', group: 'pickup', color: '#818cf8' },
   intake_pending: { label: 'Intake Pending', variant: 'default', group: 'intake', color: '#6b7280' },
   intake_in_progress: { label: 'Intake In Progress', variant: 'info', group: 'intake', color: '#2563eb' },
   awaiting_approval: { label: 'Awaiting Approval', variant: 'warning', group: 'work', color: '#eab308' },
@@ -31,6 +33,11 @@ export const JOB_CARD_STATUS_META: Record<JobCardStatus, StatusMeta> = {
 
 // Statuses with working features (others are disabled in config/workshop.php)
 export const ACTIVE_STATUSES: JobCardStatus[] = [
+  'pickup_scheduled',
+  'pickup_en_route',
+  'vehicle_collected',
+  'home_visit_scheduled',
+  'home_visit_en_route',
   'intake_pending',
   'intake_in_progress',
   'awaiting_approval',

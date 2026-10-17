@@ -24,6 +24,19 @@ return [
 
     'thank_you' => "Thank you for choosing :workshop, :name! We hope you are happy with the service on your car :car.\nYour job details remain available here: :link",
 
+    // Pickup / drop / home visit (stage messages are edited in Job stages; these are the fallbacks)
+    'pickup_booked' => "Hello :name, your pickup for :car is booked with :workshop (Job :job).\n:slot\n:policy\nTrack your car here: :link",
+
+    'pickup_on_the_way' => "Hello :name, our driver :driver (:driver_phone) is on the way to pick up :car.",
+
+    'pickup_collected' => "Hello :name, :driver has collected your car :car. Photos and videos taken at pickup are here: :link",
+
+    'home_visit_booked' => "Hello :name, your home service for :car is booked with :workshop (Job :job).\n:slot\n:policy\nTrack it here: :link",
+
+    'home_visit_on_the_way' => "Hello :name, our technician :driver (:driver_phone) is on the way for the service of :car.",
+
+    'drop_en_route' => "Hello :name, your car :car is on its way back to you with our driver :driver (:driver_phone).",
+
     'payment_received' => "Hello :name, we have received Rs :amount for your car :car (Job :job). Receipt :receipt.\nBalance to pay: Rs :balance\n:link",
 
     // New photos/videos since the last message (on its own, or added to a stage message)

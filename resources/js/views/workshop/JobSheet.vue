@@ -80,10 +80,13 @@ const isAssignedTechnician = computed(() => {
 
 const isTechnicianSheet = (s: JobSheet) => s.filled_by !== 'advisor'
 
+// Home service: the visiting technician does the final QC at the customer's place
+const homeVisitor = computed(() => jobCard.value?.service_mode === 'home' && isAssignedTechnician.value)
+
 const sheetPermission = computed(() => {
   const s = activeSheet.value
   if (!s) return false
-  if (!isTechnicianSheet(s)) return can('workshop.pre-delivery.update')
+  if (!isTechnicianSheet(s)) return can('workshop.pre-delivery.update') || homeVisitor.value
   return can('workshop.job-sheets.update') && isAssignedTechnician.value
 })
 
@@ -155,7 +158,7 @@ async function submitPartsToAdvisor() {
 const canSubmit = computed(() => {
   const s = activeSheet.value
   if (!s || readonly.value) return false
-  return s.sheet_kind === 'pre_delivery' ? can('workshop.pre-delivery.update') : can('workshop.job-sheets.complete')
+  return s.sheet_kind === 'pre_delivery' ? can('workshop.pre-delivery.update') || homeVisitor.value : can('workshop.job-sheets.complete')
 })
 
 const allowsAdhocRows = computed(() =>

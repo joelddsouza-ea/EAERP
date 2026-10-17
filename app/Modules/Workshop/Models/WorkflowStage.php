@@ -28,13 +28,21 @@ class WorkflowStage extends Model
      * Stages entered by a person's decision, not by the system.
      */
     public const ENTERED_BY = [
-        'intake_pending' => 'Entered when the job card is created.',
+        'pickup_scheduled' => 'Entered when a pickup & drop job card is created.',
+        'pickup_en_route' => 'Entered when the driver taps Start on the pickup.',
+        'vehicle_collected' => 'Entered when the driver taps Collected (odometer, fuel and photos/videos recorded).',
+        'home_visit_scheduled' => 'Entered when a home-service job card is created.',
+        'home_visit_en_route' => 'Entered when the technician taps Start on the home visit.',
+        'intake_pending' => 'Entered when the job card is created (or the driver reaches the workshop / the technician arrives).',
     ];
 
     /**
      * Placeholders the message may use.
      */
-    public const PLACEHOLDERS = [':name', ':car', ':job', ':workshop', ':link', ':amount', ':balance', ':gate_pass'];
+    public const PLACEHOLDERS = [
+        ':name', ':car', ':job', ':workshop', ':link', ':amount', ':balance', ':gate_pass',
+        ':driver', ':driver_phone', ':slot', ':policy',
+    ];
 
     protected $fillable = ['status', 'label', 'waiting_for', 'auto', 'notify_customer', 'message', 'gallery_update', 'sort_order', 'customized_at'];
 

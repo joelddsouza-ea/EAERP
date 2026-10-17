@@ -185,6 +185,8 @@ export interface JobCard {
   bay_id: number | null
   bay?: Bay | null
   service_type: ServiceType | null
+  /** How the car reaches the workshop: drive-in, pickup & drop, or home service */
+  service_mode?: 'drive_in' | 'pickup_drop' | 'home'
   status: JobCardStatus
   priority: 'low' | 'normal' | 'high' | 'urgent'
   package_id?: number | null
@@ -222,6 +224,8 @@ export type JobCardStatus =
   | 'pickup_scheduled'
   | 'pickup_en_route'
   | 'vehicle_collected'
+  | 'home_visit_scheduled'
+  | 'home_visit_en_route'
   | 'intake_pending'
   | 'intake_in_progress'
   | 'awaiting_approval'
@@ -597,6 +601,8 @@ export interface ChecklistMasterItem {
   media_requirement: MediaRequirement
   min_media_count: number
   na_allowed: boolean
+  /** Not done on a home-service visit */
+  workshop_only: boolean
   is_required: boolean
   is_active: boolean
   expected_answer: 'yes' | 'no' | null
@@ -1114,6 +1120,8 @@ export interface StaffNotification {
 export interface JobCardPlanOption {
   id: number
   name: string
+  /** Offered as a home service (Service Plans master) */
+  home_service_available?: boolean
   /** Oil grades this plan is priced for on the car's type, with the package price */
   oil_options: { id: number; name: string; price: number }[]
   sheets: string[]

@@ -12,6 +12,8 @@ import VoiceInput from '@/components/ui/VoiceInput.vue'
 import AssignmentsCard from '@/components/jobcard/AssignmentsCard.vue'
 import { jobCardIssuesApi } from '@/api/jobSheets.api'
 import Spinner from '@/components/ui/Spinner.vue'
+import { tripsApi, type CustomerAddress, type ServiceMode, type TripPerson } from '@/api/trips.api'
+import { usePermissions } from '@/composables/usePermissions'
 
 const route = useRoute()
 const router = useRouter()
@@ -36,6 +38,63 @@ const form = ref({
   fuel_level: null as FuelLevel | null,
   estimated_delivery: '',
 })
+
+// ---- Drive-in, pickup & drop, or home service (new job cards only)
+
+const { can } = usePermissions()
+const mode = ref<ServiceMode>('drive_in')
+const isDriveIn = computed(() => mode.value === 'drive_in')
+const trip = ref({
+  address: '',
+  landmark: '',
+  maps_url: '',
+  slot_date: new Date().toISOString().slice(0, 10),
+  slot_from: '',
+  slot_to: '',
+  assigned_to: null as number | null,
+  charge: false,
+  drop_charge: false,
+  save_address: true,
+})
+const savedAddresses = ref<CustomerAddress[]>([])
+const people = ref<TripPerson[]>([])
+const tripPeople = computed(() =>
+  people.value
+    .filter((p) => (mode.value === 'home' ? !p.is_driver : p.is_driver))
+    .map((p) => ({ value: p.id, label: p.name })),
+)
+const modeOptions: { value: ServiceMode; label: string; hint: string }[] = [
+  { value: 'drive_in', label: 'Drive-in', hint: 'The customer brings the car' },
+  { value: 'pickup_drop', label: 'Pickup & drop', hint: 'Our driver collects and returns it' },
+  { value: 'home', label: 'Home service', hint: 'A technician works at the customer\x27s place' },
+]
+
+async function loadTripData(customerId: number) {
+  if (isEditing.value) return
+  try {
+    savedAddresses.value = (await tripsApi.addresses(customerId)).data.data
+    const first = savedAddresses.value[0]
+    if (first && !trip.value.address) {
+      Object.assign(trip.value, { address: first.address, landmark: first.landmark ?? '', maps_url: first.maps_url ?? '', save_address: false })
+    } else if (!first && !trip.value.address && selectedCustomer.value?.address) {
+      trip.value.address = selectedCustomer.value.address
+    }
+  } catch {
+    savedAddresses.value = []
+  }
+  if (!people.value.length && can('workshop.trips.manage')) {
+    try {
+      people.value = (await tripsApi.board()).data.data.people
+    } catch {
+      people.value = []
+    }
+  }
+}
+
+function pickSavedAddress(id: string | number | null) {
+  const a = savedAddresses.value.find((x) => x.id === Number(id))
+  if (a) Object.assign(trip.value, { address: a.address, landmark: a.landmark ?? '', maps_url: a.maps_url ?? '', save_address: false })
+}
 
 // Customer search
 const customerSearch = ref('')
@@ -120,7 +179,10 @@ async function loadOptions() {
 }
 
 const serviceOptions = computed(() => [
-  ...(options.value?.plans ?? []).map((p) => ({ value: `plan:${p.id}`, label: p.name })),
+  // Home service: only plans offered at home (Service Plans master)
+  ...(options.value?.plans ?? [])
+    .filter((p) => mode.value !== 'home' || p.home_service_available !== false)
+    .map((p) => ({ value: `plan:${p.id}`, label: p.name })),
   ...(options.value?.service_types ?? []).map((t) => ({ value: t.value, label: t.label })),
 ])
 
@@ -195,6 +257,8 @@ async function selectCustomer(customer: Customer) {
   customerSearch.value = customer.name
   showCustomerDropdown.value = false
 
+  loadTripData(customer.id)
+
   // Fetch customer vehicles
   try {
     const response = await customersApi.vehicles(customer.id)
@@ -266,11 +330,16 @@ async function handleSubmit() {
   if (isPlan.value && !form.value.oil_type_id) {
     errors.value.oil_type_id = 'Engine oil type is required for a service plan'
   }
-  if (!isEditing.value && (form.value.km_reading === null || (form.value.km_reading as unknown) === '')) {
+  // Pickup / home visit: the driver or technician records them at the car
+  if (!isEditing.value && isDriveIn.value && (form.value.km_reading === null || (form.value.km_reading as unknown) === '')) {
     errors.value.km_reading = 'Odometer reading is required'
   }
-  if (!isEditing.value && !form.value.fuel_level) {
+  if (!isEditing.value && isDriveIn.value && !form.value.fuel_level) {
     errors.value.fuel_level = 'Fuel level is required'
+  }
+  if (!isEditing.value && !isDriveIn.value) {
+    if (!trip.value.address.trim()) errors.value['trip.address'] = 'Address is required'
+    if (!trip.value.slot_date) errors.value['trip.slot_date'] = 'Date is required'
   }
 
   if (Object.keys(errors.value).length > 0) {
@@ -301,7 +370,20 @@ async function handleSubmit() {
       toast.success('Job Card Updated', 'Job card has been updated.')
     } else {
       const lines = complaints.value.map((c) => c.text.trim()).filter(Boolean)
-      const response = await jobCardsApi.create({ ...payload, customer_id, vehicle_id, complaints: lines })
+      const booking = isDriveIn.value
+        ? {}
+        : {
+            km_reading: null,
+            fuel_level: null,
+            trip: {
+              ...trip.value,
+              landmark: trip.value.landmark || null,
+              maps_url: trip.value.maps_url || null,
+              slot_from: trip.value.slot_from || null,
+              slot_to: trip.value.slot_to || null,
+            },
+          }
+      const response = await jobCardsApi.create({ ...payload, ...booking, service_mode: mode.value, customer_id, vehicle_id, complaints: lines })
       toast.success('Job Card Created', 'Now assign the technician(s) and bay.')
       created.value = { id: response.data.data.id, job_number: response.data.data.job_number }
       window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -344,6 +426,14 @@ onMounted(async () => {
   await fetchJobCard()
   await loadComplaints()
   await prefillFromQuery()
+})
+
+// A plan not offered at home can't stay chosen for a home-service job
+watch(mode, (m) => {
+  if (m === 'home' && selectedPlan.value && selectedPlan.value.home_service_available === false) {
+    form.value.service_choice = ''
+    form.value.oil_type_id = null
+  }
 })
 
 watch(customerSearch, (value) => {
@@ -446,6 +536,77 @@ watch(
             </RouterLink>
           </div>
 
+          <!-- How the car comes in -->
+          <div v-if="!isEditing">
+            <label class="block text-sm font-medium text-gray-700 mb-1">Mode</label>
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <button
+                v-for="m in modeOptions"
+                :key="m.value"
+                type="button"
+                class="rounded-lg border px-3 py-2 text-left text-sm"
+                :class="mode === m.value ? 'border-primary-600 bg-primary-50 ring-1 ring-primary-600' : 'border-gray-300 bg-white'"
+                @click="mode = m.value"
+              >
+                <span class="block font-medium text-gray-900">{{ m.label }}</span>
+                <span class="block text-xs text-gray-500">{{ m.hint }}</span>
+              </button>
+            </div>
+            <p v-if="errors.service_mode" class="mt-1 text-sm text-red-600">{{ errors.service_mode }}</p>
+          </div>
+
+          <!-- Pickup / home visit booking -->
+          <div v-if="!isEditing && !isDriveIn" class="rounded-lg border border-gray-200 p-4 space-y-4">
+            <p class="text-sm text-gray-600">
+              {{ mode === 'home'
+                ? 'The technician records the odometer, fuel and photos at the customer\'s place.'
+                : 'The driver records the odometer, fuel and photos/videos at pickup — the advisor does not repeat the intake.' }}
+            </p>
+            <Select
+              v-if="savedAddresses.length"
+              :model-value="null"
+              label="Saved address"
+              placeholder="Choose a saved address"
+              :options="savedAddresses.map((a) => ({ value: a.id, label: `${a.label ? a.label + ': ' : ''}${a.address}` }))"
+              @update:model-value="pickSavedAddress"
+            />
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Address <span class="text-red-500">*</span></label>
+              <textarea v-model="trip.address" rows="2" :class="['input', errors['trip.address'] ? 'input-error' : '']" />
+              <p v-if="errors['trip.address']" class="mt-1 text-sm text-red-600">{{ errors['trip.address'] }}</p>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Input v-model="trip.landmark" label="Landmark" />
+              <Input v-model="trip.maps_url" label="Google Maps link" placeholder="Location the customer shared" :error="errors['trip.maps_url']" />
+            </div>
+            <div class="grid grid-cols-3 gap-3">
+              <Input v-model="trip.slot_date" label="Date" type="date" :error="errors['trip.slot_date']" required />
+              <Input v-model="trip.slot_from" label="From" type="time" />
+              <Input v-model="trip.slot_to" label="To" type="time" :error="errors['trip.slot_to']" />
+            </div>
+            <Select
+              v-if="tripPeople.length"
+              v-model="trip.assigned_to"
+              :label="mode === 'home' ? 'Technician (becomes the lead)' : 'Driver'"
+              placeholder="Assign later"
+              :options="tripPeople"
+            />
+            <div class="space-y-1 text-sm">
+              <label class="flex items-center gap-2">
+                <input v-model="trip.charge" type="checkbox" class="rounded border-gray-300" />
+                Charge for the {{ mode === 'home' ? 'home visit' : 'pickup' }} (amount from the masters, on the bill)
+              </label>
+              <label v-if="mode === 'pickup_drop'" class="flex items-center gap-2">
+                <input v-model="trip.drop_charge" type="checkbox" class="rounded border-gray-300" />
+                Charge for the drop
+              </label>
+              <label class="flex items-center gap-2">
+                <input v-model="trip.save_address" type="checkbox" class="rounded border-gray-300" />
+                Save this address for the customer
+              </label>
+            </div>
+          </div>
+
           <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
             <Select
               :model-value="form.service_choice"
@@ -489,22 +650,24 @@ watch(
               <p v-if="sheets.length">Job sheets: {{ sheets.join(', ') }}</p>
             </div>
 
-            <Input
-              v-model.number="form.km_reading"
-              label="Odometer (km)"
-              type="number"
-              :error="errors.km_reading"
-              :required="!isEditing"
-            />
+            <template v-if="isEditing || isDriveIn">
+              <Input
+                v-model.number="form.km_reading"
+                label="Odometer (km)"
+                type="number"
+                :error="errors.km_reading"
+                :required="!isEditing"
+              />
 
-            <Select
-              v-model="form.fuel_level"
-              label="Fuel Level"
-              placeholder="Select fuel level"
-              :options="fuelLevelOptions"
-              :error="errors.fuel_level"
-              :required="!isEditing"
-            />
+              <Select
+                v-model="form.fuel_level"
+                label="Fuel Level"
+                placeholder="Select fuel level"
+                :options="fuelLevelOptions"
+                :error="errors.fuel_level"
+                :required="!isEditing"
+              />
+            </template>
 
             <Input
               v-model="form.estimated_delivery"

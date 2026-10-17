@@ -113,7 +113,8 @@ export const jobCardsApi = {
     return apiClient.get<ApiResponse<JobCard>>(`/workshop/job-cards/${id}`)
   },
 
-  create(data: FormPayload<JobCard> & { complaints?: string[] }) {
+  /** trip: pickup / home-visit booking for a pickup & drop or home-service job */
+  create(data: FormPayload<JobCard> & { complaints?: string[]; trip?: Record<string, unknown> }) {
     return apiClient.post<ApiResponse<JobCard>>('/workshop/job-cards', data)
   },
 

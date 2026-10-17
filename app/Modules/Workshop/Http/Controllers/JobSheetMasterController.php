@@ -129,7 +129,7 @@ class JobSheetMasterController extends ApiController
     {
         $data = $request->validate($this->itemRules(false));
 
-        $ruleFields = ['media_requirement', 'min_media_count', 'na_allowed', 'is_required', 'expected_answer'];
+        $ruleFields = ['media_requirement', 'min_media_count', 'na_allowed', 'workshop_only', 'is_required', 'expected_answer'];
         if (array_intersect(array_keys($data), $ruleFields)) {
             // Re-seeding the masters will no longer overwrite these rules
             $data['rules_customized_at'] = now();
@@ -187,6 +187,7 @@ class JobSheetMasterController extends ApiController
             'media_requirement' => ['sometimes', Rule::in(ChecklistItem::MEDIA_REQUIREMENTS)],
             'min_media_count' => 'sometimes|integer|min:1|max:5',
             'na_allowed' => 'sometimes|boolean',
+            'workshop_only' => 'sometimes|boolean',
             'is_required' => 'sometimes|boolean',
             'is_active' => 'sometimes|boolean',
             'expected_answer' => ['nullable', Rule::in(['yes', 'no'])],

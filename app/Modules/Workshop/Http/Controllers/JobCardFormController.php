@@ -27,7 +27,7 @@ class JobCardFormController extends ApiController
         'body_shop' => 'Body Shop / Accidental',
         'electrical' => 'Electrical',
         'detailing' => 'Detailing',
-        'home_service' => 'Home Service',
+        // Home service is a mode now (drive-in / pickup & drop / home), chosen next to the service type
     ];
 
     public function __construct(protected JobSheetService $sheets) {}
@@ -47,10 +47,11 @@ class JobCardFormController extends ApiController
             ? PackagePricing::where('category_id', $categoryId)->get(['package_id', 'oil_type_id', 'price'])->groupBy('package_id')
             : collect();
 
-        $plans = ServicePackage::where('is_active', true)->orderBy('sort_order')->orderBy('id')->get(['id', 'name'])
+        $plans = ServicePackage::where('is_active', true)->orderBy('sort_order')->orderBy('id')->get(['id', 'name', 'home_service_available'])
             ->map(fn (ServicePackage $plan) => [
                 'id' => $plan->id,
                 'name' => $plan->name,
+                'home_service_available' => (bool) $plan->home_service_available,
                 'oil_options' => $oilTypes
                     ->map(fn (OilType $oil) => [
                         'id' => $oil->id,

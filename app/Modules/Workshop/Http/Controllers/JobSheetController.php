@@ -16,6 +16,7 @@ use App\Modules\Workshop\Models\JobCardMedia;
 use App\Modules\Workshop\Services\JobSheetException;
 use App\Modules\Workshop\Services\JobSheetRuleEngine;
 use App\Modules\Workshop\Services\JobSheetService;
+use App\Modules\Workshop\Services\TripService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -71,7 +72,10 @@ class JobSheetController extends ApiController
         ]);
 
         // Pre-delivery answers need the pre-delivery permission, not just job-sheet access
-        if ($sheet->sheet_kind === ChecklistTemplate::KIND_PRE_DELIVERY && !$request->user()->hasPermission('workshop.pre-delivery.update')) {
+        // (on a home visit the visiting technician does the final QC at the customer's place)
+        if ($sheet->sheet_kind === ChecklistTemplate::KIND_PRE_DELIVERY
+            && !$request->user()->hasPermission('workshop.pre-delivery.update')
+            && !TripService::isHomeVisitor($jobCard, $request->user())) {
             return $this->forbidden('You do not have permission to fill the pre-delivery checklist.');
         }
 

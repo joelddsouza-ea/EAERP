@@ -9,7 +9,14 @@ use App\Modules\Workshop\Workflow\JobCardWorkflow;
 
 class JobCard extends BranchScopedModel
 {
+    /** How the car reaches the workshop (or the workshop reaches the car) */
+    public const MODE_DRIVE_IN = 'drive_in';
+    public const MODE_PICKUP_DROP = 'pickup_drop';
+    public const MODE_HOME = 'home';
+    public const MODES = [self::MODE_DRIVE_IN, self::MODE_PICKUP_DROP, self::MODE_HOME];
+
     protected $fillable = [
+        'service_mode',
         'branch_id',
         'job_number',
         'customer_id',
@@ -243,6 +250,19 @@ class JobCard extends BranchScopedModel
     public function bayMoves()
     {
         return $this->hasMany(JobCardBayMove::class)->latest('moved_at')->latest('id');
+    }
+
+    /**
+     * Pickup, drop and home-visit trips.
+     */
+    public function trips()
+    {
+        return $this->hasMany(JobTrip::class)->orderBy('id');
+    }
+
+    public function isHomeService(): bool
+    {
+        return $this->service_mode === self::MODE_HOME;
     }
 
     public function intakeTrialBy()

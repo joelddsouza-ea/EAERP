@@ -13,6 +13,7 @@ use App\Modules\Workshop\Enums\JobCardStatus;
 use App\Modules\Workshop\Models\JobCard;
 use App\Modules\Workshop\Models\JobCardEstimate;
 use App\Modules\Workshop\Models\JobCardEstimateLine as Line;
+use App\Modules\Workshop\Models\JobTrip;
 use App\Modules\Workshop\Models\GoodsReceipt;
 use App\Modules\Workshop\Models\GoodsReceiptLine;
 use App\Modules\Workshop\Support\Purchases;
@@ -804,7 +805,42 @@ class BillingService
 
         $extras = $estimate->lines->filter(fn (Line $l) => $l->isAdditional() && $l->approval_status === Line::APPROVED)->values();
         $base = (float) $extras->sum(fn (Line $l) => (float) $l->amount);
-        $this->addBlock($bill, $extras, $base > 0 ? $base - (float) $estimate->extras_total : 0.0, 'additional', $sort);
+        $sort = $this->addBlock($bill, $extras, $base > 0 ? $base - (float) $estimate->extras_total : 0.0, 'additional', $sort);
+
+        $this->addTripCharges($bill, $sort);
+    }
+
+    /**
+     * Pickup / drop / home-visit charges ticked on the job's trips (GST-inclusive, like
+     * master prices). Keyed like estimate lines so a refresh rebuilds them.
+     */
+    protected function addTripCharges(Invoice $bill, int $sort): int
+    {
+        $trips = JobTrip::where('job_card_id', $bill->job_card_id)
+            ->where('status', '!=', JobTrip::CANCELLED)
+            ->where('charge', '>', 0)
+            ->orderBy('id')
+            ->get();
+
+        foreach ($trips as $trip) {
+            $bill->items()->create([
+                'estimate_line_key' => "trip:{$trip->id}",
+                'section' => 'trips',
+                'type' => 'labor',
+                'hsn_code' => config('workshop.billing.sac_services', self::SAC_SERVICE),
+                'description' => $trip->label() . ' charge',
+                'quantity' => 1,
+                'unit' => 'nos',
+                'unit_price' => (float) $trip->charge,
+                'discount' => 0,
+                'tax_rate' => (float) config('workshop.billing.inclusive_gst_rate', 18),
+                'gst_inclusive' => true,
+                'gst_applicable' => true,
+                'sort_order' => $sort++,
+            ]);
+        }
+
+        return $sort;
     }
 
     /**

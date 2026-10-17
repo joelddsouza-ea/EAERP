@@ -36,6 +36,9 @@ class JobSheetService
         ChecklistTemplate::KIND_OBSERVATION_REPORT => ['intake_in_progress', 'work_in_progress', 'awaiting_parts', 'awaiting_approval', 'post_work_trial', 'wash_pending', 'qc_pending'],
     ];
 
+    /** Remark on workshop-only activities of a home-service job */
+    public const HOME_SKIP_REMARK = 'Workshop only: not done on a home visit.';
+
     public function __construct(
         protected JobSheetRuleEngine $rules,
         protected FileStorageService $files,
@@ -118,10 +121,22 @@ class JobSheetService
         return ['added' => $added, 'removed' => $removed];
     }
 
+    /**
+     * A home-service job became a workshop job (the car came in after all): the
+     * workshop-only activities set aside for the home visit are to be done again.
+     */
+    public function restoreWorkshopOnlyItems(JobCard $jobCard): int
+    {
+        return JobCardChecklistItem::whereIn('job_card_checklist_id', $jobCard->checklists()->pluck('id'))
+            ->where('status', JobCardChecklistItem::STATUS_NOT_APPLICABLE)
+            ->where('remarks', self::HOME_SKIP_REMARK)
+            ->update(['status' => JobCardChecklistItem::STATUS_PENDING, 'remarks' => null, 'is_completed' => false]);
+    }
+
     public function isUntouched(JobCardChecklist $sheet): bool
     {
         return $sheet->status !== JobCardChecklist::STATUS_COMPLETED
-            && $sheet->items->every(fn ($i) => $i->status === JobCardChecklistItem::STATUS_PENDING
+            && $sheet->items->every(fn ($i) => $i->remarks === self::HOME_SKIP_REMARK || $i->status === JobCardChecklistItem::STATUS_PENDING
                 && !$i->needs_attention
                 && $i->value === null
                 && empty($i->remarks)
@@ -141,16 +156,20 @@ class JobSheetService
 
             $rows = [];
             $now = now();
+            $home = $jobCard->service_mode === JobCard::MODE_HOME;
 
             foreach ($template->sections as $section) {
                 foreach ($section->items as $item) {
                     if (!$item->appliesToPackage($jobCard->package_id)) {
                         continue;
                     }
+                    // Home service: workshop-only activities (body wash, alignment…) are N/A from the start
+                    $skip = $home && $item->workshop_only;
                     $rows[] = [
                         'job_card_checklist_id' => $sheet->id,
                         'checklist_item_id' => $item->id,
-                        'status' => JobCardChecklistItem::STATUS_PENDING,
+                        'status' => $skip ? JobCardChecklistItem::STATUS_NOT_APPLICABLE : JobCardChecklistItem::STATUS_PENDING,
+                        'remarks' => $skip ? self::HOME_SKIP_REMARK : null,
                         'section_name' => $section->name,
                         'item_name' => $item->item_name,
                         'input_type' => $item->input_type,
@@ -160,7 +179,7 @@ class JobSheetService
                         'expected_answer' => $item->expected_answer,
                         'is_required' => $item->is_required,
                         'sort_order' => $section->sort_order * 1000 + $item->sort_order,
-                        'is_completed' => false,
+                        'is_completed' => $skip,
                         'created_at' => $now,
                         'updated_at' => $now,
                     ];

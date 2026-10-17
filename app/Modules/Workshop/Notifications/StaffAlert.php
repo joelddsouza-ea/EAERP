@@ -3,6 +3,7 @@
 namespace App\Modules\Workshop\Notifications;
 
 use App\Modules\Workshop\Models\JobCard;
+use App\Modules\Workshop\Models\JobTrip;
 use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Notification;
 
@@ -95,6 +96,22 @@ class StaffAlert extends Notification
             "New job assigned — {$jobCard->job_number}",
             trim(($car ? "{$car}. " : '') . ($assignedBy ? "Assigned by {$assignedBy}. " : '') . 'Open the job sheet to start.'),
             "/job-cards/{$jobCard->id}/sheet",
+            $jobCard->id,
+        );
+    }
+
+    public static function tripAssigned(JobTrip $trip, JobCard $jobCard, ?string $assignedBy): self
+    {
+        $when = $trip->slot_date
+            ? ' on ' . $trip->slot_date->format('d M') . ($trip->slot_from ? ' from ' . substr((string) $trip->slot_from, 0, 5) : '')
+            : '';
+
+        return new self(
+            'trip_assigned',
+            "{$trip->label()} assigned — {$jobCard->job_number}",
+            trim(($jobCard->vehicle?->registration_no ? "{$jobCard->vehicle->registration_no}{$when}. " : '')
+                . ($assignedBy ? "Assigned by {$assignedBy}. " : '') . 'Open My Trips.'),
+            "/trips/{$trip->id}",
             $jobCard->id,
         );
     }

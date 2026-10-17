@@ -47,6 +47,10 @@ class JobCardStatusService
             throw new TransitionBlockedException($this->label($fromStatus) . ' cannot move to ' . $this->label($toStatus) . '.');
         }
 
+        if ($edge['trip'] && empty($meta['trip_id'])) {
+            throw new TransitionBlockedException('This step is recorded on the pickup / home visit (trip) screen.');
+        }
+
         $manual = $this->workflow->isManualCorrection($jobCard, $toStatus);
 
         if (!$this->workflow->mayTake($jobCard, $user, $toStatus, $edge)) {
@@ -163,6 +167,9 @@ class JobCardStatusService
                 'meta' => $meta,
                 'changed_by' => $user?->id,
             ]);
+
+            // Pickup / drop / home-visit trips follow the job (cancelled, car came in, collected at the workshop)
+            app(TripService::class)->onStatusChanged($jobCard, $fromStatus, $toStatus, $user, $notes);
 
             DB::afterCommit(fn () => $this->afterTransition($jobCard, $toStatus, $user));
         });
