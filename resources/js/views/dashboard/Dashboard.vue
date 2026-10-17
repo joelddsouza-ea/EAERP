@@ -10,7 +10,12 @@ import {
   WrenchScrewdriverIcon,
   CubeIcon,
   UserPlusIcon,
+  FingerPrintIcon,
+  BuildingLibraryIcon,
+  ArrowTrendingUpIcon,
+  WalletIcon,
 } from '@heroicons/vue/24/outline'
+import { accountsApi, inr, type AccountsDashboard } from '@/api/accounts.api'
 import { useAuthStore } from '@/stores/auth.store'
 import { dashboardApi } from '@/api/workshop.api'
 import { useBranchStore } from '@/stores/branch.store'
@@ -35,6 +40,7 @@ const today = new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'nu
 // One-tap shortcuts for what this user does most
 const quickActions = computed(() => {
   const list: { label: string; to: string; icon: any }[] = []
+  if (authStore.hasPermission('hr.self')) list.push({ label: 'Attendance', to: '/attendance', icon: FingerPrintIcon })
   if (authStore.hasAnyRole(['technician', 'body-shop-technician'])) list.push({ label: 'My jobs', to: '/my-jobs', icon: WrenchScrewdriverIcon })
   if (authStore.hasPermission('workshop.job-cards.create')) list.push({ label: 'New job card', to: '/job-cards/create', icon: PlusIcon })
   if (authStore.hasPermission('workshop.customers.create')) list.push({ label: 'New customer', to: '/customers/create', icon: UserPlusIcon })
@@ -54,8 +60,20 @@ const stats = ref<DashboardStats>({
   recent_payments: [],
 })
 
+// Owner / accounts: money position (posted by the accounts module)
+const money = ref<AccountsDashboard | null>(null)
+async function fetchMoney() {
+  if (!authStore.hasPermission('accounts.reports.view')) return
+  try {
+    money.value = (await accountsApi.dashboard(branchStore.currentBranchId)).data.data
+  } catch {
+    money.value = null
+  }
+}
+
 async function fetchDashboardStats() {
   loading.value = true
+  fetchMoney()
   try {
     stats.value = await dashboardApi.stats(branchStore.currentBranchId || undefined)
   } catch (err) {
@@ -110,6 +128,14 @@ watch(() => branchStore.currentBranchId, fetchDashboardStats)
       <StatCard title="Today's collection" :value="formatCurrency(stats.daily_collection)" :icon="BanknotesIcon" color="green" :loading="loading" />
       <StatCard title="Billing till date" :value="formatCurrency(stats.billing_till_date)" :icon="DocumentTextIcon" color="blue" :loading="loading" />
       <StatCard title="Total outstanding" :value="formatCurrency(stats.total_outstanding)" :icon="ExclamationCircleIcon" color="red" :loading="loading" />
+    </div>
+
+    <!-- Money position (accounts) -->
+    <div v-if="money" class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-5 mb-4 sm:mb-6">
+      <StatCard title="Cash in hand" :value="inr(money.cash_in_hand)" :icon="BanknotesIcon" color="green" />
+      <StatCard title="In the bank" :value="inr(money.bank)" :icon="BuildingLibraryIcon" color="blue" />
+      <StatCard :title="money.month_profit >= 0 ? 'Profit this month' : 'Loss this month'" :value="inr(Math.abs(money.month_profit))" :icon="ArrowTrendingUpIcon" :color="money.month_profit >= 0 ? 'green' : 'red'" />
+      <StatCard title="Customer money with staff" :value="inr(money.staff_held)" :icon="WalletIcon" :color="money.staff_held > 0 ? 'amber' : 'blue'" />
     </div>
 
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">

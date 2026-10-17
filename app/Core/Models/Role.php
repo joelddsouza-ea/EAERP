@@ -39,6 +39,8 @@ class Role extends BaseModel
     public const BODY_SHOP_TECHNICIAN = 'body-shop-technician';
     public const SPARE_PARTS_COORDINATOR = 'spare-parts-coordinator';
     public const DRIVER = 'driver';
+    // Staff with no other role: attendance, leave and payslips only
+    public const EMPLOYEE = 'employee';
 
     /**
      * Users relationship.

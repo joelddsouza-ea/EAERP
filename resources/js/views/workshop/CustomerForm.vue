@@ -35,9 +35,19 @@ const form = ref({
   pincode: '',
   gstin: '',
   customer_type: 'individual' as 'individual' | 'corporate',
+  source: '' as string,
   company_name: '',
   notes: '',
 })
+
+const sourceOptions = [
+  { value: 'walk_in', label: 'Walk-in' },
+  { value: 'referral', label: 'Referral' },
+  { value: 'online', label: 'Online / Google' },
+  { value: 'lead', label: 'Lead (marketing)' },
+  { value: 'corporate', label: 'Corporate' },
+  { value: 'other', label: 'Other' },
+]
 
 const customerTypeOptions = [
   { value: 'individual', label: 'Individual' },
@@ -62,6 +72,7 @@ async function fetchCustomer() {
       pincode: customer.pincode || '',
       gstin: customer.gstin || '',
       customer_type: customer.customer_type || 'individual',
+      source: customer.source || '',
       company_name: customer.company_name || '',
       notes: customer.notes || '',
     })
@@ -152,6 +163,13 @@ onMounted(fetchCustomer)
             :options="customerTypeOptions"
             :error="errors.customer_type"
             required
+          />
+
+          <Select
+            v-model="form.source"
+            label="How did they find us?"
+            :options="sourceOptions"
+            placeholder="Choose…"
           />
 
           <Input

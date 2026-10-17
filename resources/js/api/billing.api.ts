@@ -104,7 +104,7 @@ export const jobBillingApi = {
     data: {
       amount?: number
       method?: string
-      parts?: { method: string; amount: number; reference_number?: string | null; cheque_number?: string | null }[]
+      parts?: { method: string; amount: number; reference_number?: string | null; cheque_number?: string | null; collected_by?: number | null }[]
       reference_number?: string | null
       payment_date?: string
       notes?: string | null

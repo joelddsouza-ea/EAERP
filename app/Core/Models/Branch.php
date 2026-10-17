@@ -20,6 +20,11 @@ class Branch extends BaseModel
         'email',
         'gstin',
         'is_active',
+        // Attendance: the workshop's location, the punch radius, the weekly off (0 = Sunday)
+        'lat',
+        'lng',
+        'geofence_radius_m',
+        'weekly_off_day',
     ];
 
     /**
@@ -29,6 +34,10 @@ class Branch extends BaseModel
      */
     protected $casts = [
         'is_active' => 'boolean',
+        'lat' => 'float',
+        'lng' => 'float',
+        'geofence_radius_m' => 'integer',
+        'weekly_off_day' => 'integer',
     ];
 
     /**

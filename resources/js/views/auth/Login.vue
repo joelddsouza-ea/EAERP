@@ -84,12 +84,13 @@ async function handleSubmit() {
 
             <Input
               v-model="form.email"
-              type="email"
-              label="Email address"
-              placeholder="name@expressautocare.in"
+              type="text"
+              label="Mobile number or email"
+              placeholder="98xxxxxxxx or name@expressautocare.in"
               :error="errors.email"
               required
-              autocomplete="email"
+              autocomplete="username"
+              inputmode="email"
             />
 
             <Input

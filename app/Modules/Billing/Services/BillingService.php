@@ -9,11 +9,14 @@ use App\Modules\Billing\Models\InvoiceItem;
 use App\Modules\Billing\Models\CustomerCredit;
 use App\Modules\Billing\Models\Payment;
 use App\Modules\Billing\Models\PaymentPart;
+use App\Modules\Hr\Services\StaffMoneyService;
 use App\Modules\Workshop\Enums\JobCardStatus;
 use App\Modules\Workshop\Models\JobCard;
 use App\Modules\Workshop\Models\JobCardEstimate;
 use App\Modules\Workshop\Models\JobCardEstimateLine as Line;
 use App\Modules\Workshop\Models\JobTrip;
+use App\Modules\Workshop\Models\ServicePackage;
+use App\Modules\Workshop\Models\Vehicle;
 use App\Modules\Workshop\Models\GoodsReceipt;
 use App\Modules\Workshop\Models\GoodsReceiptLine;
 use App\Modules\Workshop\Support\Purchases;
@@ -76,7 +79,7 @@ class BillingService
         return Payment::withoutGlobalScopes()
             ->where('job_card_id', $jobCard->id)
             ->where('status', 'completed')
-            ->with(['receivedBy:id,name', 'parts'])
+            ->with(['receivedBy:id,name', 'parts.collectedBy:id,name'])
             ->orderBy('id')
             ->get();
     }
@@ -113,6 +116,7 @@ class BillingService
             'proforma_from' => $bill ? null : $this->proformaBlocker($jobCard),
             'methods' => Payment::METHODS,
             'credit_method' => Payment::METHOD_CREDIT,
+            'staff_method' => PaymentPart::STAFF_COLLECTED,
             'gst_rates' => self::GST_RATES,
             'can' => $user ? [
                 'manage' => $user->hasPermission('billing.proforma.manage'),
@@ -190,13 +194,19 @@ class BillingService
             ]);
 
             foreach ($parts as $part) {
-                $payment->parts()->create([
+                $staff = $part['method'] === PaymentPart::STAFF_COLLECTED;
+                $created = $payment->parts()->create([
                     'method' => $part['method'],
                     'amount' => $part['amount'],
                     'reference_number' => $part['reference_number'] ?? null,
                     'cheque_number' => $part['cheque_number'] ?? null,
                     'bank_name' => $part['bank_name'] ?? null,
+                    'collected_by' => $staff ? ($part['collected_by'] ?? null) : null,
                 ]);
+                // The employee holds the money until it is handed over
+                if ($staff && $created->collected_by) {
+                    app(StaffMoneyService::class)->collected($payment, $created);
+                }
             }
 
             if ($fromCredit > 0) {
@@ -670,10 +680,38 @@ class BillingService
         }
 
         $pass->update(['vehicle_out_at' => now(), 'vehicle_out_by' => $user->id]);
+        $this->recordServiceDue($jobCard);
 
         app(JobLifecycleService::class)->sync($jobCard->fresh(), 'vehicle_out');
 
         return $pass;
+    }
+
+    /**
+     * The vehicle's last service and when the next one is due (for reminders): the dates
+     * on the estimate if the advisor set them, else the plan's interval. Non-plan jobs
+     * update the last service only.
+     */
+    protected function recordServiceDue(JobCard $jobCard): void
+    {
+        $vehicle = $jobCard->vehicle_id ? Vehicle::find($jobCard->vehicle_id) : null;
+        if (!$vehicle) {
+            return;
+        }
+
+        $km = $jobCard->km_reading ? (int) $jobCard->km_reading : null;
+        $data = ['last_service_job_id' => $jobCard->id, 'last_service_at' => today()->toDateString(), 'last_service_km' => $km];
+
+        $plan = $jobCard->package_id ? ServicePackage::find($jobCard->package_id) : null;
+        if ($plan) {
+            $estimate = $this->sentEstimate($jobCard);
+            $data['next_service_due_date'] = $estimate?->next_service_date?->toDateString()
+                ?? ($plan->next_service_months ? today()->addMonthsNoOverflow($plan->next_service_months)->toDateString() : null);
+            $data['next_service_due_km'] = $estimate?->next_service_km
+                ?? ($plan->next_service_km && $km ? $km + $plan->next_service_km : null);
+        }
+
+        $vehicle->update($data);
     }
 
     protected function issueGatePass(JobCard $jobCard, Invoice $bill, ?User $user, ?string $reason = null): GatePass
@@ -761,6 +799,7 @@ class BillingService
                 'method' => $part->method,
                 'amount' => (float) $part->amount,
                 'reference_number' => $part->reference_number,
+                'collected_by' => $part->collected_by ? $part->collectedBy?->name : null,
             ])->values(),
             'reference_number' => $p->reference_number,
             'payment_date' => $p->payment_date?->toDateString(),

@@ -21,8 +21,9 @@ class CreateUserRequest extends FormRequest
     {
         return [
             'name' => 'required|string|max:255',
-            'email' => 'required|email|unique:users,email',
-            'phone' => 'nullable|string|max:20|unique:users,phone',
+            // Staff without an email sign in with their phone number
+            'email' => 'required_without:phone|nullable|email|unique:users,email',
+            'phone' => 'required_without:email|nullable|string|max:20|unique:users,phone',
             'password' => 'required|string|min:8|confirmed',
             'roles' => 'required|array|min:1',
             'roles.*' => 'string|exists:roles,slug',

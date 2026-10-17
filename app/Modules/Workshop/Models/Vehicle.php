@@ -24,11 +24,21 @@ class Vehicle extends BaseModel
         'insurance_expiry',
         'notes',
         'is_active',
+        // Set when the car leaves (next-service reminders)
+        'last_service_job_id',
+        'last_service_at',
+        'last_service_km',
+        'next_service_due_date',
+        'next_service_due_km',
     ];
 
     protected $casts = [
         'insurance_expiry' => 'date',
         'is_active' => 'boolean',
+        'last_service_at' => 'date',
+        'next_service_due_date' => 'date',
+        'last_service_km' => 'integer',
+        'next_service_due_km' => 'integer',
     ];
 
     /**

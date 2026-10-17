@@ -4,7 +4,7 @@ import type { ApiResponse, PaginatedResponse, AdminUser, Role, Permission, Branc
 // Roles are sent as slugs and branches as ids
 interface UserPayload {
   name: string
-  email: string
+  email: string | null
   phone: string | null
   roles: string[]
   branches: number[]

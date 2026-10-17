@@ -21,7 +21,12 @@ class Customer extends BaseModel
         'company_name',
         'notes',
         'is_active',
+        // walk_in | referral | online | lead | corporate | other; lead_id for the CRM phase
+        'source',
+        'lead_id',
     ];
+
+    public const SOURCES = ['walk_in' => 'Walk-in', 'referral' => 'Referral', 'online' => 'Online / Google', 'lead' => 'Lead (marketing)', 'corporate' => 'Corporate', 'other' => 'Other'];
 
     protected $casts = [
         'is_active' => 'boolean',

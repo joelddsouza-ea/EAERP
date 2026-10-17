@@ -122,6 +122,9 @@ class RolesAndPermissionsSeeder extends Seeder
 
         // Pickup / drop and home service
         $this->call(Phase5TripPermissionsSeeder::class);
+
+        // Attendance & payroll, accounting, the employee role
+        $this->call(Phase6HrAccountsPermissionsSeeder::class);
     }
 
     protected function assignRolePermissions(): void

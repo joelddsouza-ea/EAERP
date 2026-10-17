@@ -24,6 +24,7 @@ class UpdateCustomerRequest extends FormRequest
             'pincode' => 'nullable|string|max:10',
             'gstin' => 'nullable|string|max:20',
             'customer_type' => 'nullable|in:individual,corporate',
+            'source' => 'nullable|in:walk_in,referral,online,lead,corporate,other',
             'company_name' => 'nullable|string|max:255',
             'notes' => 'nullable|string',
             'is_active' => 'boolean',

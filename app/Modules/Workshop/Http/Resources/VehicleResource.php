@@ -25,6 +25,10 @@ class VehicleResource extends JsonResource
             'insurance_policy_no' => $this->insurance_policy_no,
             'insurance_expiry' => $this->insurance_expiry?->toDateString(),
             'notes' => $this->notes,
+            'last_service_at' => $this->last_service_at?->toDateString(),
+            'last_service_km' => $this->last_service_km,
+            'next_service_due_date' => $this->next_service_due_date?->toDateString(),
+            'next_service_due_km' => $this->next_service_due_km,
             'is_active' => $this->is_active,
             'make' => $this->whenLoaded('make', fn() => [
                 'id' => $this->make->id,

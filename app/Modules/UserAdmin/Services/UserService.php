@@ -23,7 +23,8 @@ class UserService
             // Create user
             $user = User::create([
                 'name' => $data['name'],
-                'email' => $data['email'],
+                // The email column is required: a phone-only employee gets a placeholder they never use
+                'email' => $data['email'] ?? (preg_replace('/\D+/', '', (string) $data['phone']) . '@staff.local'),
                 'phone' => $data['phone'] ?? null,
                 'password' => Hash::make($data['password']),
                 'is_active' => $data['is_active'] ?? true,
@@ -51,6 +52,10 @@ class UserService
         return DB::transaction(function () use ($user, $data) {
             // Update basic info
             $updateData = collect($data)->only(['name', 'email', 'phone', 'is_active'])->toArray();
+            // A blank email keeps the one on file (phone-only staff have a placeholder)
+            if (array_key_exists('email', $updateData) && !$updateData['email']) {
+                unset($updateData['email']);
+            }
 
             if (!empty($updateData)) {
                 $user->update($updateData);

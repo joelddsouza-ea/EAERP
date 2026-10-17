@@ -80,6 +80,11 @@ export interface Branch {
   email: string | null
   is_active: boolean
   is_primary?: boolean
+  // Attendance: workshop location, punch radius, weekly off (0 = Sunday)
+  lat?: number | null
+  lng?: number | null
+  geofence_radius_m?: number
+  weekly_off_day?: number
 }
 
 export interface LoginRequest {
@@ -106,6 +111,8 @@ export interface Customer {
   pincode: string | null
   gstin: string | null
   customer_type: 'individual' | 'corporate'
+  /** Where the customer came from (CRM) */
+  source?: string | null
   company_name: string | null
   notes: string | null
   vehicles_count?: number
@@ -541,7 +548,7 @@ export interface JobPayment {
   stage: 'advance' | 'part' | 'final' | 'refund' | 'credit' | null
   /** "split" when paid several ways; see parts */
   method: string
-  parts: { method: string; amount: number; reference_number: string | null }[]
+  parts: { method: string; amount: number; reference_number: string | null; collected_by?: string | null }[]
   reference_number: string | null
   payment_date: string
   notes: string | null
@@ -572,6 +579,8 @@ export interface JobBillingSummary {
   /** The customer's credit balance (usable as a payment method) */
   customer_credit: number
   credit_method: string
+  /** "Collected by staff": the customer paid an employee (their UPI / cash in hand) */
+  staff_method?: string
   payments: JobPayment[]
   gate_pass: JobGatePass | null
   proforma_from: string | null

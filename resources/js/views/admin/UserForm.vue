@@ -100,8 +100,9 @@ async function handleSubmit() {
   if (!form.value.name.trim()) {
     errors.value.name = 'Name is required'
   }
-  if (!form.value.email.trim()) {
-    errors.value.email = 'Email is required'
+  // Staff sign in with their phone number; an email is optional when there is a phone
+  if (!form.value.email.trim() && !form.value.phone.trim()) {
+    errors.value.phone = 'Phone (for the app login) or email is required'
   }
   if (!isEditing.value && !form.value.password) {
     errors.value.password = 'Password is required'
@@ -127,7 +128,7 @@ async function handleSubmit() {
   try {
     const payload = {
       name: form.value.name,
-      email: form.value.email,
+      email: form.value.email.trim() || null,
       phone: form.value.phone || null,
       roles: [form.value.role!],
       branches: form.value.branch_ids,
@@ -196,14 +197,13 @@ onMounted(fetchData)
             <Input
               v-model="form.email"
               type="email"
-              label="Email"
+              label="Email (optional)"
               :error="errors.email"
-              required
             />
 
             <Input
               v-model="form.phone"
-              label="Phone"
+              label="Phone (app login)"
               :error="errors.phone"
             />
 

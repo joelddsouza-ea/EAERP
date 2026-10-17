@@ -6,6 +6,7 @@ use App\Core\Http\Controllers\Api\ApiController;
 use App\Modules\Billing\Models\Invoice;
 use App\Modules\Billing\Models\InvoiceItem;
 use App\Modules\Billing\Models\Payment;
+use App\Modules\Billing\Models\PaymentPart;
 use App\Modules\Billing\Services\BillingDocuments;
 use App\Modules\Billing\Services\BillingException;
 use App\Modules\Billing\Services\BillingService;
@@ -35,7 +36,7 @@ class JobBillingController extends ApiController
      */
     public function recordPayment(Request $request, JobCard $jobCard): JsonResponse
     {
-        $methods = [...Payment::METHODS, Payment::METHOD_CREDIT];
+        $methods = [...Payment::METHODS, Payment::METHOD_CREDIT, PaymentPart::STAFF_COLLECTED];
         $data = $request->validate([
             'parts' => 'sometimes|array|min:1|max:6',
             'parts.*.method' => ['required_with:parts', Rule::in($methods)],
@@ -43,8 +44,10 @@ class JobBillingController extends ApiController
             'parts.*.reference_number' => 'nullable|string|max:100',
             'parts.*.cheque_number' => 'nullable|string|max:50',
             'parts.*.bank_name' => 'nullable|string|max:100',
+            'parts.*.collected_by' => 'nullable|integer|exists:users,id',
             'amount' => 'required_without:parts|numeric|min:1|max:10000000',
             'method' => ['required_without:parts', Rule::in($methods)],
+            'collected_by' => 'nullable|integer|exists:users,id',
             'reference_number' => 'nullable|string|max:100',
             'payment_date' => 'nullable|date|before_or_equal:today',
             'notes' => 'nullable|string|max:500',
@@ -53,19 +56,23 @@ class JobBillingController extends ApiController
             'bank_name' => 'nullable|string|max:100',
         ], ['parts.*.method.in' => 'Choose a payment method for each part.']);
 
-        foreach ($data['parts'] ?? [] as $i => $part) {
-            if ($part['method'] === 'cheque' && empty($part['cheque_number'])) {
-                throw new BillingException('Enter the cheque number.', ["parts.{$i}.cheque_number" => ['Enter the cheque number.']]);
-            }
-        }
-
         $data['parts'] ??= [[
             'method' => $data['method'],
             'amount' => $data['amount'],
             'reference_number' => $data['reference_number'] ?? null,
             'cheque_number' => $data['cheque_number'] ?? null,
             'bank_name' => $data['bank_name'] ?? null,
+            'collected_by' => $data['collected_by'] ?? null,
         ]];
+
+        foreach ($data['parts'] as $i => $part) {
+            if ($part['method'] === 'cheque' && empty($part['cheque_number'])) {
+                throw new BillingException('Enter the cheque number.', ["parts.{$i}.cheque_number" => ['Enter the cheque number.']]);
+            }
+            if ($part['method'] === PaymentPart::STAFF_COLLECTED && empty($part['collected_by'])) {
+                throw new BillingException('Choose the employee who collected the money.', ["parts.{$i}.collected_by" => ['Who collected it?']]);
+            }
+        }
 
         $payment = $this->billing->recordPayment($jobCard, $data, $request->user());
 

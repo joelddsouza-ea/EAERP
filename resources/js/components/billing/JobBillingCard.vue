@@ -11,6 +11,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { TrashIcon, DocumentArrowDownIcon, PlusIcon, TruckIcon, ShieldCheckIcon } from '@heroicons/vue/20/solid'
 import { jobBillingApi } from '@/api/billing.api'
+import { hrApi } from '@/api/hr.api'
 import { openPdfBlob } from '@/api/estimates.api'
 import { useToast } from '@/composables/useToast'
 import type { JobBillingSummary, BillLine } from '@/api/types'
@@ -64,6 +65,7 @@ const METHODS: Record<string, string> = {
   wallet: 'Wallet',
   split: 'Split',
   customer_credit: 'Customer credit',
+  staff_collected: 'Collected by staff',
 }
 
 async function load() {
@@ -106,11 +108,22 @@ interface PayPart {
   amount: string | number
   reference_number: string
   cheque_number: string
+  // "Collected by staff": who holds the money
+  collected_by: number | string | null
 }
 const payOpen = ref(false)
 const payParts = ref<PayPart[]>([])
 const payNotes = ref('')
-const newPart = (amount: string | number = ''): PayPart => ({ method: 'cash', amount, reference_number: '', cheque_number: '' })
+const newPart = (amount: string | number = ''): PayPart => ({ method: 'cash', amount, reference_number: '', cheque_number: '', collected_by: null })
+const staff = ref<{ id: number; name: string }[]>([])
+async function loadStaff() {
+  if (staff.value.length) return
+  try {
+    staff.value = (await hrApi.staffDirectory()).data.data
+  } catch {
+    // only needed for "Collected by staff"
+  }
+}
 const balanceToPay = computed(() => (data.value?.bill_total != null ? Math.max(0, data.value.balance) : 0))
 const payTotal = computed(() => Math.round(payParts.value.reduce((sum, p) => sum + (Number(p.amount) || 0), 0) * 100) / 100)
 const payLeft = computed(() => Math.round((balanceToPay.value - payTotal.value) * 100) / 100)
@@ -119,15 +132,17 @@ const payMethods = computed(() => [
   ...((data.value?.customer_credit ?? 0) > 0
     ? [{ value: data.value!.credit_method, label: `Customer credit (₹ ${money(data.value!.customer_credit, 0)} available)` }]
     : []),
+  ...(data.value?.staff_method ? [{ value: data.value.staff_method, label: 'Collected by staff (their UPI / cash)' }] : []),
 ])
 const payValid = computed(
   () =>
     payTotal.value > 0 &&
-    payParts.value.every((p) => Number(p.amount) > 0 && (p.method !== 'cheque' || p.cheque_number.trim())) &&
+    payParts.value.every((p) => Number(p.amount) > 0 && (p.method !== 'cheque' || p.cheque_number.trim()) && (p.method !== data.value?.staff_method || !!p.collected_by)) &&
     (data.value?.bill_total == null || payTotal.value <= balanceToPay.value + 0.001)
 )
 
 function openPay() {
+  loadStaff()
   payParts.value = [newPart(balanceToPay.value > 0 ? balanceToPay.value : '')]
   payNotes.value = ''
   payOpen.value = true
@@ -146,6 +161,7 @@ async function savePayment() {
         amount: Number(p.amount),
         reference_number: p.reference_number.trim() || null,
         cheque_number: p.method === 'cheque' ? p.cheque_number.trim() : null,
+        collected_by: p.method === data.value?.staff_method && p.collected_by ? Number(p.collected_by) : null,
       })),
       notes: payNotes.value || null,
     })
@@ -355,9 +371,9 @@ defineExpose({ reload: load })
           <Badge size="sm" :variant="p.stage === 'final' ? 'success' : p.amount < 0 ? 'danger' : 'default'">{{ STAGES[p.stage ?? ''] ?? 'Payment' }}</Badge>
           <span class="text-gray-600">
             <template v-if="p.parts.length > 1">
-              {{ p.parts.map((x) => `${METHODS[x.method] ?? x.method} ₹ ${money(Math.abs(x.amount), 0)}${x.reference_number ? ` (${x.reference_number})` : ''}`).join(' + ') }}
+              {{ p.parts.map((x) => `${METHODS[x.method] ?? x.method}${x.collected_by ? ` (${x.collected_by})` : ''} ₹ ${money(Math.abs(x.amount), 0)}${x.reference_number ? ` (${x.reference_number})` : ''}`).join(' + ') }}
             </template>
-            <template v-else>{{ METHODS[p.method] ?? p.method }}<template v-if="p.reference_number"> · {{ p.reference_number }}</template></template>
+            <template v-else>{{ METHODS[p.method] ?? p.method }}<template v-if="p.parts[0]?.collected_by"> — {{ p.parts[0].collected_by }}</template><template v-if="p.reference_number"> · {{ p.reference_number }}</template></template>
           </span>
           <span class="text-gray-500">{{ p.payment_date }} · {{ p.number }}<template v-if="p.received_by"> · {{ p.received_by }}</template></span>
           <button type="button" class="ml-auto text-primary-600 hover:underline text-xs" @click="pdf(() => jobBillingApi.receiptPdf(jobCardId, p.id))">
@@ -577,6 +593,10 @@ defineExpose({ reload: load })
             <Select v-model="part.method" label="Mode" :options="payMethods" />
           </div>
           <Input v-if="part.method === 'cheque'" v-model="part.cheque_number" label="Cheque no." required />
+          <div v-if="part.method === data.staff_method">
+            <Select v-model="part.collected_by" label="Collected by" :options="staff.map((s) => ({ value: s.id, label: s.name }))" placeholder="Who took the money?" />
+            <p class="mt-1 text-xs text-gray-500">They hold it until it is handed over; what is not handed over comes off their salary.</p>
+          </div>
           <Input
             v-if="part.method !== 'cash' && part.method !== data.credit_method"
             v-model="part.reference_number"

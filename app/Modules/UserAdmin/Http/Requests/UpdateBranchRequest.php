@@ -37,6 +37,10 @@ class UpdateBranchRequest extends FormRequest
             'phone' => 'nullable|string|max:20',
             'email' => 'nullable|email|max:255',
             'gstin' => 'nullable|string|max:20',
+            'lat' => 'nullable|numeric|between:-90,90',
+            'lng' => 'nullable|numeric|between:-180,180',
+            'geofence_radius_m' => 'sometimes|integer|min:20|max:5000',
+            'weekly_off_day' => 'sometimes|integer|between:0,6',
             'is_active' => 'boolean',
         ];
     }

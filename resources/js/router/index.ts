@@ -322,6 +322,76 @@ const routes: RouteRecordRaw[] = [
         meta: { title: 'Reports', permission: 'billing.reports.view' },
       },
 
+      // People: attendance, leave, payroll (Phase 6)
+      {
+        path: 'attendance',
+        name: 'my-attendance',
+        component: () => import('@/views/hr/MyAttendance.vue'),
+        meta: { title: 'Attendance', permission: 'hr.self' },
+      },
+      {
+        path: 'hr/attendance',
+        name: 'attendance-register',
+        component: () => import('@/views/hr/AttendanceRegister.vue'),
+        meta: { title: 'Attendance register', permission: 'hr.attendance.view' },
+      },
+      {
+        path: 'hr/leave',
+        name: 'leave-requests',
+        component: () => import('@/views/hr/LeaveRequests.vue'),
+        meta: { title: 'Leave requests', permission: 'hr.leave.approve' },
+      },
+      {
+        path: 'hr/employees',
+        name: 'employees',
+        component: () => import('@/views/hr/Employees.vue'),
+        meta: { title: 'Employees', permission: 'hr.employees.manage' },
+      },
+      {
+        path: 'hr/payroll',
+        name: 'payroll',
+        component: () => import('@/views/hr/PayrollRuns.vue'),
+        meta: { title: 'Payroll', permission: 'hr.payroll.prepare' },
+      },
+      {
+        path: 'hr/payroll/:id(\d+)',
+        name: 'payroll-run',
+        component: () => import('@/views/hr/PayrollRunDetail.vue'),
+        meta: { title: 'Payroll', permission: 'hr.payroll.prepare' },
+      },
+      {
+        path: 'hr/staff-money',
+        name: 'staff-money',
+        component: () => import('@/views/hr/StaffMoney.vue'),
+        meta: { title: 'Staff money', permissions: ['hr.custody.manage', 'hr.advances.manage'] },
+      },
+      {
+        path: 'hr-masters',
+        name: 'hr-masters',
+        component: () => import('@/views/hr/HrMasters.vue'),
+        meta: { title: 'HR & Payroll masters', permissions: ['hr.settings.manage', 'hr.payroll.prepare'] },
+      },
+
+      // Accounts (Phase 6)
+      {
+        path: 'accounts',
+        name: 'accounts',
+        component: () => import('@/views/accounts/AccountsBooks.vue'),
+        meta: { title: 'Accounts', permission: 'accounts.reports.view' },
+      },
+      {
+        path: 'accounts/expenses',
+        name: 'expenses',
+        component: () => import('@/views/accounts/Expenses.vue'),
+        meta: { title: 'Expenses', permissions: ['accounts.expenses.create', 'accounts.view'] },
+      },
+      {
+        path: 'accounts-masters',
+        name: 'accounts-masters',
+        component: () => import('@/views/accounts/AccountsMasters.vue'),
+        meta: { title: 'Accounts masters', permissions: ['accounts.settings.manage', 'accounts.view'] },
+      },
+
       // Admin routes
       {
         path: 'users',

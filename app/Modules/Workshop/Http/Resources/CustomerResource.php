@@ -22,6 +22,7 @@ class CustomerResource extends JsonResource
             'pincode' => $this->pincode,
             'gstin' => $this->gstin,
             'customer_type' => $this->customer_type,
+            'source' => $this->source,
             'company_name' => $this->company_name,
             'notes' => $this->notes,
             'is_active' => $this->is_active,

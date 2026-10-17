@@ -61,6 +61,43 @@ return [
         'min_part_photos' => 1,
     ],
 
+    // Phase 6 attendance & payroll (all editable in Masters › HR & Payroll)
+    'hr' => [
+        // Punches: GPS fix no worse than this, selfie shot within this many seconds
+        'max_gps_accuracy_m' => 100,
+        'selfie_window_seconds' => 30,
+        // OT counts only the time after this many minutes past the shift end, rounded down
+        'ot_threshold_minutes' => 60,
+        'ot_rounding_minutes' => 15,
+        // Defaults when an employee has no rate of their own
+        'default_ot_rate' => 100,
+        // Extra pay for working on a weekly off or a holiday (per day)
+        'default_offday_amount' => 500,
+
+        // Statutory deductions (one switch for all; each employee has PT / PF / ESI ticks)
+        'statutory' => [
+            'enabled' => true,
+            'pf_employee_rate' => 12,
+            'pf_employer_rate' => 12,
+            // PF on the wage up to this ceiling (0 = no ceiling)
+            'pf_wage_ceiling' => 15000,
+            'esi_employee_rate' => 0.75,
+            'esi_employer_rate' => 3.25,
+            // ESI applies while the month's gross is at most this
+            'esi_gross_limit' => 21000,
+            // Maharashtra professional tax: [gross up to, monthly tax]; null = above the last
+            'pt_slabs_male' => [[7500, 0], [10000, 175], [null, 200]],
+            'pt_slabs_female' => [[25000, 0], [null, 200]],
+            // February's PT for the top slab
+            'pt_february_top' => 300,
+        ],
+    ],
+
+    'accounts' => [
+        // Bills, receipts and GRNs dated before this are covered by the opening balances (null = everything)
+        'books_start_date' => null,
+    ],
+
     // Phase 5 pickup / drop and home service
     'trips' => [
         // GST-inclusive charges offered when a trip is booked (0 = free); ticked per trip

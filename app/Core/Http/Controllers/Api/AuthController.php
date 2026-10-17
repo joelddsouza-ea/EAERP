@@ -15,11 +15,19 @@ class AuthController extends ApiController
      */
     public function login(LoginRequest $request): JsonResponse
     {
-        $user = User::where('email', $request->email)
-            ->orWhere('phone', $request->email)
-            ->first();
+        // Staff sign in with their mobile number, typed with or without spaces / +91
+        $login = trim((string) $request->email);
+        $digits = substr(preg_replace('/\D+/', '', $login), -10);
+        $user = User::where('email', $login)
+            ->orWhere('phone', $login)
+            ->when(strlen($digits) === 10 && !str_contains($login, '@'), fn ($q) => $q->orWhereRaw(
+                "RIGHT(REPLACE(REPLACE(REPLACE(phone, ' ', ''), '-', ''), '+', ''), 10) = ?",
+                [$digits]
+            ))
+            ->get()
+            ->first(fn (User $u) => Hash::check($request->password, $u->password));
 
-        if (!$user || !Hash::check($request->password, $user->password)) {
+        if (!$user) {
             return $this->error('Invalid credentials', 401);
         }
 
