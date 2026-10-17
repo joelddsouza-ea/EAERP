@@ -60,10 +60,10 @@ class JobCardWorkflowTest extends TestCase
 
         Storage::fake('job_media');
 
-        $this->owner = User::where('email', 'admin@expressautocare.com')->firstOrFail();
-        $this->advisor = User::where('email', 'advisor@expressautocare.com')->firstOrFail();
-        $this->tech = User::where('email', 'tech1@expressautocare.com')->firstOrFail();
-        $this->otherTech = User::where('email', 'tech2@expressautocare.com')->firstOrFail();
+        $this->owner = User::where('email', 'admin@expressautocare.in')->firstOrFail();
+        $this->advisor = User::where('email', 'advisor@expressautocare.in')->firstOrFail();
+        $this->tech = User::where('email', 'tech1@expressautocare.in')->firstOrFail();
+        $this->otherTech = User::where('email', 'tech2@expressautocare.in')->firstOrFail();
         $this->branchId = $this->advisor->branches()->firstOrFail()->id;
 
         $customer = Customer::create(['name' => 'Test Customer', 'phone' => '9000000099']);

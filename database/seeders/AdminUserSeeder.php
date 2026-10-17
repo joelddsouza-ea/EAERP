@@ -14,7 +14,7 @@ class AdminUserSeeder extends Seeder
     {
         // Create admin/owner user
         $owner = User::firstOrCreate(
-            ['email' => 'admin@expressautocare.com'],
+            ['email' => 'admin@expressautocare.in'],
             [
                 'name' => 'Admin User',
                 'phone' => '+919876543210',
@@ -39,45 +39,51 @@ class AdminUserSeeder extends Seeder
         $sampleUsers = [
             [
                 'name' => 'Branch Manager',
-                'email' => 'manager@expressautocare.com',
+                'email' => 'manager@expressautocare.in',
                 'phone' => '+919876543211',
                 'role' => Role::MANAGER,
             ],
             [
                 'name' => 'Service Advisor',
-                'email' => 'advisor@expressautocare.com',
+                'email' => 'advisor@expressautocare.in',
                 'phone' => '+919876543212',
                 'role' => Role::SERVICE_ADVISOR,
             ],
             [
                 'name' => 'Technician One',
-                'email' => 'tech1@expressautocare.com',
+                'email' => 'tech1@expressautocare.in',
                 'phone' => '+919876543213',
                 'role' => Role::TECHNICIAN,
             ],
             [
                 'name' => 'Technician Two',
-                'email' => 'tech2@expressautocare.com',
+                'email' => 'tech2@expressautocare.in',
                 'phone' => '+919876543214',
                 'role' => Role::TECHNICIAN,
             ],
             [
                 'name' => 'Backoffice Staff',
-                'email' => 'backoffice@expressautocare.com',
+                'email' => 'backoffice@expressautocare.in',
                 'phone' => '+919876543215',
                 'role' => Role::BACKOFFICE,
             ],
             [
                 'name' => 'Parts Coordinator',
-                'email' => 'parts@expressautocare.com',
+                'email' => 'parts@expressautocare.in',
                 'phone' => '+919876543216',
                 'role' => Role::SPARE_PARTS_COORDINATOR,
             ],
             [
                 'name' => 'Driver One',
-                'email' => 'driver@expressautocare.com',
+                'email' => 'driver@expressautocare.in',
                 'phone' => '+919876543217',
                 'role' => Role::DRIVER,
+            ],
+            [
+                'name' => 'Marketing Executive',
+                'email' => 'marketing@expressautocare.in',
+                'phone' => '+919876543218',
+                'role' => Role::MARKETING,
             ],
         ];
 

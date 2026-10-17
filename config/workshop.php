@@ -61,6 +61,13 @@ return [
         'min_part_photos' => 1,
     ],
 
+    // Optional modules the owner can switch off (Settings › Modules); purchases has its own switch above
+    'modules' => [
+        'accounts' => true,
+        'crm' => true,
+        'hr' => true,
+    ],
+
     // Phase 6 attendance & payroll (all editable in Masters › HR & Payroll)
     'hr' => [
         // Punches: GPS fix no worse than this, selfie shot within this many seconds
@@ -90,6 +97,37 @@ return [
             'pt_slabs_female' => [[25000, 0], [null, 200]],
             // February's PT for the top slab
             'pt_february_top' => 300,
+        ],
+    ],
+
+    // Phase 7 CRM (editable in Settings › CRM)
+    'crm' => [
+        // First contact with a new lead within this many minutes (working hours below)
+        'sla_minutes' => 15,
+        'work_start' => '09:30',
+        'work_end' => '19:00',
+        // Messages are only scheduled between these times
+        'quiet_start' => '09:30',
+        'quiet_end' => '20:00',
+        // At most one marketing message per person in this many days (bookings and feedback don't count)
+        'frequency_cap_days' => 3,
+        // A booked car that has not come this many hours after its slot is a no-show
+        'no_show_after_hours' => 3,
+        // A customer with no visit for this many months gets the win-back journey
+        'win_back_months' => 9,
+        // Credited to the referrer when the referred friend's first job is delivered
+        'referral_reward' => 500,
+        // Asked of customers who rate 4 or 5
+        'google_review_url' => '',
+        // Used as :offer in creatives
+        'offer_text' => '',
+        // Self-booking: how many days ahead slots are offered; links stay valid this long
+        'booking_days_ahead' => 14,
+        'link_valid_days' => 45,
+        'messages' => [
+            'booking_confirmed' => "Hi :name, your booking :number at :workshop is confirmed for :date, :slot. :mode_line\nSee you then! To change it: :book_link",
+            'booking_reminder' => "Hi :name, a reminder: your :car is booked for tomorrow (:date, :slot) at :workshop. :mode_line",
+            'plan_quote' => "Hi :name, here are our :plan prices for your :car:\n:prices\n:inclusions\nBook a slot in 30 seconds: :book_link",
         ],
     ],
 

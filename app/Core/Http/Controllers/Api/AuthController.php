@@ -121,7 +121,12 @@ class AuthController extends ApiController
      */
     private static function features(): array
     {
-        return ['purchases' => \App\Modules\Workshop\Support\Purchases::enabled()];
+        return [
+            'purchases' => \App\Modules\Workshop\Support\Purchases::enabled(),
+            'accounts' => \App\Core\Support\Modules::accounts(),
+            'crm' => \App\Core\Support\Modules::crm(),
+            'hr' => \App\Core\Support\Modules::hr(),
+        ];
     }
 
     /**

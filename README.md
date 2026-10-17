@@ -82,10 +82,10 @@ php artisan test
 
 After seeding, you can login with:
 
-- **Admin/Owner**: admin@expressautocare.com / password
-- **Manager**: manager@expressautocare.com / password
-- **Service Advisor**: advisor@expressautocare.com / password
-- **Technician**: tech1@expressautocare.com / password
+- **Admin/Owner**: admin@expressautocare.in / password
+- **Manager**: manager@expressautocare.in / password
+- **Service Advisor**: advisor@expressautocare.in / password
+- **Technician**: tech1@expressautocare.in / password
 
 ## API Documentation
 

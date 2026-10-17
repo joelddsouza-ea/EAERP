@@ -33,7 +33,7 @@ export interface User {
   primary_branch_id?: number | null
   permissions: string[]
   /** Optional modules switched on for the organisation */
-  features?: { purchases?: boolean }
+  features?: { purchases?: boolean; accounts?: boolean; crm?: boolean; hr?: boolean }
   is_active: boolean
   created_at: string
   updated_at: string

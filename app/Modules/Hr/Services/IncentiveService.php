@@ -36,8 +36,9 @@ class IncentiveService
 
         // [user][rule] => ['amount' => , 'billing' => , 'count' =>]
         $earned = [];
+        $billRules = $rules->whereNotIn('basis', ['per_lead_converted', 'pct_lead_revenue']);
         foreach ($bills as $bill) {
-            foreach ($rules as $rule) {
+            foreach ($billRules as $rule) {
                 $value = $this->value($rule, $bill);
                 $recipients = $this->recipients($rule, $bill, $roleUsers);
                 if (!$recipients) {
@@ -54,6 +55,8 @@ class IncentiveService
             }
         }
 
+        $this->leadIncentives($period, $rules, $roleUsers, $earned);
+
         $out = [];
         foreach ($earned as $userId => $byRule) {
             foreach ($byRule as $ruleId => $row) {
@@ -64,13 +67,46 @@ class IncentiveService
                 }
                 $out[$userId][] = [
                     'rule_id' => $rule->id,
-                    'label' => "{$rule->name} ({$row['count']} bill" . ($row['count'] === 1 ? '' : 's') . ')',
+                    'label' => "{$rule->name} ({$row['count']} " . (str_contains($rule->basis, 'lead') ? 'lead' : 'bill') . ($row['count'] === 1 ? '' : 's') . ')',
                     'amount' => $amount,
                 ];
             }
         }
 
         return $out;
+    }
+
+    /**
+     * CRM rules: leads won in the month, to the executive they were assigned to.
+     */
+    protected function leadIncentives(string $period, $rules, array $roleUsers, array &$earned): void
+    {
+        $leadRules = $rules->whereIn('basis', ['per_lead_converted', 'pct_lead_revenue']);
+        if ($leadRules->isEmpty() || !\App\Core\Support\Modules::crm()) {
+            return;
+        }
+
+        $from = $period . '-01';
+        $to = Carbon::parse($from)->endOfMonth()->toDateString();
+        $won = \App\Modules\Crm\Models\Lead::where('status', 'won')
+            ->whereNotNull('assigned_to')
+            ->whereBetween('closed_at', [$from . ' 00:00:00', $to . ' 23:59:59'])
+            ->get(['id', 'assigned_to', 'won_revenue']);
+
+        foreach ($leadRules as $rule) {
+            $eligible = collect($rule->roles)->flatMap(fn ($role) => $roleUsers[$role] ?? [])->unique()->all();
+            foreach ($won as $lead) {
+                if (!in_array((int) $lead->assigned_to, $eligible, true)) {
+                    continue;
+                }
+                $value = $rule->basis === 'per_lead_converted' ? $rule->value : (float) $lead->won_revenue * $rule->value / 100;
+                $row = &$earned[(int) $lead->assigned_to][$rule->id];
+                $row['amount'] = ($row['amount'] ?? 0) + $value;
+                $row['billing'] = ($row['billing'] ?? 0) + (float) $lead->won_revenue;
+                $row['count'] = ($row['count'] ?? 0) + 1;
+                unset($row);
+            }
+        }
     }
 
     protected function value(IncentiveRule $rule, array $bill): float

@@ -46,10 +46,10 @@ class AccountsPostingTest extends TestCase
         parent::setUp();
 
         $this->seed([OrganizationSeeder::class, RolesAndPermissionsSeeder::class, AdminUserSeeder::class]);
-        $this->owner = User::where('email', 'admin@expressautocare.com')->firstOrFail();
-        $this->backoffice = User::where('email', 'backoffice@expressautocare.com')->firstOrFail();
-        $this->tech = User::where('email', 'tech1@expressautocare.com')->firstOrFail();
-        $this->advisor = User::where('email', 'advisor@expressautocare.com')->firstOrFail();
+        $this->owner = User::where('email', 'admin@expressautocare.in')->firstOrFail();
+        $this->backoffice = User::where('email', 'backoffice@expressautocare.in')->firstOrFail();
+        $this->tech = User::where('email', 'tech1@expressautocare.in')->firstOrFail();
+        $this->advisor = User::where('email', 'advisor@expressautocare.in')->firstOrFail();
         $this->branch = $this->tech->branches()->firstOrFail();
         $this->customer = Customer::create(['name' => 'Kavita', 'phone' => '9000000003']);
         $this->travelTo('2026-10-15 11:00');

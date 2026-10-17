@@ -18,6 +18,8 @@ return Application::configure(basePath: dirname(__DIR__))
             'role' => \App\Core\Http\Middleware\CheckRole::class,
             'job.lifecycle' => \App\Modules\Workshop\Http\Middleware\SyncJobLifecycle::class,
             'purchases' => \App\Modules\Workshop\Http\Middleware\PurchasesEnabled::class,
+            // module:accounts | module:crm | module:hr — 404 while that module is switched off
+            'module' => \App\Core\Http\Middleware\ModuleEnabled::class,
         ]);
 
         // Using pure token-based API authentication

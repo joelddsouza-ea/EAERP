@@ -6,7 +6,7 @@ use App\Modules\Accounts\Http\Controllers\ExpenseController;
 use App\Modules\Accounts\Http\Controllers\JournalController;
 use Illuminate\Support\Facades\Route;
 
-Route::prefix('v1/accounts')->middleware(['auth:sanctum', 'branch.context'])->group(function () {
+Route::prefix('v1/accounts')->middleware(['auth:sanctum', 'branch.context', 'module:accounts'])->group(function () {
     Route::get('dashboard', [AccountsController::class, 'dashboard'])->middleware('permission:accounts.reports.view');
 
     // Masters › Accounts
@@ -52,5 +52,5 @@ Route::prefix('v1/accounts')->middleware(['auth:sanctum', 'branch.context'])->gr
 
 // Expense bill photos / PDFs: authorised by a short-lived URL signature
 Route::get('v1/accounts/expense-bills/{expense}', [ExpenseController::class, 'bill'])
-    ->middleware('signed')
+    ->middleware(['signed', 'module:accounts'])
     ->name('accounts.expense-bill');

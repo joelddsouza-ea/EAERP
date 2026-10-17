@@ -25,7 +25,7 @@ export const useAuthStore = defineStore('auth', () => {
   const userName = computed(() => user.value?.name || '')
   const userEmail = computed(() => user.value?.email || '')
   /** Optional module switched on (e.g. 'purchases': GRN, stock, supplier dues) */
-  const hasFeature = (name: 'purchases') => !!user.value?.features?.[name]
+  const hasFeature = (name: 'purchases' | 'accounts' | 'crm' | 'hr') => !!user.value?.features?.[name]
 
   // Actions
   async function login(credentials: LoginRequest) {

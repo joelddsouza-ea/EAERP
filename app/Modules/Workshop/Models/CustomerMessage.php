@@ -20,6 +20,14 @@ class CustomerMessage extends Model
     protected $fillable = [
         'job_card_id',
         'customer_id',
+        // CRM: messages to leads, quotes, journeys, bookings, feedback (purpose "crm")
+        'lead_id',
+        'purpose',
+        'creative_id',
+        'journey_enrollment_id',
+        'media_url',
+        'scheduled_at',
+        'assigned_to',
         'template',
         'body',
         'phone',
@@ -33,7 +41,18 @@ class CustomerMessage extends Model
 
     protected $casts = [
         'sent_at' => 'datetime',
+        'scheduled_at' => 'datetime',
     ];
+
+    public function lead()
+    {
+        return $this->belongsTo(\App\Modules\Crm\Models\Lead::class);
+    }
+
+    public function assignee()
+    {
+        return $this->belongsTo(User::class, 'assigned_to');
+    }
 
     public function jobCard()
     {

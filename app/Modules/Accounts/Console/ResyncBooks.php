@@ -27,6 +27,12 @@ class ResyncBooks extends Command
 
     public function handle(PostingService $posting): int
     {
+        if (!\App\Core\Support\Modules::accounts()) {
+            $this->warn('The Accounts module is switched off (Settings › Modules).');
+
+            return self::SUCCESS;
+        }
+
         $sources = [
             'invoice' => fn () => Invoice::withoutGlobalScopes()->withTrashed()->pluck('id'),
             'payment' => fn () => Payment::withoutGlobalScopes()->withTrashed()->pluck('id'),

@@ -125,6 +125,9 @@ class RolesAndPermissionsSeeder extends Seeder
 
         // Attendance & payroll, accounting, the employee role
         $this->call(Phase6HrAccountsPermissionsSeeder::class);
+
+        // CRM: leads, bookings, messages, insights
+        $this->call(Phase7CrmPermissionsSeeder::class);
     }
 
     protected function assignRolePermissions(): void

@@ -383,7 +383,7 @@ async function handleSubmit() {
               slot_to: trip.value.slot_to || null,
             },
           }
-      const response = await jobCardsApi.create({ ...payload, ...booking, service_mode: mode.value, customer_id, vehicle_id, complaints: lines })
+      const response = await jobCardsApi.create({ ...payload, ...booking, service_mode: mode.value, customer_id, vehicle_id, complaints: lines, booking_id: bookingId.value })
       toast.success('Job Card Created', 'Now assign the technician(s) and bay.')
       created.value = { id: response.data.data.id, job_number: response.data.data.job_number }
       window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -420,7 +420,21 @@ async function prefillFromQuery() {
   } catch {
     // Pick them by hand
   }
+
+  // Opened from a CRM booking: what the customer booked comes filled in
+  const q = route.query
+  if (q.booking_id) {
+    bookingId.value = Number(q.booking_id)
+    if (q.package_id) form.value.service_choice = `plan:${q.package_id}`
+    else if (q.service_type) form.value.service_choice = String(q.service_type)
+    if (q.oil_type_id) form.value.oil_type_id = Number(q.oil_type_id)
+    const lines = String(q.complaints ?? '').split(/\n/).map((l) => l.trim()).filter(Boolean)
+    if (lines.length) complaints.value = lines.map((text) => ({ text }))
+  }
 }
+
+/** The CRM booking this job card is opened for (the car arrived) */
+const bookingId = ref<number | null>(null)
 
 onMounted(async () => {
   await fetchJobCard()

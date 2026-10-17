@@ -56,7 +56,7 @@ class ExpenseController extends ApiController
                 ->orderBy('name')->get(['id', 'code', 'name', 'group']),
             'banks' => BankAccount::where('is_active', true)->orderByDesc('is_default')->get(['id', 'name', 'is_default']),
             'suppliers' => Supplier::orderBy('name')->get(['id', 'name']),
-            'staff_holding' => StaffCustodyEntry::query()->groupBy('user_id')->selectRaw('user_id, SUM(amount) AS held')->havingRaw('SUM(amount) > 0')->get()
+            'staff_holding' => !\App\Core\Support\Modules::hr() ? [] : StaffCustodyEntry::query()->groupBy('user_id')->selectRaw('user_id, SUM(amount) AS held')->havingRaw('SUM(amount) > 0')->get()
                 ->map(fn ($r) => ['user_id' => (int) $r->user_id, 'name' => \App\Core\Models\User::whereKey($r->user_id)->value('name'), 'held' => round((float) $r->held, 2)])->values(),
         ]);
     }

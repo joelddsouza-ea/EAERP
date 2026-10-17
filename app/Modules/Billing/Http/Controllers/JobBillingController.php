@@ -36,7 +36,7 @@ class JobBillingController extends ApiController
      */
     public function recordPayment(Request $request, JobCard $jobCard): JsonResponse
     {
-        $methods = [...Payment::METHODS, Payment::METHOD_CREDIT, PaymentPart::STAFF_COLLECTED];
+        $methods = [...Payment::METHODS, Payment::METHOD_CREDIT, ...(\App\Core\Support\Modules::hr() ? [PaymentPart::STAFF_COLLECTED] : [])];
         $data = $request->validate([
             'parts' => 'sometimes|array|min:1|max:6',
             'parts.*.method' => ['required_with:parts', Rule::in($methods)],

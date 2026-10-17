@@ -9,7 +9,7 @@ use App\Modules\Hr\Http\Controllers\SelfServiceController;
 use App\Modules\Hr\Http\Controllers\StaffMoneyController;
 use Illuminate\Support\Facades\Route;
 
-Route::prefix('v1/hr')->middleware(['auth:sanctum', 'branch.context'])->group(function () {
+Route::prefix('v1/hr')->middleware(['auth:sanctum', 'branch.context', 'module:hr'])->group(function () {
     // The employee's own: punch, attendance, leave, payslips, advances
     Route::middleware('permission:hr.self')->prefix('me')->group(function () {
         Route::get('today', [SelfServiceController::class, 'today']);
@@ -102,5 +102,5 @@ Route::prefix('v1/hr')->middleware(['auth:sanctum', 'branch.context'])->group(fu
 
 // Attendance selfies: authorised by a short-lived URL signature
 Route::get('v1/hr/selfies/{punch}', [SelfServiceController::class, 'selfie'])
-    ->middleware('signed')
+    ->middleware(['signed', 'module:hr'])
     ->name('hr.selfie.stream');

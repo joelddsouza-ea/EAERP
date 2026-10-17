@@ -15,7 +15,8 @@ class PostingQueue
 {
     public static function push(string $type, ?int $id): void
     {
-        if (!$id) {
+        // Accounts switched off: nothing goes on the books (resync posts it later)
+        if (!$id || !\App\Core\Support\Modules::accounts()) {
             return;
         }
 

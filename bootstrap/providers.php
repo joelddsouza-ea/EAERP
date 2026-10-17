@@ -8,4 +8,5 @@ return [
     App\Modules\Billing\Providers\BillingServiceProvider::class,
     App\Modules\Hr\Providers\HrServiceProvider::class,
     App\Modules\Accounts\Providers\AccountsServiceProvider::class,
+    App\Modules\Crm\Providers\CrmServiceProvider::class,
 ];

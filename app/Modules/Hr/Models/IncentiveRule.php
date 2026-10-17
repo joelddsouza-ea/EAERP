@@ -16,6 +16,9 @@ class IncentiveRule extends Model
         'pct_parts' => '% of parts & oil billed',
         'pct_bill' => '% of the bill total',
         'per_plan_sold' => 'Rs per service plan sold',
+        // CRM: the executive the lead was assigned to
+        'per_lead_converted' => 'Rs per lead converted (CRM)',
+        'pct_lead_revenue' => '% of revenue from converted leads (CRM)',
     ];
 
     protected $fillable = ['name', 'roles', 'basis', 'package_id', 'value', 'min_monthly_billing', 'is_active'];

@@ -116,7 +116,8 @@ class BillingService
             'proforma_from' => $bill ? null : $this->proformaBlocker($jobCard),
             'methods' => Payment::METHODS,
             'credit_method' => Payment::METHOD_CREDIT,
-            'staff_method' => PaymentPart::STAFF_COLLECTED,
+            // Customer money held by staff is tracked by Attendance & payroll
+            'staff_method' => \App\Core\Support\Modules::hr() ? PaymentPart::STAFF_COLLECTED : null,
             'gst_rates' => self::GST_RATES,
             'can' => $user ? [
                 'manage' => $user->hasPermission('billing.proforma.manage'),

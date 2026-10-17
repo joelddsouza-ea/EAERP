@@ -44,10 +44,10 @@ class AttendancePunchTest extends TestCase
         $this->seed([OrganizationSeeder::class, RolesAndPermissionsSeeder::class, AdminUserSeeder::class]);
         Storage::fake('job_media');
 
-        $this->owner = User::where('email', 'admin@expressautocare.com')->firstOrFail();
-        $this->manager = User::where('email', 'manager@expressautocare.com')->firstOrFail();
-        $this->tech = User::where('email', 'tech1@expressautocare.com')->firstOrFail();
-        $this->driver = User::where('email', 'driver@expressautocare.com')->firstOrFail();
+        $this->owner = User::where('email', 'admin@expressautocare.in')->firstOrFail();
+        $this->manager = User::where('email', 'manager@expressautocare.in')->firstOrFail();
+        $this->tech = User::where('email', 'tech1@expressautocare.in')->firstOrFail();
+        $this->driver = User::where('email', 'driver@expressautocare.in')->firstOrFail();
         $this->branch = $this->tech->branches()->firstOrFail();
         $this->branch->update(['lat' => self::LAT, 'lng' => self::LNG, 'geofence_radius_m' => 150]);
 

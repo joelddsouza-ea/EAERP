@@ -16,6 +16,8 @@ import {
   WalletIcon,
 } from '@heroicons/vue/24/outline'
 import { accountsApi, inr, type AccountsDashboard } from '@/api/accounts.api'
+import { crmApi } from '@/api/crm.api'
+import { MegaphoneIcon, PhoneArrowUpRightIcon, CalendarDaysIcon, TrophyIcon } from '@heroicons/vue/24/outline'
 import { useAuthStore } from '@/stores/auth.store'
 import { dashboardApi } from '@/api/workshop.api'
 import { useBranchStore } from '@/stores/branch.store'
@@ -40,7 +42,7 @@ const today = new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'nu
 // One-tap shortcuts for what this user does most
 const quickActions = computed(() => {
   const list: { label: string; to: string; icon: any }[] = []
-  if (authStore.hasPermission('hr.self')) list.push({ label: 'Attendance', to: '/attendance', icon: FingerPrintIcon })
+  if (authStore.hasFeature('hr') && authStore.hasPermission('hr.self')) list.push({ label: 'Attendance', to: '/attendance', icon: FingerPrintIcon })
   if (authStore.hasAnyRole(['technician', 'body-shop-technician'])) list.push({ label: 'My jobs', to: '/my-jobs', icon: WrenchScrewdriverIcon })
   if (authStore.hasPermission('workshop.job-cards.create')) list.push({ label: 'New job card', to: '/job-cards/create', icon: PlusIcon })
   if (authStore.hasPermission('workshop.customers.create')) list.push({ label: 'New customer', to: '/customers/create', icon: UserPlusIcon })
@@ -63,7 +65,7 @@ const stats = ref<DashboardStats>({
 // Owner / accounts: money position (posted by the accounts module)
 const money = ref<AccountsDashboard | null>(null)
 async function fetchMoney() {
-  if (!authStore.hasPermission('accounts.reports.view')) return
+  if (!authStore.hasFeature('accounts') || !authStore.hasPermission('accounts.reports.view')) return
   try {
     money.value = (await accountsApi.dashboard(branchStore.currentBranchId)).data.data
   } catch {
@@ -71,9 +73,21 @@ async function fetchMoney() {
   }
 }
 
+// CRM: today's leads and bookings
+const crm = ref<Record<string, number> | null>(null)
+async function fetchCrm() {
+  if (!authStore.hasFeature('crm') || !authStore.hasAnyPermission(['crm.reports.view', 'crm.leads.manage'])) return
+  try {
+    crm.value = (await crmApi.tiles(branchStore.currentBranchId)).data.data
+  } catch {
+    crm.value = null
+  }
+}
+
 async function fetchDashboardStats() {
   loading.value = true
   fetchMoney()
+  fetchCrm()
   try {
     stats.value = await dashboardApi.stats(branchStore.currentBranchId || undefined)
   } catch (err) {
@@ -128,6 +142,14 @@ watch(() => branchStore.currentBranchId, fetchDashboardStats)
       <StatCard title="Today's collection" :value="formatCurrency(stats.daily_collection)" :icon="BanknotesIcon" color="green" :loading="loading" />
       <StatCard title="Billing till date" :value="formatCurrency(stats.billing_till_date)" :icon="DocumentTextIcon" color="blue" :loading="loading" />
       <StatCard title="Total outstanding" :value="formatCurrency(stats.total_outstanding)" :icon="ExclamationCircleIcon" color="red" :loading="loading" />
+    </div>
+
+    <!-- CRM -->
+    <div v-if="crm" class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-5 mb-4 sm:mb-6">
+      <RouterLink to="/crm/leads"><StatCard title="New leads today" :value="crm.new_leads_today" :icon="MegaphoneIcon" color="blue" /></RouterLink>
+      <RouterLink to="/crm/leads?view=today"><StatCard :title="crm.not_contacted ? `Not called yet: ${crm.not_contacted}` : 'Follow-ups overdue'" :value="crm.follow_ups_overdue" :icon="PhoneArrowUpRightIcon" :color="crm.follow_ups_overdue || crm.not_contacted ? 'red' : 'green'" /></RouterLink>
+      <RouterLink to="/crm/bookings"><StatCard title="Bookings today" :value="crm.bookings_today" :icon="CalendarDaysIcon" color="amber" /></RouterLink>
+      <RouterLink to="/crm/insights"><StatCard title="Leads won this month" :value="`${crm.month_won} / ${crm.month_leads}`" :icon="TrophyIcon" color="purple" /></RouterLink>
     </div>
 
     <!-- Money position (accounts) -->

@@ -66,12 +66,12 @@ class PickupDropHomeServiceTest extends TestCase
         Storage::fake('job_media');
         WorkflowStage::flushCache();
 
-        $this->owner = User::where('email', 'admin@expressautocare.com')->firstOrFail();
-        $this->advisor = User::where('email', 'advisor@expressautocare.com')->firstOrFail();
-        $this->backoffice = User::where('email', 'backoffice@expressautocare.com')->firstOrFail();
-        $this->tech = User::where('email', 'tech1@expressautocare.com')->firstOrFail();
-        $this->tech2 = User::where('email', 'tech2@expressautocare.com')->firstOrFail();
-        $this->driver = User::where('email', 'driver@expressautocare.com')->firstOrFail();
+        $this->owner = User::where('email', 'admin@expressautocare.in')->firstOrFail();
+        $this->advisor = User::where('email', 'advisor@expressautocare.in')->firstOrFail();
+        $this->backoffice = User::where('email', 'backoffice@expressautocare.in')->firstOrFail();
+        $this->tech = User::where('email', 'tech1@expressautocare.in')->firstOrFail();
+        $this->tech2 = User::where('email', 'tech2@expressautocare.in')->firstOrFail();
+        $this->driver = User::where('email', 'driver@expressautocare.in')->firstOrFail();
         $this->branchId = $this->advisor->branches()->firstOrFail()->id;
 
         $customer = Customer::create(['name' => 'Meera Kulkarni', 'phone' => '98200 11223']);

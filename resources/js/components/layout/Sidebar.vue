@@ -1,7 +1,8 @@
 <script setup lang="ts">
 /**
- * Desktop sidebar (lg and up): brand logo, grouped menu with a collapsible
- * Masters group, and the signed-in user. Collapses to icons.
+ * Desktop sidebar (lg and up): brand logo, the menu by module — each group folds and
+ * remembers it (the group of the open screen always shows) — and the signed-in user.
+ * Collapses to icons.
  */
 import { ref, watch } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
@@ -15,13 +16,31 @@ const authStore = useAuthStore()
 const uiStore = useUiStore()
 const { groups, isActive } = useNavigation()
 
-// Masters stays open while one of its screens is shown
-const mastersOpen = ref(false)
+const STORE_KEY = 'eaerp.nav.folded'
+const folded = ref<string[]>(readFolded())
+
+function readFolded(): string[] {
+  try {
+    return JSON.parse(localStorage.getItem(STORE_KEY) ?? '[]')
+  } catch {
+    return []
+  }
+}
+function toggle(key: string) {
+  folded.value = folded.value.includes(key) ? folded.value.filter((k) => k !== key) : [...folded.value, key]
+  try {
+    localStorage.setItem(STORE_KEY, JSON.stringify(folded.value))
+  } catch {
+    // remembered for this visit only
+  }
+}
+
+// The group of the open screen unfolds
 watch(
   () => route.fullPath,
   () => {
-    const masters = groups.value.find((g) => g.key === 'masters')
-    if (masters?.items.some((i) => isActive(i.to))) mastersOpen.value = true
+    const open = groups.value.find((g) => g.items.some((i) => isActive(i.to)))
+    if (open && folded.value.includes(open.key)) folded.value = folded.value.filter((k) => k !== open.key)
   },
   { immediate: true }
 )
@@ -49,49 +68,19 @@ watch(
     </div>
 
     <!-- Navigation -->
-    <nav class="flex-1 px-3 py-4 overflow-y-auto scrollbar-thin">
-      <div v-for="group in groups" :key="group.key" class="mb-4">
-        <p
-          v-if="!uiStore.sidebarCollapsed && !group.collapsible"
-          class="px-3 mb-1 text-[11px] font-semibold uppercase tracking-wider text-gray-400"
+    <nav class="flex-1 px-3 py-3 overflow-y-auto scrollbar-thin">
+      <div v-for="group in groups" :key="group.key" class="mb-2">
+        <button
+          v-if="!uiStore.sidebarCollapsed && group.key !== 'settings'"
+          type="button"
+          class="w-full flex items-center px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-gray-400 hover:text-gray-600"
+          @click="toggle(group.key)"
         >
-          {{ group.label }}
-        </p>
+          <span class="flex-1 text-left">{{ group.label }}</span>
+          <ChevronDownIcon :class="['h-4 w-4 transition-transform', folded.includes(group.key) ? '-rotate-90' : '']" />
+        </button>
 
-        <!-- Collapsible group (Masters) -->
-        <template v-if="group.collapsible">
-          <button
-            type="button"
-            :class="[
-              'w-full flex items-center px-3 py-2 rounded-lg text-sm font-semibold transition-colors',
-              group.items.some((i) => isActive(i.to)) ? 'text-primary-700' : 'text-gray-700 hover:bg-gray-100',
-              uiStore.sidebarCollapsed ? 'justify-center' : '',
-            ]"
-            :title="group.label"
-            @click="mastersOpen = !mastersOpen; uiStore.sidebarCollapsed && uiStore.toggleSidebar()"
-          >
-            <component :is="group.icon" class="h-5 w-5 shrink-0" :class="group.items.some((i) => isActive(i.to)) ? 'text-primary-600' : 'text-gray-400'" />
-            <template v-if="!uiStore.sidebarCollapsed">
-              <span class="ml-3 flex-1 text-left">{{ group.label }}</span>
-              <ChevronDownIcon :class="['h-4 w-4 text-gray-400 transition-transform', mastersOpen ? 'rotate-180' : '']" />
-            </template>
-          </button>
-          <div v-if="mastersOpen && !uiStore.sidebarCollapsed" class="mt-1 ml-5 border-l border-gray-200 pl-2 space-y-0.5">
-            <RouterLink
-              v-for="item in group.items"
-              :key="item.to"
-              :to="item.to"
-              :class="[
-                'block px-3 py-1.5 rounded-md text-[13px] transition-colors',
-                isActive(item.to) ? 'bg-primary-50 text-primary-700 font-semibold' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900',
-              ]"
-            >
-              {{ item.name }}
-            </RouterLink>
-          </div>
-        </template>
-
-        <template v-else>
+        <div v-show="uiStore.sidebarCollapsed || group.key === 'settings' || !folded.includes(group.key)" class="space-y-0.5">
           <RouterLink
             v-for="item in group.items"
             :key="item.to"
@@ -108,9 +97,9 @@ watch(
               :is="item.icon"
               :class="['shrink-0 h-5 w-5', isActive(item.to) ? 'text-primary-600' : 'text-gray-400']"
             />
-            <span v-if="!uiStore.sidebarCollapsed" class="ml-3">{{ item.name }}</span>
+            <span v-if="!uiStore.sidebarCollapsed" class="ml-3 truncate">{{ item.name }}</span>
           </RouterLink>
-        </template>
+        </div>
       </div>
     </nav>
 

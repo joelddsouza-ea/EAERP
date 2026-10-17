@@ -10,10 +10,14 @@ import Card from '@/components/ui/Card.vue'
 import Button from '@/components/ui/Button.vue'
 import Badge from '@/components/ui/Badge.vue'
 import Spinner from '@/components/ui/Spinner.vue'
+import BookingDialog from '@/components/crm/BookingDialog.vue'
+import { useAuthStore } from '@/stores/auth.store'
+import { crmApi, fmtDateTime, type CustomerTimeline, type LeadOptions } from '@/api/crm.api'
 
 const route = useRoute()
 const router = useRouter()
 const { can } = usePermissions()
+const auth = useAuthStore()
 const toast = useToast()
 
 const loading = ref(true)
@@ -39,7 +43,28 @@ async function fetchCustomer() {
   }
 }
 
-onMounted(fetchCustomer)
+// Customer 360: visits, spend, rating, credit, next service due, and one timeline
+const timeline = ref<CustomerTimeline | null>(null)
+const crmOptions = ref<LeadOptions | null>(null)
+const bookFor = ref<number | null>(null)
+async function fetchTimeline() {
+  if (!auth.hasFeature('crm')) return
+  try {
+    timeline.value = (await crmApi.customerTimeline(customerId)).data.data
+  } catch {
+    // CRM view is optional
+  }
+}
+async function openBooking(vehicleId: number | null) {
+  if (!crmOptions.value) crmOptions.value = (await crmApi.options()).data.data
+  bookFor.value = vehicleId ?? 0
+}
+const ICONS: Record<string, string> = { lead: '✨', booking: '📅', job: '🔧', bill: '🧾', feedback: '⭐', message: '💬' }
+
+onMounted(() => {
+  fetchCustomer()
+  fetchTimeline()
+})
 </script>
 
 <template>
@@ -62,10 +87,13 @@ onMounted(fetchCustomer)
             </span>
           </div>
         </div>
-        <Button v-if="can('workshop.customers.update')" @click="router.push(`/customers/${customer.id}/edit`)">
-          <PencilIcon class="h-4 w-4 mr-1" />
-          Edit
-        </Button>
+        <div class="flex gap-2">
+          <Button v-if="auth.hasFeature('crm') && can('crm.bookings.manage')" variant="secondary" @click="openBooking(vehicles[0]?.id ?? null)">Book a service</Button>
+          <Button v-if="can('workshop.customers.update')" @click="router.push(`/customers/${customer.id}/edit`)">
+            <PencilIcon class="h-4 w-4 mr-1" />
+            Edit
+          </Button>
+        </div>
       </div>
 
       <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -144,6 +172,49 @@ onMounted(fetchCustomer)
           </Card>
         </div>
       </div>
+
+      <!-- Customer 360 -->
+      <template v-if="timeline">
+        <div class="mt-6 grid grid-cols-2 sm:grid-cols-5 gap-2 text-sm">
+          <div class="rounded-xl bg-white p-3 ring-1 ring-gray-200"><p class="text-xs text-gray-500">Visits</p><p class="font-semibold">{{ timeline.summary.visits }}</p></div>
+          <div class="rounded-xl bg-white p-3 ring-1 ring-gray-200"><p class="text-xs text-gray-500">Spent</p><p class="font-semibold">₹ {{ Math.round(timeline.summary.spend).toLocaleString('en-IN') }}</p></div>
+          <div class="rounded-xl bg-white p-3 ring-1 ring-gray-200"><p class="text-xs text-gray-500">Rating</p><p class="font-semibold">{{ timeline.summary.avg_rating ?? '—' }} ★</p></div>
+          <div class="rounded-xl bg-white p-3 ring-1 ring-gray-200"><p class="text-xs text-gray-500">Credit</p><p class="font-semibold">₹ {{ Math.round(timeline.summary.credit).toLocaleString('en-IN') }}</p></div>
+          <div class="rounded-xl bg-white p-3 ring-1 ring-gray-200"><p class="text-xs text-gray-500">Referred</p><p class="font-semibold">{{ timeline.summary.referrals }}<span v-if="timeline.summary.referral_code" class="ml-1 text-xs font-normal text-gray-500">code {{ timeline.summary.referral_code }}</span></p></div>
+        </div>
+        <div class="mt-3 flex flex-wrap gap-2 text-xs">
+          <span v-for="v in timeline.vehicles.filter((x) => x.next_service_due_date)" :key="v.id" class="rounded-full bg-amber-50 px-3 py-1 text-amber-800">
+            {{ v.registration_no }}: next service {{ v.next_service_due_date }}<template v-if="v.next_service_due_km"> / {{ v.next_service_due_km.toLocaleString('en-IN') }} km</template>
+          </span>
+          <span v-for="j in timeline.summary.active_journeys" :key="j" class="rounded-full bg-blue-50 px-3 py-1 text-blue-800">In journey: {{ j }}</span>
+          <span v-if="timeline.summary.opted_out" class="rounded-full bg-red-50 px-3 py-1 text-red-700">No marketing messages</span>
+          <RouterLink v-if="timeline.summary.open_lead_id" :to="`/crm/leads/${timeline.summary.open_lead_id}`" class="rounded-full bg-primary-50 px-3 py-1 text-primary-700">Open lead</RouterLink>
+        </div>
+        <Card class="mt-4" :padding="false">
+          <template #header><h3 class="text-lg font-semibold">History</h3></template>
+          <ul class="divide-y divide-gray-100 text-sm">
+            <li v-for="(e, i) in timeline.timeline" :key="i" class="px-4 py-2 flex gap-3">
+              <span class="w-5 text-center">{{ ICONS[e.type] ?? '•' }}</span>
+              <span class="min-w-0 flex-1">
+                <RouterLink v-if="e.to" :to="e.to" class="font-medium text-gray-900 hover:text-primary-700">{{ e.title }}</RouterLink>
+                <span v-else class="font-medium text-gray-900">{{ e.title }}</span>
+                <span v-if="e.detail" class="block truncate text-gray-500">{{ e.detail }}</span>
+              </span>
+              <span class="text-xs text-gray-400 whitespace-nowrap">{{ fmtDateTime(e.at) }}</span>
+            </li>
+          </ul>
+          <p v-if="!timeline.timeline.length" class="px-4 py-3 text-sm text-gray-500">No history yet.</p>
+        </Card>
+      </template>
+
+      <BookingDialog
+        :open="bookFor !== null"
+        :options="crmOptions"
+        :customer-id="customer.id"
+        :vehicle-id="bookFor || null"
+        @close="bookFor = null"
+        @booked="bookFor = null; fetchTimeline()"
+      />
 
       <!-- Notes -->
       <Card v-if="customer.notes" class="mt-6">

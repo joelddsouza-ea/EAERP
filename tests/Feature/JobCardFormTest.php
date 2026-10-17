@@ -50,7 +50,7 @@ class JobCardFormTest extends TestCase
             AdminUserSeeder::class,
         ]);
 
-        $this->advisor = User::where('email', 'advisor@expressautocare.com')->firstOrFail();
+        $this->advisor = User::where('email', 'advisor@expressautocare.in')->firstOrFail();
         $this->branchId = $this->advisor->branches()->firstOrFail()->id;
 
         $customer = Customer::create(['name' => 'Form Test', 'phone' => '9000000088']);

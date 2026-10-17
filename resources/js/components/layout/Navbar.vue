@@ -18,6 +18,7 @@ import { useAuth } from '@/composables/useAuth'
 import BranchSelector from './BranchSelector.vue'
 import NotificationBell from './NotificationBell.vue'
 import { useNavigation } from './navigation'
+import GlobalSearch from './GlobalSearch.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -81,6 +82,7 @@ function back() {
 
       <!-- Right -->
       <div class="flex items-center gap-1 sm:gap-3 shrink-0">
+        <GlobalSearch />
         <NotificationBell />
 
         <Menu as="div" class="relative">

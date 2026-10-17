@@ -55,6 +55,8 @@ class CreateJobCardRequest extends FormRequest
             'discount' => 'nullable|numeric|min:0',
             'discount_reason' => 'nullable|string|max:255',
             'internal_notes' => 'nullable|string',
+            // Opened from a CRM booking (the car arrived)
+            'booking_id' => 'nullable|integer|exists:bookings,id',
         ];
     }
 

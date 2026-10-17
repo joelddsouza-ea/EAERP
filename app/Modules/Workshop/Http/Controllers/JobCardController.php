@@ -79,8 +79,15 @@ class JobCardController extends ApiController
     {
         $data = $request->validated();
         $data['branch_id'] = app('branch.context')->getCurrentBranchId();
+        $bookingId = $data['booking_id'] ?? null;
+        unset($data['booking_id']);
 
         $jobCard = $this->jobCardService->createJobCard($data);
+
+        // The CRM booking the car came for is now this job
+        if ($bookingId && \App\Core\Support\Modules::crm() && ($booking = \App\Modules\Crm\Models\Booking::find($bookingId)) && !$booking->job_card_id) {
+            app(\App\Modules\Crm\Services\BookingService::class)->markConverted($booking, $jobCard, $request->user());
+        }
 
         return $this->created(
             new JobCardResource($jobCard),

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { PlusIcon } from '@heroicons/vue/20/solid'
 import { jobCardsApi } from '@/api/workshop.api'
 import { useBranchStore } from '@/stores/branch.store'
@@ -18,6 +18,7 @@ import { jobServiceLabel } from '@/constants/serviceTypes'
 import { statusLabel, statusVariant, statusFilterOptions } from '@/constants/jobCardStatus'
 
 const router = useRouter()
+const route = useRoute()
 const branchStore = useBranchStore()
 const { can } = usePermissions()
 const toast = useToast()
@@ -26,7 +27,8 @@ const pagination = usePagination()
 const loading = ref(false)
 const jobCards = ref<JobCard[]>([])
 const search = ref('')
-const statusFilter = ref<string>('')
+// Links such as /job-cards?status=ready_for_delivery (My Day) open filtered
+const statusFilter = ref<string>((route.query.status as string) || '')
 
 const columns: Column<JobCard>[] = [
   { key: 'job_number', label: 'Job Card #' },

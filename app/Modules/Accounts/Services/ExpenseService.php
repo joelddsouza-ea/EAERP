@@ -72,6 +72,9 @@ class ExpenseService
         $gst = $gstBill ? round((float) ($data['gst_amount'] ?? ($amount - $amount / (1 + $rate / 100))), 2) : 0.0;
 
         if ($data['paid_via'] === 'staff_custody') {
+            if (!\App\Core\Support\Modules::hr()) {
+                throw new LedgerException('Customer money held by staff is tracked by Attendance & payroll, which is switched off.', ['paid_via' => ['Not available.']]);
+            }
             if (empty($data['paid_by_user_id'])) {
                 throw new LedgerException('Choose whose collected money paid for it.', ['paid_by_user_id' => ['Required.']]);
             }

@@ -58,7 +58,7 @@ declare module 'vue-router' {
     /** Phones: hide the bottom tab bar (the screen has its own action bar) */
     hideTabBar?: boolean
     /** Only while this optional module is switched on */
-    feature?: 'purchases'
+    feature?: 'purchases' | 'accounts' | 'crm' | 'hr'
   }
 }
 
@@ -322,54 +322,113 @@ const routes: RouteRecordRaw[] = [
         meta: { title: 'Reports', permission: 'billing.reports.view' },
       },
 
+      // Home: what to do today, and every master in one place
+      {
+        path: 'my-day',
+        name: 'my-day',
+        component: () => import('@/views/MyDay.vue'),
+        meta: { title: 'My Day' },
+      },
+      {
+        path: 'settings/modules',
+        name: 'settings-modules',
+        component: () => import('@/views/ModulesSettings.vue'),
+        meta: { title: 'Modules', roles: ['owner'] },
+      },
+      {
+        path: 'settings',
+        name: 'settings',
+        component: () => import('@/views/SettingsHub.vue'),
+        meta: { title: 'Settings' },
+      },
+
+      // CRM (Phase 7)
+      {
+        path: 'crm/leads',
+        name: 'crm-leads',
+        component: () => import('@/views/crm/Leads.vue'),
+        meta: { feature: 'crm',  title: 'Leads', permissions: ['crm.leads.view', 'crm.leads.work'] },
+      },
+      {
+        path: 'crm/leads/:id(\d+)',
+        name: 'crm-lead',
+        component: () => import('@/views/crm/LeadDetail.vue'),
+        meta: { feature: 'crm',  title: 'Lead', permissions: ['crm.leads.view', 'crm.leads.work', 'crm.bookings.manage'] },
+      },
+      {
+        path: 'crm/bookings',
+        name: 'crm-bookings',
+        component: () => import('@/views/crm/Bookings.vue'),
+        meta: { feature: 'crm',  title: 'Bookings', permission: 'crm.bookings.manage' },
+      },
+      {
+        path: 'crm/messages',
+        name: 'crm-messages',
+        component: () => import('@/views/crm/MessageQueue.vue'),
+        meta: { feature: 'crm',  title: 'Messages to send', permission: 'crm.messages.send' },
+      },
+      {
+        path: 'crm/insights',
+        name: 'crm-insights',
+        component: () => import('@/views/crm/Insights.vue'),
+        meta: { feature: 'crm',  title: 'CRM insights', permissions: ['crm.reports.view', 'crm.leads.manage'] },
+      },
+      { path: 'crm/feedback', redirect: { path: '/crm/insights', query: { tab: 'feedback' } } },
+      {
+        path: 'crm-settings',
+        name: 'crm-settings',
+        component: () => import('@/views/crm/CrmMasters.vue'),
+        meta: { feature: 'crm',  title: 'CRM settings', permissions: ['crm.settings.manage', 'crm.leads.manage'] },
+      },
+
       // People: attendance, leave, payroll (Phase 6)
       {
         path: 'attendance',
         name: 'my-attendance',
         component: () => import('@/views/hr/MyAttendance.vue'),
-        meta: { title: 'Attendance', permission: 'hr.self' },
+        meta: { feature: 'hr',  title: 'Attendance', permission: 'hr.self' },
       },
       {
         path: 'hr/attendance',
         name: 'attendance-register',
         component: () => import('@/views/hr/AttendanceRegister.vue'),
-        meta: { title: 'Attendance register', permission: 'hr.attendance.view' },
+        meta: { feature: 'hr',  title: 'Attendance register', permission: 'hr.attendance.view' },
       },
       {
         path: 'hr/leave',
         name: 'leave-requests',
         component: () => import('@/views/hr/LeaveRequests.vue'),
-        meta: { title: 'Leave requests', permission: 'hr.leave.approve' },
+        meta: { feature: 'hr',  title: 'Leave requests', permission: 'hr.leave.approve' },
       },
       {
         path: 'hr/employees',
         name: 'employees',
         component: () => import('@/views/hr/Employees.vue'),
-        meta: { title: 'Employees', permission: 'hr.employees.manage' },
+        meta: { feature: 'hr',  title: 'Employees', permission: 'hr.employees.manage' },
       },
       {
         path: 'hr/payroll',
         name: 'payroll',
         component: () => import('@/views/hr/PayrollRuns.vue'),
-        meta: { title: 'Payroll', permission: 'hr.payroll.prepare' },
+        meta: { feature: 'hr',  title: 'Payroll', permission: 'hr.payroll.prepare' },
       },
       {
         path: 'hr/payroll/:id(\d+)',
         name: 'payroll-run',
         component: () => import('@/views/hr/PayrollRunDetail.vue'),
-        meta: { title: 'Payroll', permission: 'hr.payroll.prepare' },
+        meta: { feature: 'hr',  title: 'Payroll', permission: 'hr.payroll.prepare' },
       },
       {
         path: 'hr/staff-money',
         name: 'staff-money',
         component: () => import('@/views/hr/StaffMoney.vue'),
-        meta: { title: 'Staff money', permissions: ['hr.custody.manage', 'hr.advances.manage'] },
+        meta: { feature: 'hr',  title: 'Staff money', permissions: ['hr.custody.manage', 'hr.advances.manage'] },
       },
       {
         path: 'hr-masters',
         name: 'hr-masters',
         component: () => import('@/views/hr/HrMasters.vue'),
-        meta: { title: 'HR & Payroll masters', permissions: ['hr.settings.manage', 'hr.payroll.prepare'] },
+        meta: { feature: 'hr',  title: 'HR & Payroll masters', permissions: ['hr.settings.manage', 'hr.payroll.prepare'] },
       },
 
       // Accounts (Phase 6)
@@ -377,19 +436,19 @@ const routes: RouteRecordRaw[] = [
         path: 'accounts',
         name: 'accounts',
         component: () => import('@/views/accounts/AccountsBooks.vue'),
-        meta: { title: 'Accounts', permission: 'accounts.reports.view' },
+        meta: { feature: 'accounts',  title: 'Accounts', permission: 'accounts.reports.view' },
       },
       {
         path: 'accounts/expenses',
         name: 'expenses',
         component: () => import('@/views/accounts/Expenses.vue'),
-        meta: { title: 'Expenses', permissions: ['accounts.expenses.create', 'accounts.view'] },
+        meta: { feature: 'accounts',  title: 'Expenses', permissions: ['accounts.expenses.create', 'accounts.view'] },
       },
       {
         path: 'accounts-masters',
         name: 'accounts-masters',
         component: () => import('@/views/accounts/AccountsMasters.vue'),
-        meta: { title: 'Accounts masters', permissions: ['accounts.settings.manage', 'accounts.view'] },
+        meta: { feature: 'accounts',  title: 'Accounts masters', permissions: ['accounts.settings.manage', 'accounts.view'] },
       },
 
       // Admin routes
@@ -438,6 +497,14 @@ const routes: RouteRecordRaw[] = [
         meta: { title: 'Edit Branch', permission: 'user-admin.branches.update' },
       },
     ],
+  },
+
+  // Customer's CRM link: book a slot, rate the service, refer a friend, view a creative
+  {
+    path: '/c/:token',
+    name: 'crm-link',
+    component: () => import('@/views/public/CrmLinkPage.vue'),
+    meta: { title: 'Express Autocare' },
   },
 
   // Customer's login-free job page (token in the URL is the credential)

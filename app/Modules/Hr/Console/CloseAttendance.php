@@ -17,6 +17,12 @@ class CloseAttendance extends Command
 
     public function handle(AttendanceService $attendance): int
     {
+        if (!\App\Core\Support\Modules::hr()) {
+            $this->info('Attendance & payroll is switched off.');
+
+            return self::SUCCESS;
+        }
+
         $date = $this->argument('date') ?: today()->subDay()->toDateString();
         $count = $attendance->closeDay($date);
         $this->info("{$date}: {$count} employees");

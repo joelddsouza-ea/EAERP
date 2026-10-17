@@ -77,10 +77,10 @@ watch(() => route.fullPath, close)
                 <div
                   :class="[
                     'rounded-2xl bg-white ring-1 ring-gray-200/80',
-                    group.collapsible ? 'divide-y divide-gray-100' : 'grid grid-cols-3 gap-1 p-2',
+                    group.key === 'settings' ? 'divide-y divide-gray-100' : 'grid grid-cols-3 gap-1 p-2',
                   ]"
                 >
-                  <template v-if="group.collapsible">
+                  <template v-if="group.key === 'settings'">
                     <RouterLink
                       v-for="item in group.items"
                       :key="item.to"
