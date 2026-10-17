@@ -12,6 +12,8 @@ use App\Modules\Crm\Models\CrmLink;
 use App\Modules\Crm\Models\Lead;
 use App\Modules\Workshop\Models\Customer;
 use App\Modules\Workshop\Models\CustomerMessage;
+use App\Modules\Workshop\Models\PackagePricing;
+use App\Modules\Workshop\Models\ServicePackage;
 use App\Modules\Workshop\Models\JobCard;
 use App\Modules\Workshop\Models\Vehicle;
 use App\Modules\Workshop\Services\CustomerMessageService;
@@ -22,7 +24,7 @@ use App\Modules\Workshop\Services\CustomerMessageService;
  * channel they wait in "Messages to send" for a one-tap WhatsApp send; with the API
  * channel (Interakt, later) they go at once.
  *
- * Placeholders: :name :car :workshop :offer :book_link :feedback_link :referral_link
+ * Placeholders: :name :car :workshop :offer :plan :price :book_link :feedback_link :referral_link
  * :view_link :due_date and any passed in. Links are made only when the text uses them.
  */
 class CrmMessageService
@@ -48,6 +50,8 @@ class CrmMessageService
             'branch_id' => $lead->branch_id,
             'job_card_id' => $options['job_card_id'] ?? null,
         ];
+
+        $params = [...$this->planValues($text, $context['package_id'], $lead->category_id ?? $lead->vehicle?->category_id), ...$params];
 
         return $this->make($lead->phone, $lead->name, $lead->carLabel(), $lead->branch, $context, $template, $text, $params, $creative, $user, [
             ...$options,
@@ -75,7 +79,35 @@ class CrmMessageService
             'job_card_id' => $jobCard?->id,
         ];
 
+        $params = [...$this->planValues($text, $context['package_id'], $vehicle?->category_id), ...$params];
+
         return $this->make($customer->whatsapp_phone ?: $customer->phone, $customer->name, $car ?: 'car', $branch, $context, $template, $text, $params, $creative, $user, $options);
+    }
+
+    /**
+     * :plan and :price for texts that use them: the chosen plan (else the lowest-priced one)
+     * at its lowest price for the car type (any type when it isn't known).
+     *
+     * @return array<string, string>
+     */
+    protected function planValues(string $text, ?int $packageId, ?int $categoryId): array
+    {
+        if (!str_contains($text, ':price') && !str_contains($text, ':plan')) {
+            return [];
+        }
+
+        $price = PackagePricing::query()
+            ->whereIn('package_id', $packageId ? [$packageId] : ServicePackage::where('is_active', true)->select('id'))
+            ->when($categoryId, fn ($q) => $q->where('category_id', $categoryId))
+            ->where('price', '>', 0)
+            ->orderBy('price')
+            ->first(['package_id', 'price']);
+        $plan = ServicePackage::whereKey($packageId ?? $price?->package_id)->value('name');
+
+        return [
+            'plan' => $plan ?? 'service plan',
+            'price' => $price ? 'Rs ' . number_format((float) $price->price, 0) : 'a fixed, upfront price',
+        ];
     }
 
     protected function make(?string $rawPhone, string $name, string $car, ?Branch $branch, array $context, string $template, string $text, array $params, ?Creative $creative, ?User $user, array $options): CustomerMessage

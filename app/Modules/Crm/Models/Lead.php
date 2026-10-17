@@ -169,9 +169,10 @@ class Lead extends Model
      */
     public function carLabel(): string
     {
-        $car = $this->vehicle
-            ? trim(($this->vehicle->make?->name ?? '') . ' ' . ($this->vehicle->model?->name ?? ''))
-            : ($this->car_text ?: trim(($this->make?->name ?? '') . ' ' . ($this->model?->name ?? '')));
+        $this->loadMissing(['vehicle.make', 'vehicle.model', 'make', 'model']);
+        $vehicleName = $this->vehicle ? trim(($this->vehicle->make?->name ?? '') . ' ' . ($this->vehicle->model?->name ?? '')) : '';
+        // A car created from the lead may have no make / model yet: what the lead said still names it
+        $car = $vehicleName ?: ($this->car_text ?: trim(($this->make?->name ?? '') . ' ' . ($this->model?->name ?? '')));
         $reg = $this->vehicle?->registration_no ?? $this->registration_no;
 
         return trim(($car ?: 'car') . ($reg ? " ({$reg})" : ''));

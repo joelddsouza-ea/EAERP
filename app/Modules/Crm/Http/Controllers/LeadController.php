@@ -35,7 +35,7 @@ class LeadController extends ApiController
         }
 
         $q = Lead::query()
-            ->with(['source:id,name,slug', 'campaign:id,name', 'assignee:id,name', 'lostReason:id,name', 'package:id,name', 'category:id,name', 'customer:id,name'])
+            ->with(['source:id,name,slug', 'campaign:id,name', 'assignee:id,name', 'lostReason:id,name', 'package:id,name', 'category:id,name', 'customer:id,name', 'vehicle.make', 'vehicle.model', 'make', 'model'])
             ->when(!$all, fn ($q) => $q->where('assigned_to', $user->id))
             ->when(!$user->isOwner(), fn ($q) => $q->where(fn ($w) => $w->whereNull('branch_id')->orWhereIn('branch_id', $user->getAccessibleBranchIds())))
             ->when($request->integer('branch_id'), fn ($q, $id) => $q->where('branch_id', $id))

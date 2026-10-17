@@ -44,9 +44,29 @@ watch(
   (open) => {
     if (!open) return
     form.value.choice = props.packageId ? `plan:${props.packageId}` : props.interest && props.interest !== 'scheduled' && props.interest !== 'insurance' ? props.interest : ''
-    loadSlots()
+    firstFreeDay()
   }
 )
+
+/** Start on the first day (from tomorrow) that still has a free slot */
+async function firstFreeDay() {
+  for (let i = 1; i <= 10; i++) {
+    const day = localDate(new Date(Date.now() + i * 86400000))
+    try {
+      const free = (await crmApi.availability(day, branchStore.currentBranchId)).data.data
+      if (free.some((s) => s.free > 0)) {
+        const unchanged = form.value.booking_date === day
+        form.value.booking_date = day
+        // A changed date reloads the slots through the watcher
+        if (unchanged) loadSlots()
+        return
+      }
+    } catch {
+      break
+    }
+  }
+  loadSlots()
+}
 watch(() => form.value.booking_date, loadSlots)
 
 async function loadSlots() {

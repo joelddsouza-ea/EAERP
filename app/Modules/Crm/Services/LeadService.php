@@ -485,7 +485,7 @@ class LeadService
         $until ??= today()->endOfDay()->toDateTimeString();
 
         return Lead::open()
-            ->with(['source:id,name', 'assignee:id,name'])
+            ->with(['source:id,name,slug', 'assignee:id,name', 'vehicle.make', 'vehicle.model', 'make', 'model'])
             ->when($userId, fn ($q) => $q->where('assigned_to', $userId))
             ->where(fn ($q) => $q->where('next_follow_up_at', '<=', $until)
                 ->orWhere(fn ($q) => $q->whereNull('first_contacted_at')->where('status', Lead::NEW)))
@@ -497,7 +497,7 @@ class LeadService
 
     public function present(Lead $l, bool $full = false): array
     {
-        $l->loadMissing(['source:id,name,slug', 'campaign:id,name', 'assignee:id,name', 'lostReason:id,name', 'package:id,name', 'category:id,name', 'customer:id,name']);
+        $l->loadMissing(['source:id,name,slug', 'campaign:id,name', 'assignee:id,name', 'lostReason:id,name', 'package:id,name', 'category:id,name', 'customer:id,name', 'vehicle.make', 'vehicle.model', 'make', 'model']);
         $overdue = $l->isOpen() && (
             ($l->next_follow_up_at && $l->next_follow_up_at->isPast())
             || (!$l->first_contacted_at && $l->first_contact_due_at && $l->first_contact_due_at->isPast())

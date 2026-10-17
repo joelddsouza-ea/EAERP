@@ -263,7 +263,7 @@ const routes: RouteRecordRaw[] = [
         meta: { title: 'Pickups & Drops', permissions: ['workshop.trips.view', 'workshop.trips.manage'] },
       },
       {
-        path: 'trips/:id(\d+)',
+        path: 'trips/:id(\\d+)',
         name: 'trip-detail',
         component: TripDetail,
         meta: { title: 'Trip', permissions: ['workshop.trips.drive', 'workshop.trips.manage'] },
@@ -350,7 +350,7 @@ const routes: RouteRecordRaw[] = [
         meta: { feature: 'crm',  title: 'Leads', permissions: ['crm.leads.view', 'crm.leads.work'] },
       },
       {
-        path: 'crm/leads/:id(\d+)',
+        path: 'crm/leads/:id(\\d+)',
         name: 'crm-lead',
         component: () => import('@/views/crm/LeadDetail.vue'),
         meta: { feature: 'crm',  title: 'Lead', permissions: ['crm.leads.view', 'crm.leads.work', 'crm.bookings.manage'] },
@@ -413,7 +413,7 @@ const routes: RouteRecordRaw[] = [
         meta: { feature: 'hr',  title: 'Payroll', permission: 'hr.payroll.prepare' },
       },
       {
-        path: 'hr/payroll/:id(\d+)',
+        path: 'hr/payroll/:id(\\d+)',
         name: 'payroll-run',
         component: () => import('@/views/hr/PayrollRunDetail.vue'),
         meta: { feature: 'hr',  title: 'Payroll', permission: 'hr.payroll.prepare' },
