@@ -91,6 +91,8 @@ class PublicJobController extends ApiController
             'version' => $this->pageVersion($jobCard),
             'report' => $report->released_at ? $this->reports->build($jobCard, forCustomer: true) : null,
             'bill' => $this->customerBill($jobCard),
+            // Driver / home technician on the way (live position while the trip is en route)
+            'driver' => app(\App\Modules\CustomerApp\Services\CustomerPortalService::class)->liveDriver($jobCard),
         ]);
     }
 

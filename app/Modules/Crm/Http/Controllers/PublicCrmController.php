@@ -154,7 +154,7 @@ class PublicCrmController extends ApiController
             'title' => $c?->title,
             'kind' => $c?->kind,
             'caption' => $c?->caption ? preg_replace('/:\w+/', '', $c->caption) : null,
-            'media_url' => $c?->hasFile() ? url("/api/v1/public/c/{$token}/media") : null,
+            'media_url' => $c?->hasFile() ? \App\Core\Support\PublicUrl::to("/api/v1/public/c/{$token}/media") : null,
             'book_url' => null,
         ];
     }

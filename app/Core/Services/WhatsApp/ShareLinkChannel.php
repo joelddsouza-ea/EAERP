@@ -13,11 +13,6 @@ class ShareLinkChannel implements WhatsAppChannel
         return 'whatsapp_share';
     }
 
-    public function deliver(string $phone, string $body): ?string
-    {
-        return null;
-    }
-
     public function needsManualSend(): bool
     {
         return true;

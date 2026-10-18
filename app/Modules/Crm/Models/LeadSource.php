@@ -27,6 +27,6 @@ class LeadSource extends Model
 
     public function webhookUrl(): string
     {
-        return url("/api/v1/public/leads/{$this->webhook_key}");
+        return \App\Core\Support\PublicUrl::to("/api/v1/public/leads/{$this->webhook_key}");
     }
 }

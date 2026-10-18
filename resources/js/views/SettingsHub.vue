@@ -10,6 +10,20 @@ import { useNavigation } from '@/components/layout/navigation'
 const { settingsGroups } = useNavigation()
 const q = ref('')
 
+// Inside the EA Workshop Android app: go back to its server-address screen
+type Cap = { isNativePlatform?: () => boolean; Plugins?: Record<string, any>; registerPlugin?: (n: string) => any }
+const cap = (window as unknown as { Capacitor?: Cap }).Capacitor
+const inApp = !!cap?.isNativePlatform?.()
+function changeServer() {
+  if (!confirmChange.value) {
+    confirmChange.value = true
+    return
+  }
+  const plugin = cap?.Plugins?.ServerConfig ?? cap?.registerPlugin?.('ServerConfig')
+  plugin?.reset()
+}
+const confirmChange = ref(false)
+
 const shown = computed(() => {
   const t = q.value.trim().toLowerCase()
   return settingsGroups.value
@@ -26,6 +40,11 @@ const shown = computed(() => {
         <p class="text-sm text-gray-500">Masters for every module. Changes are saved with the Save bar on each page.</p>
       </div>
       <input v-model="q" class="input w-64" placeholder="Find a setting…" />
+    </div>
+
+    <div v-if="inApp" class="mb-4 flex items-center justify-between gap-3 rounded-2xl bg-white px-4 py-3 ring-1 ring-gray-200/80 text-sm">
+      <span class="text-gray-600">This phone's server address</span>
+      <button type="button" class="font-medium text-red-700" @click="changeServer">{{ confirmChange ? 'Tap again to change' : 'Change server address' }}</button>
     </div>
 
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">

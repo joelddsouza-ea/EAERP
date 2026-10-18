@@ -99,6 +99,7 @@ class AttendanceService
                 'created_by' => $user->id,
             ]);
             $this->rebuildDay($user->id, $today);
+            $this->syncTracking($user->id);
 
             return $punch;
         });
@@ -201,6 +202,7 @@ class AttendanceService
                 'created_by' => $by->id,
             ]);
             $this->rebuildDay($employee->id, $date);
+            $this->syncTracking($employee->id);
 
             return $punch;
         });
@@ -224,6 +226,7 @@ class AttendanceService
                 'reason' => trim(($punch->reason ? $punch->reason . ' | ' : '') . 'Removed: ' . $reason),
             ]);
             $this->rebuildDay($punch->user_id, $date);
+            $this->syncTracking($punch->user_id);
         });
     }
 
@@ -234,6 +237,17 @@ class AttendanceService
     {
         if (app(PayrollService::class)->isLocked($userId, substr($date, 0, 7))) {
             throw new HrException('Payroll for ' . Carbon::parse($date)->format('F Y') . ' is finalised; its attendance can no longer change.');
+        }
+    }
+
+    /**
+     * Location sharing ends with the last punch out (a manager's manual punch or void too).
+     */
+    protected function syncTracking(int $userId): void
+    {
+        $location = app(LocationService::class);
+        if (!$location->punchedIn($userId)) {
+            $location->stop($userId);
         }
     }
 
@@ -420,6 +434,7 @@ class AttendanceService
             'trip' => $trip ? ['id' => $trip->id, 'label' => $trip->label(), 'status' => $trip->status] : null,
             'max_accuracy_m' => (int) WorkshopSettings::get('hr.max_gps_accuracy_m'),
             'selfie_window_seconds' => (int) WorkshopSettings::get('hr.selfie_window_seconds'),
+            'tracking' => app(LocationService::class)->clientConfig($user),
         ];
     }
 

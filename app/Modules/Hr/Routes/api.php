@@ -7,6 +7,7 @@ use App\Modules\Hr\Http\Controllers\LeaveController;
 use App\Modules\Hr\Http\Controllers\PayrollController;
 use App\Modules\Hr\Http\Controllers\SelfServiceController;
 use App\Modules\Hr\Http\Controllers\StaffMoneyController;
+use App\Modules\Hr\Http\Controllers\TrackingController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1/hr')->middleware(['auth:sanctum', 'branch.context', 'module:hr'])->group(function () {
@@ -20,6 +21,15 @@ Route::prefix('v1/hr')->middleware(['auth:sanctum', 'branch.context', 'module:hr
         Route::post('leave/{leaveRequest}/cancel', [SelfServiceController::class, 'cancelLeave']);
         Route::get('payslips', [SelfServiceController::class, 'payslips']);
         Route::get('money', [SelfServiceController::class, 'money']);
+        // Live location while punched in
+        Route::post('locations', [TrackingController::class, 'store'])->middleware('throttle:30,1');
+        Route::post('location-consent', [TrackingController::class, 'consent']);
+    });
+
+    // Live map of staff (owner / managers)
+    Route::middleware('permission:hr.tracking.view')->prefix('tracking')->group(function () {
+        Route::get('live', [TrackingController::class, 'live']);
+        Route::get('users/{user}/trail', [TrackingController::class, 'trail']);
     });
     Route::get('payslips/{payslip}/pdf', [SelfServiceController::class, 'payslipPdf']);
 

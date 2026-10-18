@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Express Autocare</string>
+    <string name="title_activity_main">Express Autocare</string>
+    <string name="package_name">in.expressautocare.app</string>
+    <string name="custom_url_scheme">in.expressautocare.app</string>
+</resources>

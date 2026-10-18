@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>EA Workshop</title>
+  <style>
+    body { margin: 0; font-family: system-ui, sans-serif; display: flex; min-height: 100vh; align-items: center; justify-content: center; text-align: center; color: #374151; padding: 20px; }
+    h1 { color: #c4161c; font-size: 1.25rem; }
+    button { display: block; width: 240px; margin: 12px auto 0; border-radius: 10px; padding: 12px; font-size: 1rem; border: 0; background: #c4161c; color: #fff; }
+    button.link { background: none; color: #4b5563; text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <div>
+    <h1>Can't reach the workshop system</h1>
+    <p>Check the internet (or the workshop Wi-Fi when testing).</p>
+    <button onclick="history.length > 1 ? history.back() : location.reload()">Try again</button>
+    <button class="link" onclick="change()">Change server address</button>
+  </div>
+  <script>
+    function change() {
+      var cap = window.Capacitor
+      var p = cap && ((cap.Plugins && cap.Plugins.ServerConfig) || (cap.registerPlugin && cap.registerPlugin('ServerConfig')))
+      if (p) p.reset()
+    }
+  </script>
+</body>
+</html>

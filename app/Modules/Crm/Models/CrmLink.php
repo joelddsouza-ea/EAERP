@@ -54,7 +54,9 @@ class CrmLink extends Model
 
     public function url(): string
     {
-        return rtrim(config('app.url'), '/') . '/c/' . $this->token();
+        return \App\Core\Support\PublicUrl::base() !== null
+            ? \App\Core\Support\PublicUrl::to('/c/' . $this->token())
+            : rtrim(config('app.url'), '/') . '/c/' . $this->token();
     }
 
     public function isUsable(): bool

@@ -9,9 +9,10 @@ use App\Core\Services\Auth\RbacService;
 use App\Core\Services\NotificationService;
 use App\Core\Services\FileStorageService;
 use App\Core\Services\ExportService;
-use App\Core\Services\WhatsApp\CloudApiChannel;
+use App\Core\Services\WhatsApp\InteraktChannel;
 use App\Core\Services\WhatsApp\ShareLinkChannel;
 use App\Core\Services\WhatsApp\WhatsAppChannel;
+use App\Core\Services\WhatsApp\WhatsAppSettings;
 
 class CoreServiceProvider extends ServiceProvider
 {
@@ -44,11 +45,10 @@ class CoreServiceProvider extends ServiceProvider
             return new FileStorageService();
         });
 
-        // WhatsApp: share link (workshop phone) until the Business API is set up
-        $this->app->singleton(WhatsAppChannel::class, function ($app) {
-            return config('workshop.customer_channel.whatsapp_driver') === 'api'
-                ? new CloudApiChannel()
-                : new ShareLinkChannel();
+        // WhatsApp: share link (workshop phone) unless Interakt is switched on in Settings › WhatsApp
+        // (not a singleton: the owner may switch it while the app runs)
+        $this->app->bind(WhatsAppChannel::class, function ($app) {
+            return WhatsAppSettings::apiOn() ? new InteraktChannel() : new ShareLinkChannel();
         });
 
         // Register Export Service
@@ -66,6 +66,10 @@ class CoreServiceProvider extends ServiceProvider
         Route::middleware('api')
             ->prefix('api')
             ->group(__DIR__ . '/../Routes/api.php');
+
+        if ($this->app->runningInConsole()) {
+            $this->commands([\App\Core\Console\SendDueWhatsApp::class]);
+        }
 
         // Load core views
         $this->loadViewsFrom(__DIR__ . '/../Resources/views', 'core');

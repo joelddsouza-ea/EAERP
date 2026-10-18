@@ -8,6 +8,7 @@ import Navbar from './Navbar.vue'
 import MobileSidebar from './MobileSidebar.vue'
 import BottomNav from './BottomNav.vue'
 import ToastContainer from '@/components/ui/ToastContainer.vue'
+import LocationSharing from './LocationSharing.vue'
 
 const route = useRoute()
 const uiStore = useUiStore()
@@ -41,6 +42,8 @@ onMounted(() => {
       ]"
     >
       <div class="mx-auto max-w-[1600px] px-3 py-4 sm:px-6 sm:py-6">
+        <!-- Live location from punch in to punch out (every screen) -->
+        <LocationSharing />
         <RouterView />
       </div>
     </main>

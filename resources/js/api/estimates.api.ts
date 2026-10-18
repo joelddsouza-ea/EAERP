@@ -1,4 +1,3 @@
-import axios from 'axios'
 import apiClient from './client'
 import type {
   ApiResponse,
@@ -10,7 +9,6 @@ import type {
   CustomerMessage,
   CustomerLinkInfo,
   ServiceReport,
-  PublicJobPage,
   PricingMasters,
   PlanMaster,
   LabourServiceMaster,
@@ -422,46 +420,8 @@ export const notificationsApi = {
   },
 }
 
-/**
- * The customer's page has no login: its own client, without the staff token or
- * the 401/403 redirects of apiClient.
- */
-const publicClient = axios.create({
-  baseURL: '/api/v1/public',
-  headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-  timeout: 30000,
-})
-
-export const publicJobApi = {
-  get(token: string) {
-    return publicClient.get<ApiResponse<PublicJobPage>>(`/j/${token}`)
-  },
-
-  decide(token: string, decisions: Decision[], comment?: string) {
-    return publicClient.post<ApiResponse<PublicJobPage>>(`/j/${token}/decisions`, { decisions, comment })
-  },
-
-  comment(token: string, body: string) {
-    return publicClient.post<ApiResponse<PublicJobPage>>(`/j/${token}/comments`, { body })
-  },
-
-  /** Cheap check the page polls; a new value means something changed */
-  version(token: string) {
-    return publicClient.get<ApiResponse<{ version: string }>>(`/j/${token}/version`)
-  },
-
-  estimatePdfUrl(token: string) {
-    return `/api/v1/public/j/${token}/estimate.pdf`
-  },
-
-  reportPdfUrl(token: string) {
-    return `/api/v1/public/j/${token}/report.pdf`
-  },
-
-  billPdfUrl(token: string) {
-    return `/api/v1/public/j/${token}/bill.pdf`
-  },
-}
+// The customer's login-free job page (also used by the customer app) has its own client
+export { publicJobApi } from './publicJob.api'
 
 /**
  * Open a PDF fetched as a blob in a new tab.

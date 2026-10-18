@@ -20,7 +20,13 @@ return Application::configure(basePath: dirname(__DIR__))
             'purchases' => \App\Modules\Workshop\Http\Middleware\PurchasesEnabled::class,
             // module:accounts | module:crm | module:hr — 404 while that module is switched off
             'module' => \App\Core\Http\Middleware\ModuleEnabled::class,
+            // Customer app: a customer session token, never a staff login
+            'auth.customer' => \App\Modules\CustomerApp\Http\Middleware\AuthenticateCustomer::class,
         ]);
+
+        // An HTTPS tunnel or reverse proxy on this machine (e.g. cloudflared while testing on phones)
+        // tells us the visitor used https, so links and photo URLs are built as https too
+        $middleware->trustProxies(at: explode(',', (string) env('TRUSTED_PROXIES', '127.0.0.1,::1')));
 
         // Using pure token-based API authentication
         // Add EnsureFrontendRequestsAreStateful back when building SPA with cookie-based auth

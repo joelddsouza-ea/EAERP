@@ -25,7 +25,7 @@ export const useAuthStore = defineStore('auth', () => {
   const userName = computed(() => user.value?.name || '')
   const userEmail = computed(() => user.value?.email || '')
   /** Optional module switched on (e.g. 'purchases': GRN, stock, supplier dues) */
-  const hasFeature = (name: 'purchases' | 'accounts' | 'crm' | 'hr') => !!user.value?.features?.[name]
+  const hasFeature = (name: 'purchases' | 'accounts' | 'crm' | 'hr' | 'customer_app') => !!user.value?.features?.[name]
 
   // Actions
   async function login(credentials: LoginRequest) {
@@ -67,6 +67,8 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   function clearAuth() {
+    // Location sharing ends with the session (loaded lazily: the tracker uses the API client)
+    void import('@/composables/useLocationTracker').then((m) => m.reset())
     token.value = null
     user.value = null
     permissions.value = []

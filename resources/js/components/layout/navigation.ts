@@ -85,7 +85,7 @@ export function useNavigation() {
   const can = (permission: string) => auth.hasPermission(permission)
   const any = (...permissions: string[]) => permissions.some(can)
   // Optional modules switched off in Settings › Modules drop out of the menu
-  const on = (module: 'accounts' | 'crm' | 'hr') => auth.hasFeature(module)
+  const on = (module: 'accounts' | 'crm' | 'hr' | 'customer_app') => auth.hasFeature(module)
 
   /** Every master, by module, for the Settings page */
   const settingsGroups = computed<NavGroup[]>(() => {
@@ -133,7 +133,7 @@ export function useNavigation() {
     const hr: NavItem[] = []
     if (on('hr') && any('hr.settings.manage', 'hr.payroll.prepare')) {
       hr.push(
-        { name: 'Pay, OT & Statutory', to: '/hr-masters?tab=settings', icon: CalendarDaysIcon },
+        { name: 'Pay, OT, Statutory & Live Location', to: '/hr-masters?tab=settings', icon: CalendarDaysIcon, hint: 'Includes location sharing from punch in to punch out' },
         { name: 'Shifts', to: '/hr-masters?tab=shifts', icon: ClockIcon },
         { name: 'Holidays', to: '/hr-masters?tab=holidays', icon: SunIcon },
         { name: 'Leave Types', to: '/hr-masters?tab=leave', icon: CalendarIcon },
@@ -146,6 +146,9 @@ export function useNavigation() {
 
     const company: NavItem[] = []
     if (auth.hasRole('owner')) company.push({ name: 'Modules (switch on / off)', to: '/settings/modules', icon: AdjustmentsHorizontalIcon, hint: 'Purchases & stock, Accounts, CRM, Attendance & payroll' })
+    if (auth.hasRole('owner')) company.push({ name: 'App Address & Customer App', to: '/settings/app', icon: GlobeAltIcon, hint: 'Public address for links and the Android app, UPI ID for customer payments' })
+    if (auth.hasRole('owner') && on('customer_app')) company.push({ name: 'AI Assistant (customer app)', to: '/settings/ai', icon: SparklesIcon, hint: 'Anthropic key, model, daily limit and monthly budget, body-shop price guide' })
+    if (auth.hasRole('owner')) company.push({ name: 'WhatsApp (Interakt API)', to: '/settings/whatsapp', icon: ChatBubbleLeftRightIcon, hint: 'Share links or Interakt; the approved template for each message' })
     if (can('user-admin.users.view')) company.push({ name: 'Users & App Logins', to: '/users', icon: UserGroupIcon })
     if (can('user-admin.branches.view')) company.push({ name: 'Branches (location, weekly off)', to: '/branches', icon: BuildingOffice2Icon })
     if (can('user-admin.roles.view')) company.push({ name: 'Roles & Access', to: '/roles', icon: ShieldCheckIcon })
@@ -197,6 +200,7 @@ export function useNavigation() {
     const billing: NavItem[] = []
     if (can('billing.invoices.view')) billing.push({ name: 'Invoices', short: 'Invoices', to: '/invoices', icon: DocumentTextIcon })
     if (can('billing.payments.view')) billing.push({ name: 'Payments', short: 'Payments', to: '/payments', icon: BanknotesIcon })
+    if (on('customer_app') && can('billing.payments.create')) billing.push({ name: 'UPI Payments to Confirm', short: 'UPI', to: '/billing/upi-claims', icon: CurrencyRupeeIcon })
     if (can('billing.reports.view')) billing.push({ name: 'Billing Reports', short: 'Reports', to: '/reports', icon: ChartBarIcon })
 
     const accounts: NavItem[] = []
@@ -205,6 +209,7 @@ export function useNavigation() {
 
     const people: NavItem[] = []
     const hrOn = on('hr')
+    if (hrOn && can('hr.tracking.view')) people.push({ name: 'Live Staff Map', short: 'Live map', to: '/hr/live', icon: MapPinIcon })
     if (hrOn && can('hr.attendance.view')) people.push({ name: 'Attendance Register', short: 'Register', to: '/hr/attendance', icon: ClockIcon })
     if (hrOn && can('hr.leave.approve')) people.push({ name: 'Leave Requests', short: 'Leave', to: '/hr/leave', icon: CalendarDaysIcon })
     if (hrOn && can('hr.employees.manage')) people.push({ name: 'Employees', short: 'Staff', to: '/hr/employees', icon: IdentificationIcon })

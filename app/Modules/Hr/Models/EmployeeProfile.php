@@ -16,7 +16,7 @@ class EmployeeProfile extends Model
         'user_id', 'branch_id', 'employee_code', 'designation', 'gender', 'date_joined', 'date_left',
         'monthly_salary', 'basic_salary', 'ot_hourly_rate', 'offday_work_amount', 'shift_id', 'weekly_off_day',
         'pt_enabled', 'pf_enabled', 'esi_enabled', 'uan', 'esic_no', 'pan', 'bank_name', 'bank_account', 'bank_ifsc',
-        'attendance_required',
+        'attendance_required', 'track_location', 'location_consent_at',
     ];
 
     protected $casts = [
@@ -31,6 +31,8 @@ class EmployeeProfile extends Model
         'pf_enabled' => 'boolean',
         'esi_enabled' => 'boolean',
         'attendance_required' => 'boolean',
+        'track_location' => 'boolean',
+        'location_consent_at' => 'datetime',
     ];
 
     public function user()

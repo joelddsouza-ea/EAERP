@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">EA Workshop</string>
+    <string name="title_activity_main">EA Workshop</string>
+    <string name="package_name">in.expressautocare.erp</string>
+    <string name="custom_url_scheme">in.expressautocare.erp</string>
+</resources>

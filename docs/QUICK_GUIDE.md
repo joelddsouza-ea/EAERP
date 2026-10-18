@@ -38,6 +38,13 @@ One page per part of the system, in plain words. Each page says **what it is for
   punch from where they are.
 - Forgot to punch? Tell your manager — they add it with a reason. You cannot edit punches yourself.
 
+**Location sharing while punched in** — from punch in to punch out the app shares your location with the
+owner and managers (the first time, it shows what is shared and asks you to confirm). A small green line at
+the top of every screen says *Sharing your location until you punch out*; a red one means location is off or
+blocked — turn it on. In the browser it works only while the app is open; **field staff should install the
+Android app** (it keeps sharing with the screen locked and shows a notification). Nothing is shared after
+punch out or on days off.
+
 **Your month** — the calendar shows each day (green present, red absent, purple leave, grey weekly off).
 Tap a day for times, late minutes and overtime.
 
@@ -183,6 +190,10 @@ payroll (staff-held money).
 
 ## 9. Payroll & staff (back office, owner, managers) — *People*
 
+- **Live Staff Map** (owner, managers): everyone punched in today on a map — moving, not moving, **no signal**
+  (phone off / app closed / location blocked), battery, which pickup or home visit they're on. Tap a person for
+  their route: km travelled, stops and gaps, with a time slider; pick a date for an earlier day.
+  Switch it off for one employee in *Employees*, or for everyone in *Settings › Pay, OT, Statutory & Live Location*.
 - **Attendance Register**: everyone's day with selfies; tap a person to add a missed punch or remove a wrong one
   (always with a reason). Month grid for the whole team.
 - **Leave Requests**: approve / reject.
@@ -206,6 +217,31 @@ accounts, users, branches (workshop location for attendance), roles.
 
 **Modules (owner)** — switch **Purchases & stock**, **Accounts**, **CRM & leads** and **Attendance & payroll**
 on or off. Nothing is deleted. After switching Accounts back on, use *Bring the books up to date*.
+
+**WhatsApp (owner)** — *Share links* (default: staff tap to send from the workshop phone) or **Interakt**
+(WhatsApp Business API). To use Interakt: paste the API key, copy the webhook URL into Interakt, then for each
+message under *Templates* copy the "Text for Interakt", get it approved in Interakt and enter its name. Messages
+with an approved template go by themselves (with delivered / read ticks); the rest stay in *Messages to send*.
+Switch back to share links any time.
+
+**App Address & Customer App (owner)** — the public address of the system (every link sent to customers uses it;
+leave empty while testing), with a QR code for setting up staff phones, the UPI ID customers pay to, and the
+helpline number. **AI Assistant (owner)** — the customer app's assistant: Anthropic key, model, daily limit,
+monthly budget, body-shop price guide, and what it was asked.
+
+---
+
+## 11. Customer app (advisors, back office) — what customers see at *<address>/app*
+
+- Customers open any WhatsApp link from us (signed in at once) or sign in with their number and a code. **When a
+  customer asks for a code, open their page (Customers) › *Customer app* card and read the code out** (only to
+  their own number). You also get a bell.
+- In the app they track the job live (driver on a map), approve or decline items with photos, pay by UPI, see
+  their service book, book a service at their car's price, keep insurance / PUC / RC, and ask the assistant.
+- **UPI payments**: *Billing › UPI Payments to Confirm* — check the UTR in the bank, then *Confirm & record*
+  (the payment is recorded on the job and the customer told) or *Reject* with a reason they see.
+- App bookings arrive in *CRM › Bookings* like web bookings ("Booked online"), with a bell: call to confirm.
+  Accident-help requests arrive as body-shop leads.
 
 ---
 

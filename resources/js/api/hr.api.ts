@@ -84,6 +84,93 @@ export interface Today {
   trip: { id: number; label: string; status: string } | null
   max_accuracy_m: number
   selfie_window_seconds: number
+  tracking: TrackingConfig
+}
+
+/** Live location: what the phone should do (from punch in to punch out) */
+export interface TrackingConfig {
+  required: boolean
+  enabled: boolean
+  interval_seconds: number
+  distance_filter_m: number
+  consent: boolean
+  retention_days: number
+}
+
+export interface LocationPoint {
+  lat: number
+  lng: number
+  accuracy: number | null
+  speed: number | null
+  heading: number | null
+  recorded_at: string
+  battery?: number | null
+  charging?: boolean | null
+}
+
+export type LiveState = 'moving' | 'still' | 'no_signal' | 'waiting' | 'not_tracked' | 'punched_out'
+
+export const LIVE_STATE_LABELS: Record<LiveState, string> = {
+  moving: 'Moving',
+  still: 'Not moving',
+  no_signal: 'No signal',
+  waiting: 'Waiting for phone',
+  not_tracked: 'Not tracked',
+  punched_out: 'Punched out',
+}
+
+export const LIVE_STATE_COLORS: Record<LiveState, string> = {
+  moving: '#16a34a',
+  still: '#2563eb',
+  no_signal: '#dc2626',
+  waiting: '#d97706',
+  not_tracked: '#6b7280',
+  punched_out: '#9ca3af',
+}
+
+export const GAP_LABELS: Record<string, string> = {
+  location_off: 'Location (GPS) is off on the phone',
+  permission_denied: 'Location permission refused on the phone',
+  app_closed: 'App closed',
+}
+
+export interface LivePerson {
+  user_id: number
+  name: string
+  role: string | null
+  designation: string | null
+  branch: string | null
+  state: LiveState
+  gap_reason: string | null
+  punched_in_at: string | null
+  punched_out_at: string | null
+  lat: number | null
+  lng: number | null
+  accuracy_m: number | null
+  last_seen_at: string | null
+  minutes_ago: number | null
+  battery_pct: number | null
+  source: 'web' | 'android' | null
+  at_workshop: string | null
+  trip: { id: number; label: string; status: string; job_number: string | null; job_card_id: number } | null
+}
+
+export interface LiveMap {
+  people: LivePerson[]
+  branches: { id: number; name: string; lat: number; lng: number; radius_m: number }[]
+  stale_minutes: number
+  tracking_enabled: boolean
+  generated_at: string
+}
+
+export interface Trail {
+  user: { id: number; name: string }
+  date: string
+  points: { t: string; lat: number; lng: number; acc: number | null; spd: number | null; bat: number | null; trip: number | null }[]
+  punches: { type: 'in' | 'out'; time: string; lat: number | null; lng: number | null; branch: string | null; source: string }[]
+  km: number
+  stops: { lat: number; lng: number; from: string; to: string; minutes: number }[]
+  gaps: { from: string; to: string; minutes: number }[]
 }
 
 export interface MonthAttendance {
@@ -245,6 +332,8 @@ export interface EmployeeProfile {
   shift?: string | null
   weekly_off_day: number | null
   attendance_required: boolean
+  track_location?: boolean
+  location_consent_at?: string | null
   // Only for those who prepare payroll
   monthly_salary?: number
   basic_salary?: number | null
@@ -361,6 +450,11 @@ export const hrApi = {
   // Self
   today: (): R<Today> => apiClient.get('/hr/me/today'),
   punch: (form: FormData): R<Today> => apiClient.post('/hr/me/punch', form, { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 120000 }),
+  sendLocations: (points: LocationPoint[], source: 'web' | 'android', gap?: string | null): R<{ accepted: number; skipped: number; tracking: boolean }> =>
+    apiClient.post('/hr/me/locations', { points, source, gap: gap ?? null }, { timeout: 20000 }),
+  locationConsent: (): R<TrackingConfig> => apiClient.post('/hr/me/location-consent'),
+  liveMap: (branchId?: number | null): R<LiveMap> => apiClient.get('/hr/tracking/live', { params: branchId ? { branch_id: branchId } : {} }),
+  trail: (userId: number, date: string): R<Trail> => apiClient.get(`/hr/tracking/users/${userId}/trail`, { params: { date } }),
   myAttendance: (period: string): R<MonthAttendance> => apiClient.get('/hr/me/attendance', { params: { period } }),
   myLeave: (): R<{ balances: LeaveBalance[]; requests: LeaveRequestRow[] }> => apiClient.get('/hr/me/leave'),
   applyLeave: (data: { leave_type_id: number; from_date: string; to_date?: string | null; half_day?: boolean; reason?: string | null }): R<LeaveRequestRow> =>

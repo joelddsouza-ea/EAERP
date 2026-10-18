@@ -51,7 +51,7 @@ class CustomerLink extends Model
 
     public function url(): string
     {
-        return url('/j/' . $this->token);
+        return \App\Core\Support\PublicUrl::to('/j/' . $this->token);
     }
 
     public static function hashToken(string $token): string

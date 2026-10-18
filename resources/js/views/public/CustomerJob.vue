@@ -9,12 +9,37 @@ import { ref, computed, onMounted, onBeforeUnmount, reactive } from 'vue'
 import { useRoute } from 'vue-router'
 import { format } from 'date-fns'
 import { CheckIcon, XMarkIcon, PhoneIcon, DocumentArrowDownIcon, PlayIcon } from '@heroicons/vue/20/solid'
-import { publicJobApi, type Decision } from '@/api/estimates.api'
+import { publicJobApi } from '@/api/publicJob.api'
+import type { Decision } from '@/api/estimates.api'
 import type { PublicJobPage, EstimateLine } from '@/api/types'
 import VoiceInput from '@/components/ui/VoiceInput.vue'
 
+/**
+ * Also shown inside the customer app (embedded: no logo bar; the app passes the page token and,
+ * when its assistant is on, an "explain" handler that adds "Why is this needed?" to each line).
+ */
+const props = defineProps<{
+  token?: string
+  embedded?: boolean
+  explain?: (lineKey: string) => Promise<string>
+}>()
+
 const route = useRoute()
-const token = String(route.params.token)
+const token = props.token ?? String(route.params.token)
+
+const explanations = reactive<Record<string, string>>({})
+const explaining = ref<string | null>(null)
+async function askWhy(lineKey: string) {
+  if (!props.explain || explanations[lineKey]) return
+  explaining.value = lineKey
+  try {
+    explanations[lineKey] = await props.explain(lineKey)
+  } catch (err: any) {
+    explanations[lineKey] = err?.response?.data?.message ?? 'Ask your service advisor about this item.'
+  } finally {
+    explaining.value = null
+  }
+}
 
 const loading = ref(true)
 const saving = ref(false)
@@ -154,7 +179,7 @@ onMounted(load)
 </script>
 
 <template>
-  <div class="min-h-screen bg-gray-100 pb-28">
+  <div :class="embedded ? 'pb-6' : 'min-h-screen bg-gray-100 pb-28'">
     <div v-if="updatedNote" class="fixed top-3 inset-x-0 z-50 mx-auto w-max rounded-full bg-gray-900/90 px-4 py-1.5 text-sm text-white shadow">
       Updated just now
     </div>
@@ -167,13 +192,13 @@ onMounted(load)
 
     <template v-else-if="page">
       <!-- Header -->
-      <div class="bg-white border-b border-gray-200">
+      <div v-if="!embedded" class="bg-white border-b border-gray-200">
         <div class="max-w-xl mx-auto px-4 py-2 flex items-center justify-between">
           <img src="/images/logo.png" alt="Express Autocare" class="h-10 w-auto" />
           <span class="text-xs text-gray-500">{{ page.workshop.name }}</span>
         </div>
       </div>
-      <header class="bg-primary-600 text-white px-4 pt-5 pb-8">
+      <header v-if="!embedded" class="bg-primary-600 text-white px-4 pt-5 pb-8">
         <div class="max-w-xl mx-auto">
           <h1 class="text-xl font-bold mt-1">{{ page.job.registration_no }}</h1>
           <p class="text-sm opacity-90">{{ page.job.car }} · Job {{ page.job.job_number }}</p>
@@ -181,10 +206,20 @@ onMounted(load)
             {{ page.job.status_label }}
           </div>
           <p v-if="page.job.plan" class="mt-2 text-sm opacity-90">Plan: {{ page.job.plan }}</p>
+          <a :href="`/app/link/job/${token}`" class="mt-3 inline-flex items-center rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-primary-700">Open in the Express Autocare app ›</a>
         </div>
       </header>
 
-      <main class="max-w-xl mx-auto px-4 -mt-4 space-y-4">
+      <main class="max-w-xl mx-auto space-y-4" :class="embedded ? '' : 'px-4 -mt-4'">
+        <!-- Driver / technician on the way (the app shows them on a map) -->
+        <section v-if="!embedded && page.driver" class="flex items-center gap-3 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-green-200">
+          <span class="text-2xl">🚗</span>
+          <div class="flex-1">
+            <p class="font-semibold text-gray-900">{{ page.driver.name }} is on the way</p>
+            <p class="text-sm text-gray-600">{{ page.driver.label }}<template v-if="page.driver.eta_minutes"> · about {{ page.driver.eta_minutes }} min</template></p>
+          </div>
+          <a v-if="page.driver.phone" :href="`tel:${page.driver.phone}`" class="rounded-full bg-green-600 p-2.5 text-white" aria-label="Call"><PhoneIcon class="h-5 w-5" /></a>
+        </section>
         <!-- Estimate -->
         <section v-if="estimate" class="rounded-2xl bg-white shadow-sm ring-1 ring-gray-200/80">
           <div class="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
@@ -238,6 +273,13 @@ onMounted(load)
                 <div class="flex justify-between gap-3">
                   <p class="font-medium text-gray-900">{{ line.description }}</p>
                   <p class="font-semibold shrink-0">{{ money(line.amount) }}</p>
+                </div>
+
+                <div v-if="explain" class="mt-1">
+                  <p v-if="explanations[line.line_key]" class="rounded-md bg-white/70 p-2 text-sm text-gray-700">{{ explanations[line.line_key] }}</p>
+                  <button v-else type="button" class="text-xs font-medium text-primary-700 underline" :disabled="explaining === line.line_key" @click="askWhy(line.line_key)">
+                    {{ explaining === line.line_key ? 'Asking…' : 'Why is this needed?' }}
+                  </button>
                 </div>
 
                 <div v-if="line.media.length" class="mt-2 flex gap-2 overflow-x-auto">
@@ -417,7 +459,8 @@ onMounted(load)
       <!-- Save bar -->
       <div
         v-if="estimate && (changed.length || comment.trim() || notice)"
-        class="fixed inset-x-0 bottom-0 border-t border-gray-200 bg-white px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-lg"
+        class="fixed inset-x-0 z-30 border-t border-gray-200 bg-white px-4 pt-3 shadow-lg"
+        :class="embedded ? 'bottom-[calc(4rem+env(safe-area-inset-bottom))] pb-3' : 'bottom-0 pb-[max(0.75rem,env(safe-area-inset-bottom))]'"
       >
         <div class="max-w-xl mx-auto">
           <p v-if="notice && !changed.length && !comment.trim()" class="text-sm text-center text-gray-700">{{ notice }}</p>

@@ -66,6 +66,7 @@ return [
         'accounts' => true,
         'crm' => true,
         'hr' => true,
+        'customer_app' => true,
     ],
 
     // Phase 6 attendance & payroll (all editable in Masters › HR & Payroll)
@@ -80,6 +81,22 @@ return [
         'default_ot_rate' => 100,
         // Extra pay for working on a weekly off or a holiday (per day)
         'default_offday_amount' => 500,
+
+        // Live location from punch in to punch out (Attendance & payroll › Live map)
+        'tracking' => [
+            'enabled' => true,
+            // The phone sends a position this often while still, or after moving this far
+            'interval_seconds' => 60,
+            'distance_filter_m' => 50,
+            // Positions rougher than this are ignored
+            'max_accuracy_m' => 150,
+            // No position for this long shows "No signal" on the map
+            'stale_minutes' => 10,
+            // Staying within 100 m this long counts as a stop on the day's trail
+            'stop_minutes' => 10,
+            // Positions are kept this many days
+            'retention_days' => 90,
+        ],
 
         // Statutory deductions (one switch for all; each employee has PT / PF / ESI ticks)
         'statutory' => [
@@ -202,7 +219,8 @@ return [
     ],
 
     'customer_channel' => [
-        // 'share' = advisor sends from the workshop phone via a wa.me link; 'api' = WhatsApp Business API
+        // Default only: Settings › WhatsApp decides ('share' = wa.me links from the workshop phone,
+        // 'api' = WhatsApp Business API through Interakt)
         'whatsapp_driver' => env('WHATSAPP_DRIVER', 'share'),
 
         // Customer links stay valid this many days after delivery (or creation, while the job is open)
@@ -223,6 +241,51 @@ return [
             'ready_for_delivery' => 'ready_for_delivery',
             'delivered' => 'thank_you',
         ],
+    ],
+
+    // Phase 8: WhatsApp Business API through Interakt (Settings › WhatsApp, owner only).
+    // Off until the owner switches it on; the API key is stored encrypted.
+    'whatsapp' => [
+        'provider' => env('WHATSAPP_DRIVER', 'share') === 'api' ? 'interakt' : 'share',
+        'interakt' => [
+            'base_url' => env('INTERAKT_BASE_URL', 'https://api.interakt.ai'),
+            'api_key' => null,
+            'webhook_secret' => null,
+            'country_code' => '+91',
+            'enabled_at' => null,
+        ],
+    ],
+
+    // Phase 9: the address phones and customers reach the ERP at (Settings › App address & links;
+    // empty = this server's own address), and the customer app
+    'app' => [
+        'public_url' => null,
+    ],
+    'customer_app' => [
+        // Pay by UPI: the workshop's UPI ID and the name shown in the customer's UPI app
+        'upi_id' => null,
+        'upi_name' => null,
+        'support_phone' => null,
+        // Sign-in codes stay valid this long
+        'otp_minutes' => 10,
+        // Notifications on the installed web app (web push)
+        'push_enabled' => true,
+    ],
+
+    // Phase 9: the customer app's AI assistant (Claude). Off until the owner adds an API key
+    // and switches it on in Settings › AI assistant.
+    'ai' => [
+        'enabled' => false,
+        'api_key' => null,
+        'model' => 'claude-opus-5-5',
+        // Questions per customer per day (estimate explanations don't count)
+        'daily_limit' => 10,
+        // The assistant pauses when the month's cost reaches this (0 = no limit)
+        'monthly_budget_inr' => 3000,
+        // For showing the cost in rupees
+        'usd_inr' => 88,
+        // Rough body-shop prices the assistant may quote as ranges (owner's text)
+        'body_shop_guide' => '',
     ],
 
 ];

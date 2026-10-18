@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>EA Workshop</title>
+  <style>
+    :root { --red: #c4161c; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: system-ui, -apple-system, sans-serif; background: #fff; color: #1f2937; }
+    main { max-width: 420px; margin: 0 auto; padding: calc(48px + env(safe-area-inset-top)) 20px 24px; }
+    h1 { color: var(--red); font-size: 1.4rem; margin: 0 0 4px; }
+    p { color: #4b5563; line-height: 1.45; font-size: .95rem; }
+    label { display: block; font-weight: 600; font-size: .9rem; margin: 20px 0 6px; }
+    input { width: 100%; font-size: 1rem; padding: 12px; border: 1px solid #d1d5db; border-radius: 10px; }
+    input:focus { outline: 2px solid var(--red); border-color: transparent; }
+    button { width: 100%; margin-top: 16px; background: var(--red); color: #fff; border: 0; border-radius: 10px; padding: 13px; font-size: 1rem; font-weight: 600; }
+    button[disabled] { opacity: .6; }
+    .hint { font-size: .8rem; color: #6b7280; margin-top: 6px; }
+    .error { color: #b91c1c; font-size: .9rem; margin-top: 10px; min-height: 1.2em; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>EA Workshop</h1>
+    <p>Enter the workshop system's address. Your manager can see it under <strong>Settings › App Address &amp; Customer App</strong> (scan or type it).</p>
+
+    <form id="form">
+      <label for="url">Server address</label>
+      <input id="url" type="url" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="https://erp.expressautocare.in" required />
+      <div class="hint">Testing on the workshop Wi-Fi? Use the computer's address, e.g. http://192.168.1.20:8000</div>
+      <div id="error" class="error"></div>
+      <button id="go" type="submit">Connect</button>
+    </form>
+  </main>
+
+  <script>
+    // The app's native address store (ServerConfigPlugin.java)
+    function plugin() {
+      var cap = window.Capacitor
+      if (!cap) return null
+      return (cap.Plugins && cap.Plugins.ServerConfig) || (cap.registerPlugin ? cap.registerPlugin('ServerConfig') : null)
+    }
+
+    var input = document.getElementById('url')
+    var error = document.getElementById('error')
+    var go = document.getElementById('go')
+
+    var p = plugin()
+    if (p) {
+      p.get().then(function (r) { if (!input.value && (r.url || r.suggested)) input.value = r.url || r.suggested }).catch(function () {})
+    }
+
+    function normalise(v) {
+      v = v.trim().replace(/\/+$/, '')
+      if (v && !/^https?:\/\//i.test(v)) v = (/^(\d{1,3}\.){3}\d{1,3}(:\d+)?$/.test(v) ? 'http://' : 'https://') + v
+      return v
+    }
+
+    // Does an EA Workshop server answer there? (no-cors: we only learn that it is reachable)
+    function reachable(url) {
+      var controller = new AbortController()
+      var timer = setTimeout(function () { controller.abort() }, 8000)
+      return fetch(url + '/api/v1/app/ping', { mode: 'no-cors', signal: controller.signal })
+        .then(function () { clearTimeout(timer); return true })
+        .catch(function () { clearTimeout(timer); return false })
+    }
+
+    document.getElementById('form').addEventListener('submit', function (e) {
+      e.preventDefault()
+      var url = normalise(input.value)
+      input.value = url
+      error.textContent = ''
+      if (!/^https?:\/\/[^\s/]+(:\d+)?(\/\S*)?$/.test(url)) { error.textContent = 'That does not look like an address.'; return }
+      go.disabled = true
+      go.textContent = 'Checking…'
+      reachable(url).then(function (ok) {
+        if (!ok) {
+          error.textContent = 'Could not reach ' + url + '. Check the address and that this phone is online (same Wi-Fi when testing).'
+          go.disabled = false
+          go.textContent = 'Connect'
+          return
+        }
+        if (!p) { window.location.href = url; return }
+        p.set({ url: url }).catch(function (err) {
+          error.textContent = (err && err.message) || 'Could not save the address.'
+          go.disabled = false
+          go.textContent = 'Connect'
+        })
+      })
+    })
+  </script>
+</body>
+</html>

@@ -7,8 +7,8 @@ use Illuminate\Database\Eloquent\Model;
 
 /**
  * A message to a customer. With the WhatsApp share channel it is "prepared" and
- * an advisor sends it from the workshop phone; with the API channel it is sent
- * directly.
+ * an advisor sends it from the workshop phone; with the API (Interakt) switched on it
+ * is sent directly when its kind has an approved template, else it waits as before.
  */
 class CustomerMessage extends Model
 {
@@ -30,18 +30,26 @@ class CustomerMessage extends Model
         'assigned_to',
         'template',
         'body',
+        // Placeholder values used, so an API template can be filled ({{1}}, {{2}} …)
+        'params',
         'phone',
         'channel',
+        'provider_message_id',
         'status',
         'error',
         'prepared_by',
         'sent_at',
         'sent_by',
+        'delivered_at',
+        'read_at',
     ];
 
     protected $casts = [
         'sent_at' => 'datetime',
         'scheduled_at' => 'datetime',
+        'delivered_at' => 'datetime',
+        'read_at' => 'datetime',
+        'params' => 'array',
     ];
 
     public function lead()

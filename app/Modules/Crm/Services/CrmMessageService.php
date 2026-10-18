@@ -6,6 +6,7 @@ use App\Core\Models\Branch;
 use App\Core\Models\User;
 use App\Core\Services\WhatsApp\ShareLinkChannel;
 use App\Core\Services\WhatsApp\WhatsAppChannel;
+use App\Core\Services\WhatsApp\WhatsAppDispatcher;
 use App\Core\Support\WorkshopSettings;
 use App\Modules\Crm\Models\Creative;
 use App\Modules\Crm\Models\CrmLink;
@@ -21,8 +22,8 @@ use App\Modules\Workshop\Services\CustomerMessageService;
 /**
  * CRM messages to leads and customers (quotes, journey creatives, booking confirmations,
  * feedback requests), logged with the job-card messages (purpose "crm"). With the share
- * channel they wait in "Messages to send" for a one-tap WhatsApp send; with the API
- * channel (Interakt, later) they go at once.
+ * channel they wait in "Messages to send" for a one-tap WhatsApp send; with Interakt on
+ * they go at once when their kind has an approved template (WhatsAppDispatcher).
  *
  * Placeholders: :name :car :workshop :offer :plan :price :book_link :feedback_link :referral_link
  * :view_link :due_date and any passed in. Links are made only when the text uses them.
@@ -137,9 +138,10 @@ class CrmMessageService
 
         // A file can't ride on a share link: the message carries a link to view it
         $mediaUrl = null;
+        $view = null;
         if ($creative?->hasFile()) {
             $view = $this->link(CrmLink::CREATIVE, [...$context, 'creative_id' => $creative->id]);
-            $mediaUrl = url('/api/v1/public/c/' . $view->token() . '/media');
+            $mediaUrl = \App\Core\Support\PublicUrl::to('/api/v1/public/c/' . $view->token() . '/media');
             if (str_contains($body, ':view_link')) {
                 $body = str_replace(':view_link', $view->url(), $body);
             } else {
@@ -157,6 +159,7 @@ class CrmMessageService
             'journey_enrollment_id' => $options['enrollment_id'] ?? null,
             'template' => substr($template, 0, 50),
             'body' => $body,
+            'params' => WhatsAppDispatcher::storableParams([...$values, 'view_link' => $view?->url()]),
             'media_url' => $mediaUrl,
             'phone' => $phone,
             'channel' => $this->channel->name(),
@@ -168,16 +171,13 @@ class CrmMessageService
         if (!$phone) {
             $message->status = CustomerMessage::FAILED;
             $message->error = 'No valid mobile number for WhatsApp.';
-        } elseif ($this->channel->needsManualSend()) {
-            $message->status = CustomerMessage::PREPARED;
         } else {
-            $error = $this->channel->deliver($phone, $body);
-            $message->status = $error ? CustomerMessage::FAILED : CustomerMessage::SENT;
-            $message->error = $error;
-            $message->sent_at = $error ? null : now();
+            // Waits for the share link; with Interakt on it goes by API when its kind has a template
+            $message->status = CustomerMessage::PREPARED;
         }
 
         $message->save();
+        app(WhatsAppDispatcher::class)->queue($message);
 
         return $message;
     }
@@ -256,6 +256,8 @@ class CrmMessageService
             'error' => $m->error,
             'scheduled_at' => $m->scheduled_at?->toIso8601String(),
             'sent_at' => $m->sent_at?->toIso8601String(),
+            'delivered_at' => $m->delivered_at?->toIso8601String(),
+            'read_at' => $m->read_at?->toIso8601String(),
             'share_url' => $m->status === CustomerMessage::PREPARED ? $this->shareUrl($m) : null,
             'lead' => $m->lead ? ['id' => $m->lead->id, 'name' => $m->lead->name, 'status' => $m->lead->status, 'temperature' => $m->lead->temperature] : null,
             'customer' => $m->customer ? ['id' => $m->customer->id, 'name' => $m->customer->name] : null,

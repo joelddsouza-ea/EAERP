@@ -128,6 +128,9 @@ class RolesAndPermissionsSeeder extends Seeder
 
         // CRM: leads, bookings, messages, insights
         $this->call(Phase7CrmPermissionsSeeder::class);
+
+        // Live staff location map
+        $this->call(Phase8TrackingPermissionsSeeder::class);
     }
 
     protected function assignRolePermissions(): void

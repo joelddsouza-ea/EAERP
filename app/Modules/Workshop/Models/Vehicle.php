@@ -22,6 +22,8 @@ class Vehicle extends BaseModel
         'insurance_company',
         'insurance_policy_no',
         'insurance_expiry',
+        // Phase 9: from the customer app's document locker (reminders before it expires)
+        'puc_expiry',
         'notes',
         'is_active',
         // Set when the car leaves (next-service reminders)
@@ -34,6 +36,7 @@ class Vehicle extends BaseModel
 
     protected $casts = [
         'insurance_expiry' => 'date',
+        'puc_expiry' => 'date',
         'is_active' => 'boolean',
         'last_service_at' => 'date',
         'next_service_due_date' => 'date',

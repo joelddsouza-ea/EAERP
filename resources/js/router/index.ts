@@ -58,7 +58,7 @@ declare module 'vue-router' {
     /** Phones: hide the bottom tab bar (the screen has its own action bar) */
     hideTabBar?: boolean
     /** Only while this optional module is switched on */
-    feature?: 'purchases' | 'accounts' | 'crm' | 'hr'
+    feature?: 'purchases' | 'accounts' | 'crm' | 'hr' | 'customer_app'
   }
 }
 
@@ -336,6 +336,30 @@ const routes: RouteRecordRaw[] = [
         meta: { title: 'Modules', roles: ['owner'] },
       },
       {
+        path: 'settings/app',
+        name: 'settings-app',
+        component: () => import('@/views/AppSettings.vue'),
+        meta: { title: 'App address & customer app', roles: ['owner'] },
+      },
+      {
+        path: 'settings/ai',
+        name: 'settings-ai',
+        component: () => import('@/views/AiSettings.vue'),
+        meta: { feature: 'customer_app', title: 'AI assistant', roles: ['owner'] },
+      },
+      {
+        path: 'billing/upi-claims',
+        name: 'upi-claims',
+        component: () => import('@/views/billing/UpiClaims.vue'),
+        meta: { feature: 'customer_app', title: 'UPI payments to confirm', permission: 'billing.payments.create' },
+      },
+      {
+        path: 'settings/whatsapp',
+        name: 'settings-whatsapp',
+        component: () => import('@/views/WhatsAppSettings.vue'),
+        meta: { title: 'WhatsApp', roles: ['owner'] },
+      },
+      {
         path: 'settings',
         name: 'settings',
         component: () => import('@/views/SettingsHub.vue'),
@@ -393,6 +417,12 @@ const routes: RouteRecordRaw[] = [
         name: 'attendance-register',
         component: () => import('@/views/hr/AttendanceRegister.vue'),
         meta: { feature: 'hr',  title: 'Attendance register', permission: 'hr.attendance.view' },
+      },
+      {
+        path: 'hr/live',
+        name: 'live-tracking',
+        component: () => import('@/views/hr/LiveTracking.vue'),
+        meta: { feature: 'hr',  title: 'Live staff map', permission: 'hr.tracking.view' },
       },
       {
         path: 'hr/leave',

@@ -5,6 +5,7 @@ namespace App\Modules\Workshop\Services;
 use App\Core\Models\User;
 use App\Core\Services\WhatsApp\ShareLinkChannel;
 use App\Core\Services\WhatsApp\WhatsAppChannel;
+use App\Core\Services\WhatsApp\WhatsAppDispatcher;
 use App\Modules\Workshop\Models\CustomerMessage;
 use App\Modules\Workshop\Models\JobCard;
 use App\Modules\Workshop\Models\WorkflowStage;
@@ -55,6 +56,7 @@ class CustomerMessageService
             'customer_id' => $customer->id,
             'template' => $template,
             'body' => $body,
+            'params' => WhatsAppDispatcher::storableParams($replace),
             'phone' => $phone,
             'channel' => $this->channel->name(),
             'prepared_by' => $user?->id,
@@ -63,16 +65,13 @@ class CustomerMessageService
         if (!$phone) {
             $message->status = CustomerMessage::FAILED;
             $message->error = 'The customer has no valid mobile number for WhatsApp.';
-        } elseif ($this->channel->needsManualSend()) {
-            $message->status = CustomerMessage::PREPARED;
         } else {
-            $error = $this->channel->deliver($phone, $body);
-            $message->status = $error ? CustomerMessage::FAILED : CustomerMessage::SENT;
-            $message->error = $error;
-            $message->sent_at = $error ? null : now();
+            // Waits for the share link; with Interakt on it goes by API when its kind has a template
+            $message->status = CustomerMessage::PREPARED;
         }
 
         $message->save();
+        app(WhatsAppDispatcher::class)->queue($message);
 
         return $message;
     }
@@ -164,6 +163,8 @@ class CustomerMessageService
             'error' => $message->error,
             'share_url' => $this->shareUrl($message),
             'sent_at' => $message->sent_at?->toIso8601String(),
+            'delivered_at' => $message->delivered_at?->toIso8601String(),
+            'read_at' => $message->read_at?->toIso8601String(),
             'sent_by' => $message->relationLoaded('sentBy') ? $message->sentBy?->only(['id', 'name']) : null,
             'created_at' => $message->created_at?->toIso8601String(),
         ];

@@ -12,7 +12,7 @@ import Card from '@/components/ui/Card.vue'
 import Spinner from '@/components/ui/Spinner.vue'
 import UnsavedChangesBar from '@/components/ui/UnsavedChangesBar.vue'
 
-type Key = 'purchases' | 'accounts' | 'crm' | 'hr'
+type Key = 'purchases' | 'accounts' | 'crm' | 'hr' | 'customer_app'
 const auth = useAuthStore()
 const toast = useToast()
 
@@ -40,6 +40,12 @@ const MODULES: { key: Key; name: string; on: string; off: string }[] = [
     name: 'Attendance & payroll',
     on: 'Selfie punch in / out, leave, payroll and payslips, salary advances, customer money collected by staff.',
     off: 'No punching or payroll; "Collected by staff" is not offered on payments.',
+  },
+  {
+    key: 'customer_app',
+    name: 'Customer app',
+    on: 'Customers sign in (job link or mobile + code) to track jobs, approve work, pay by UPI, book, keep documents and ask the assistant.',
+    off: 'The customer app is closed; job and CRM links sent on WhatsApp keep working as before.',
   },
 ]
 

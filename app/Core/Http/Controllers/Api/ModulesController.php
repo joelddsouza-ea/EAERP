@@ -25,6 +25,7 @@ class ModulesController extends ApiController
             'accounts' => 'sometimes|boolean',
             'crm' => 'sometimes|boolean',
             'hr' => 'sometimes|boolean',
+            'customer_app' => 'sometimes|boolean',
         ]);
 
         foreach ($data as $module => $on) {

@@ -13,6 +13,7 @@ import {
 } from '@/api/hr.api'
 import { inr } from '@/api/accounts.api'
 import { useToast } from '@/composables/useToast'
+import { useLocationTracker } from '@/composables/useLocationTracker'
 import Card from '@/components/ui/Card.vue'
 import Button from '@/components/ui/Button.vue'
 import Badge from '@/components/ui/Badge.vue'
@@ -20,6 +21,7 @@ import Modal from '@/components/ui/Modal.vue'
 import Spinner from '@/components/ui/Spinner.vue'
 
 const toast = useToast()
+const tracker = useLocationTracker()
 const route = useRoute()
 const router = useRouter()
 
@@ -131,6 +133,8 @@ async function onSelfie(event: Event) {
     const res = await hrApi.punch(form)
     today.value = res.data.data
     toast.success(res.data.message ?? 'Done')
+    // Punch in starts live location (the first time after the notice); punch out stops it
+    void tracker.sync(res.data.data.tracking)
     if (tab.value === 'month') loadMonth()
   } catch (err) {
     toast.apiError(err)

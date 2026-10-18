@@ -1,0 +1,21 @@
+{
+  "name": "eaerp-mobile",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Express Autocare ERP Android app: the web app in a native shell with background location for punched-in staff.",
+  "scripts": {
+    "sync": "cap sync android",
+    "open": "cap open android",
+    "build:debug": "cap sync android && cd android && gradlew.bat assembleDebug",
+    "build:release": "cap sync android && cd android && gradlew.bat bundleRelease assembleRelease"
+  },
+  "dependencies": {
+    "@capacitor-community/background-geolocation": "1.2.17",
+    "@capacitor/android": "6.2.0",
+    "@capacitor/core": "6.2.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "6.2.0",
+    "typescript": "5.4.5"
+  }
+}

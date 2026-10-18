@@ -33,7 +33,7 @@ export interface User {
   primary_branch_id?: number | null
   permissions: string[]
   /** Optional modules switched on for the organisation */
-  features?: { purchases?: boolean; accounts?: boolean; crm?: boolean; hr?: boolean }
+  features?: { purchases?: boolean; accounts?: boolean; crm?: boolean; hr?: boolean; customer_app?: boolean }
   is_active: boolean
   created_at: string
   updated_at: string
@@ -975,6 +975,8 @@ export interface PublicJobPage {
   report: ServiceReport | null
   // Once back office approves the final bill
   bill: { number: string; kind: 'proforma' | 'tax'; total: number; paid: number; balance: number; refund_due: number; gate_pass: string | null } | null
+  // Driver / home technician on the way (live while the trip is en route)
+  driver?: { name: string; label: string; phone: string | null; distance_km: number | null; eta_minutes: number | null; lat: number | null } | null
 }
 
 export interface PlanMaster {

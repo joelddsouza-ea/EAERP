@@ -74,6 +74,7 @@ class EmployeeController extends ApiController
             'shift_id' => 'nullable|integer|exists:shifts,id',
             'weekly_off_day' => 'nullable|integer|between:0,6',
             'attendance_required' => 'boolean',
+            'track_location' => 'boolean',
         ];
         if ($pay) {
             $rules += [
@@ -121,6 +122,8 @@ class EmployeeController extends ApiController
             'shift' => $p->shift?->name,
             'weekly_off_day' => $p->weekly_off_day,
             'attendance_required' => $p->attendance_required,
+            'track_location' => $p->track_location,
+            'location_consent_at' => $p->location_consent_at?->toIso8601String(),
         ];
 
         if ($pay) {

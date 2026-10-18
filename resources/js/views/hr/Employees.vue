@@ -62,6 +62,7 @@ function edit(r: EmployeeRow) {
     shift_id: null,
     weekly_off_day: null,
     attendance_required: true,
+    track_location: true,
     monthly_salary: 0,
     basic_salary: null,
     ot_hourly_rate: null,
@@ -169,6 +170,7 @@ async function save() {
           </div>
         </div>
         <label class="flex items-center gap-2"><input v-model="form.attendance_required" type="checkbox" class="h-4 w-4 rounded" /> Keeps attendance (punch in / out). Untick for staff paid the full month regardless.</label>
+        <label class="flex items-center gap-2"><input v-model="form.track_location" type="checkbox" class="h-4 w-4 rounded" /> Share live location from punch in to punch out (owner / managers see it on the live map).</label>
 
         <template v-if="canPay">
           <h4 class="font-semibold text-gray-700 border-t pt-3">Pay</h4>

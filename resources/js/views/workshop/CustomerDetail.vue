@@ -11,6 +11,7 @@ import Button from '@/components/ui/Button.vue'
 import Badge from '@/components/ui/Badge.vue'
 import Spinner from '@/components/ui/Spinner.vue'
 import BookingDialog from '@/components/crm/BookingDialog.vue'
+import CustomerAppCard from '@/components/customer/CustomerAppCard.vue'
 import { useAuthStore } from '@/stores/auth.store'
 import { crmApi, fmtDateTime, type CustomerTimeline, type LeadOptions } from '@/api/crm.api'
 
@@ -131,6 +132,9 @@ onMounted(() => {
             </div>
           </dl>
         </Card>
+
+        <!-- Customer app: sign-in code to read out, documents -->
+        <CustomerAppCard v-if="auth.hasFeature('customer_app')" :customer-id="customerId" />
 
         <!-- Vehicles -->
         <div class="lg:col-span-2">

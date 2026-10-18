@@ -64,6 +64,13 @@ const SETTINGS: { key: string; label: string; hint?: string; type?: 'bool' }[] =
   { key: 'hr.default_offday_amount', label: 'Default extra ₹ for working a weekly off / holiday (per day)' },
   { key: 'hr.max_gps_accuracy_m', label: 'Punch: GPS accuracy needed (metres)' },
   { key: 'hr.selfie_window_seconds', label: 'Punch: selfie must be taken within (seconds)', hint: '0 = no check.' },
+  { key: 'hr.tracking.enabled', label: 'Live location from punch in to punch out', type: 'bool', hint: 'Owner and managers see staff on the live map. Each employee can be switched off in Employees.' },
+  { key: 'hr.tracking.interval_seconds', label: 'Live location: send a position every (seconds)', hint: 'While standing still. Lower = more detail, more battery.' },
+  { key: 'hr.tracking.distance_filter_m', label: 'Live location: or after moving (metres)' },
+  { key: 'hr.tracking.max_accuracy_m', label: 'Live location: ignore positions rougher than (metres)' },
+  { key: 'hr.tracking.stale_minutes', label: 'Live location: "No signal" after (minutes)' },
+  { key: 'hr.tracking.stop_minutes', label: 'Live location: a stop is at least (minutes)' },
+  { key: 'hr.tracking.retention_days', label: 'Live location: keep positions for (days)' },
   { key: 'hr.statutory.enabled', label: 'Statutory deductions (PT, PF, ESI)', type: 'bool', hint: 'Off: no PT, PF or ESI on any payslip.' },
   { key: 'hr.statutory.pf_employee_rate', label: 'PF — employee %' },
   { key: 'hr.statutory.pf_employer_rate', label: 'PF — employer %' },
@@ -164,7 +171,7 @@ const roleName = (slug: string) => data.value?.roles.find((r) => r.slug === slug
               </template>
               <template v-else>
                 <span class="text-gray-600">{{ s.label }}</span>
-                <input v-model.number="settings[s.key]" type="number" min="0" step="any" class="input mt-1" :disabled="!canEdit || (s.key.includes('statutory') && !settings['hr.statutory.enabled'])" />
+                <input v-model.number="settings[s.key]" type="number" min="0" step="any" class="input mt-1" :disabled="!canEdit || (s.key.includes('statutory') && !settings['hr.statutory.enabled']) || (s.key.startsWith('hr.tracking.') && !settings['hr.tracking.enabled'])" />
               </template>
               <span v-if="s.hint" class="mt-0.5 block text-xs text-gray-500">{{ s.hint }}</span>
             </label>
