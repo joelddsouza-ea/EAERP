@@ -184,6 +184,9 @@ onMounted(fetchJobCard)
                 <h4 class="text-sm font-medium text-gray-500 mb-2">Customer</h4>
                 <p class="font-medium">{{ jobCard.customer?.name }}</p>
                 <p class="text-sm text-gray-500">{{ jobCard.customer?.phone }}</p>
+                <p v-if="jobCard.fleet_driver" class="mt-1 text-sm text-gray-700">
+                  Driver: {{ jobCard.fleet_driver.name }} · <a :href="`tel:${jobCard.fleet_driver.phone}`" class="text-primary-700">{{ jobCard.fleet_driver.phone }}</a>
+                </p>
               </div>
               <div>
                 <h4 class="text-sm font-medium text-gray-500 mb-2">Vehicle</h4>

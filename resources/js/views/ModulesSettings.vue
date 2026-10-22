@@ -12,7 +12,7 @@ import Card from '@/components/ui/Card.vue'
 import Spinner from '@/components/ui/Spinner.vue'
 import UnsavedChangesBar from '@/components/ui/UnsavedChangesBar.vue'
 
-type Key = 'purchases' | 'accounts' | 'crm' | 'hr' | 'customer_app'
+type Key = 'purchases' | 'accounts' | 'crm' | 'hr' | 'customer_app' | 'fleet'
 const auth = useAuthStore()
 const toast = useToast()
 
@@ -46,6 +46,12 @@ const MODULES: { key: Key; name: string; on: string; off: string }[] = [
     name: 'Customer app',
     on: 'Customers sign in (job link or mobile + code) to track jobs, approve work, pay by UPI, book, keep documents and ask the assistant.',
     off: 'The customer app is closed; job and CRM links sent on WhatsApp keep working as before.',
+  },
+  {
+    key: 'fleet',
+    name: 'Fleet cabs & drivers',
+    on: 'Cab owners get a fleet dashboard; their drivers sign in to the app, report problems, log km and approve extra work up to a limit.',
+    off: 'Fleet customers are ordinary customers; drivers cannot sign in.',
   },
 ]
 

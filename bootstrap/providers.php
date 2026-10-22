@@ -10,4 +10,5 @@ return [
     App\Modules\Accounts\Providers\AccountsServiceProvider::class,
     App\Modules\Crm\Providers\CrmServiceProvider::class,
     App\Modules\CustomerApp\Providers\CustomerAppServiceProvider::class,
+    App\Modules\Fleet\Providers\FleetServiceProvider::class,
 ];

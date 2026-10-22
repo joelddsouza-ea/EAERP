@@ -14,7 +14,7 @@ class CustomerOtp extends Model
     public const VIA_INTERAKT = 'interakt';
     public const VIA_STAFF = 'staff';
 
-    protected $fillable = ['customer_id', 'phone', 'code_hash', 'code_encrypted', 'delivered_via', 'attempts', 'expires_at', 'used_at'];
+    protected $fillable = ['customer_id', 'phone', 'code_hash', 'code_encrypted', 'delivered_via', 'attempts', 'expires_at', 'used_at', 'fleet_driver_id'];
 
     protected $casts = [
         'expires_at' => 'datetime',

@@ -61,7 +61,7 @@ class CrmMasterController extends ApiController
             ]),
             'campaigns' => Campaign::with(['source:id,name', 'spends'])->latest('id')->get()->map(fn (Campaign $c) => [
                 'id' => $c->id, 'name' => $c->name, 'external_ref' => $c->external_ref, 'lead_source_id' => $c->lead_source_id, 'source' => $c->source?->name,
-                'is_active' => $c->is_active, 'spends' => $c->spends->sortByDesc('period')->map(fn ($s) => ['period' => $s->period, 'amount' => $s->amount])->values(),
+                'is_active' => $c->is_active, 'whatsapp_start_text' => $c->whatsapp_start_text, 'spends' => $c->spends->sortByDesc('period')->map(fn ($s) => ['period' => $s->period, 'amount' => $s->amount])->values(),
             ]),
             'lost_reasons' => LostReason::orderBy('sort_order')->get(),
             'creatives' => Creative::with('package:id,name')->latest('id')->get()->map(fn (Creative $c) => $this->presentCreative($c)),
@@ -115,6 +115,8 @@ class CrmMasterController extends ApiController
             'name' => 'required|string|max:150',
             'external_ref' => 'nullable|string|max:150',
             'is_active' => 'boolean',
+            // The first message of its Click-to-WhatsApp ad: a chat starting with it is this campaign's lead
+            'whatsapp_start_text' => 'nullable|string|max:200',
         ]);
         $campaign ??= new Campaign();
         $campaign->fill($data)->save();

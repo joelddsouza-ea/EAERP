@@ -55,8 +55,9 @@ Route::prefix('v1')->group(function () {
                 Route::put('/settings/app', [\App\Core\Http\Controllers\Api\AppSettingsController::class, 'update']);
             });
 
-            // Settings › WhatsApp (owner): share links or Interakt, and the template for each message
-            Route::middleware('role:owner')->prefix('settings/whatsapp')->group(function () {
+            // CRM › WhatsApp settings (was Settings › WhatsApp): share links or Interakt, the template for each
+            // message, button actions, contact / event sync (screen in the CRM; also used without the CRM module)
+            Route::middleware('permission:crm.whatsapp.manage')->prefix('settings/whatsapp')->group(function () {
                 Route::get('/', [\App\Core\Http\Controllers\Api\WhatsAppSettingsController::class, 'show']);
                 Route::put('/', [\App\Core\Http\Controllers\Api\WhatsAppSettingsController::class, 'update']);
                 Route::post('/test', [\App\Core\Http\Controllers\Api\WhatsAppSettingsController::class, 'test'])->middleware('throttle:10,1');

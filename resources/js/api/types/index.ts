@@ -33,7 +33,7 @@ export interface User {
   primary_branch_id?: number | null
   permissions: string[]
   /** Optional modules switched on for the organisation */
-  features?: { purchases?: boolean; accounts?: boolean; crm?: boolean; hr?: boolean; customer_app?: boolean }
+  features?: { purchases?: boolean; accounts?: boolean; crm?: boolean; hr?: boolean; customer_app?: boolean; fleet?: boolean }
   is_active: boolean
   created_at: string
   updated_at: string
@@ -115,6 +115,9 @@ export interface Customer {
   source?: string | null
   company_name: string | null
   notes: string | null
+  /** A cab fleet: drivers use the customer app (null limit = the default in settings) */
+  is_fleet?: boolean
+  fleet_driver_limit?: number | null
   vehicles_count?: number
   job_cards_count?: number
   created_at: string
@@ -177,6 +180,9 @@ export type ServiceType =
 export type FuelLevel = 'empty' | 'quarter' | 'half' | 'three_quarter' | 'full'
 
 export interface JobCard {
+  /** A fleet cab: the driver who brought it in */
+  fleet_driver_id?: number | null
+  fleet_driver?: { id: number; name: string; phone: string } | null
   id: number
   job_number: string
   branch_id: number
@@ -788,8 +794,9 @@ export interface EstimateLine {
   amount: number
   approval_status: ApprovalStatus
   approval_label: string
-  decided_via: 'customer_link' | 'advisor_on_behalf' | null
+  decided_via: 'customer_link' | 'advisor_on_behalf' | 'fleet_driver' | null
   decided_by: string | null
+  decided_by_driver?: string | null
   decided_at: string | null
   media: EstimateLineMedia[]
   job_card_additional_job_id?: number | null
@@ -906,8 +913,9 @@ export interface EstimateDecisionLog {
   description: string
   from_status: ApprovalStatus
   to_status: ApprovalStatus
-  decided_via: 'customer_link' | 'advisor_on_behalf'
+  decided_via: 'customer_link' | 'advisor_on_behalf' | 'fleet_driver'
   user: { id: number; name: string } | null
+  fleet_driver?: { id: number; name: string } | null
   note: string | null
   customer_message: { id: number; status: string; sent_at: string | null } | null
   created_at: string
@@ -977,6 +985,10 @@ export interface PublicJobPage {
   bill: { number: string; kind: 'proforma' | 'tax'; total: number; paid: number; balance: number; refund_due: number; gate_pass: string | null } | null
   // Driver / home technician on the way (live while the trip is en route)
   driver?: { name: string; label: string; phone: string | null; distance_km: number | null; eta_minutes: number | null; lat: number | null } | null
+  // A fleet driver's own link: what they may still approve, and the lines the owner decided
+  fleet?: { driver: string; limit: number; remaining: number; owner_lines: string[] } | null
+  // After a fleet driver's answers: what went to the owner
+  fleet_result?: { held: { line_key: string; description: string; amount: number }[]; owner_decided: string[]; remaining: number }
 }
 
 export interface PlanMaster {

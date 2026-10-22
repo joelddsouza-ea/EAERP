@@ -222,7 +222,7 @@ class EstimateController extends ApiController
     public function decisionLog(JobCard $jobCard): JsonResponse
     {
         $rows = JobCardEstimateDecision::where('job_card_id', $jobCard->id)
-            ->with(['user:id,name', 'customerMessage:id,status,sent_at'])
+            ->with(['user:id,name', 'customerMessage:id,status,sent_at', 'fleetDriver:id,name'])
             ->latest('id')
             ->get();
 

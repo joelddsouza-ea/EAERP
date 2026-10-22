@@ -17,6 +17,7 @@ class JobCard extends BranchScopedModel
 
     protected $fillable = [
         'service_mode',
+        'fleet_driver_id',
         'branch_id',
         'job_number',
         'customer_id',
@@ -111,6 +112,14 @@ class JobCard extends BranchScopedModel
     /**
      * Service package.
      */
+    /**
+     * The fleet driver who brought the cab in.
+     */
+    public function fleetDriver()
+    {
+        return $this->belongsTo(\App\Modules\Fleet\Models\FleetDriver::class, 'fleet_driver_id');
+    }
+
     public function package()
     {
         return $this->belongsTo(ServicePackage::class, 'package_id');

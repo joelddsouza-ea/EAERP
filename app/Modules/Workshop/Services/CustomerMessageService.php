@@ -6,6 +6,7 @@ use App\Core\Models\User;
 use App\Core\Services\WhatsApp\ShareLinkChannel;
 use App\Core\Services\WhatsApp\WhatsAppChannel;
 use App\Core\Services\WhatsApp\WhatsAppDispatcher;
+use App\Modules\Fleet\Models\FleetDriver;
 use App\Modules\Workshop\Models\CustomerMessage;
 use App\Modules\Workshop\Models\JobCard;
 use App\Modules\Workshop\Models\WorkflowStage;
@@ -28,20 +29,29 @@ class CustomerMessageService
     }
 
     /**
+     * A message to one of a fleet's drivers (their phone, their own job link).
+     */
+    public function prepareForDriver(JobCard $jobCard, FleetDriver $driver, string $template, array $params = [], ?User $user = null): CustomerMessage
+    {
+        return $this->prepareText($jobCard, $template, null, $params, $user, $driver);
+    }
+
+    /**
      * A message from given text (e.g. a stage message the owner edited) instead of
      * the language file. Placeholders as in the language file.
      */
-    public function prepareText(JobCard $jobCard, string $template, ?string $text, array $params = [], ?User $user = null): CustomerMessage
+    public function prepareText(JobCard $jobCard, string $template, ?string $text, array $params = [], ?User $user = null, ?FleetDriver $driver = null): CustomerMessage
     {
         $jobCard->loadMissing(['customer', 'vehicle', 'branch.organization']);
         $customer = $jobCard->customer;
 
         $replace = [
-            'name' => $customer->name,
+            'name' => $driver?->firstName() ?? $customer->name,
             'car' => $jobCard->vehicle?->registration_no ?? '',
             'job' => $jobCard->job_number,
             'workshop' => $jobCard->branch?->organization?->name ?? config('app.name'),
-            'link' => $this->links->ensure($jobCard, $user)->url(),
+            // A fleet driver gets their own link (approvals on it are held to the fleet's limit)
+            'link' => $this->links->ensure($jobCard, $user, $driver?->id)->url(),
             ...$params,
         ];
 
@@ -49,7 +59,7 @@ class CustomerMessageService
             ? __("customer_messages.{$template}", $replace)
             : self::fill($text, $replace);
 
-        $phone = ShareLinkChannel::normalizePhone($customer->whatsapp_phone ?: $customer->phone);
+        $phone = ShareLinkChannel::normalizePhone($driver ? $driver->phone : ($customer->whatsapp_phone ?: $customer->phone));
 
         $message = new CustomerMessage([
             'job_card_id' => $jobCard->id,
@@ -64,7 +74,7 @@ class CustomerMessageService
 
         if (!$phone) {
             $message->status = CustomerMessage::FAILED;
-            $message->error = 'The customer has no valid mobile number for WhatsApp.';
+            $message->error = $driver ? 'The driver has no valid mobile number for WhatsApp.' : 'The customer has no valid mobile number for WhatsApp.';
         } else {
             // Waits for the share link; with Interakt on it goes by API when its kind has a template
             $message->status = CustomerMessage::PREPARED;

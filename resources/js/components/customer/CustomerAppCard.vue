@@ -10,7 +10,7 @@ import Card from '@/components/ui/Card.vue'
 
 const props = defineProps<{ customerId: number }>()
 
-interface CodeState { code: { code: string; phone: string; valid_till: string } | null; sessions: number }
+interface CodeState { code: { code: string; phone: string; valid_till: string; driver: string | null } | null; sessions: number }
 interface Doc { id: number; type_label: string; title: string | null; number: string | null; expiry_date: string | null; expired: boolean; vehicle: string | null; url: string }
 
 const state = ref<CodeState | null>(null)
@@ -48,7 +48,7 @@ onBeforeUnmount(() => clearInterval(timer))
     </template>
 
     <div v-if="state.code" class="rounded-xl bg-primary-50 p-3 text-center ring-1 ring-primary-200">
-      <p class="text-xs text-primary-800">Sign-in code to read out ({{ state.code.phone }})</p>
+      <p class="text-xs text-primary-800">Sign-in code to read out ({{ state.code.phone }}<template v-if="state.code.driver">, driver {{ state.code.driver }}</template>)</p>
       <p class="mt-1 font-mono text-3xl font-bold tracking-[0.3em] text-primary-700">{{ state.code.code }}</p>
       <p class="text-xs text-primary-800">Valid till {{ state.code.valid_till }}. Only give it to the customer on their own number.</p>
     </div>

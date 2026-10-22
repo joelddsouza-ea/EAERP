@@ -127,6 +127,7 @@ class AuthController extends ApiController
             'crm' => \App\Core\Support\Modules::crm(),
             'hr' => \App\Core\Support\Modules::hr(),
             'customer_app' => \App\Core\Support\Modules::customerApp(),
+            'fleet' => \App\Core\Support\Modules::fleet(),
         ];
     }
 

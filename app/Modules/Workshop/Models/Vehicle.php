@@ -53,6 +53,14 @@ class Vehicle extends BaseModel
     }
 
     /**
+     * Drivers of a fleet cab.
+     */
+    public function drivers()
+    {
+        return $this->belongsToMany(\App\Modules\Fleet\Models\FleetDriver::class, 'fleet_driver_vehicle');
+    }
+
+    /**
      * Vehicle make.
      */
     public function make()

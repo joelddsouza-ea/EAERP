@@ -57,6 +57,8 @@ class CreateJobCardRequest extends FormRequest
             'internal_notes' => 'nullable|string',
             // Opened from a CRM booking (the car arrived)
             'booking_id' => 'nullable|integer|exists:bookings,id',
+            // A fleet cab: the driver who brought it in (one of the fleet's drivers)
+            'fleet_driver_id' => ['nullable', 'integer', Rule::exists('fleet_drivers', 'id')->where('customer_id', (int) $this->input('customer_id'))->where('is_active', true)],
         ];
     }
 

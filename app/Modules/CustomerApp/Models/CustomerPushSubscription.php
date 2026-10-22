@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Model;
  */
 class CustomerPushSubscription extends Model
 {
-    protected $fillable = ['customer_id', 'endpoint_hash', 'endpoint', 'p256dh', 'auth', 'device', 'last_error_at'];
+    protected $fillable = ['customer_id', 'endpoint_hash', 'endpoint', 'p256dh', 'auth', 'device', 'last_error_at', 'fleet_driver_id'];
 
     protected $casts = ['last_error_at' => 'datetime'];
 }

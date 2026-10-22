@@ -131,6 +131,12 @@ class RolesAndPermissionsSeeder extends Seeder
 
         // Live staff location map
         $this->call(Phase8TrackingPermissionsSeeder::class);
+
+        // Fleets: problems reported by drivers
+        $this->call(Phase10FleetPermissionsSeeder::class);
+
+        // WhatsApp inbox and Interakt in the CRM
+        $this->call(Phase11WhatsAppPermissionsSeeder::class);
     }
 
     protected function assignRolePermissions(): void

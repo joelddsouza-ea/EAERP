@@ -14,6 +14,7 @@ class JobCardEstimateDecision extends Model
 
     protected $fillable = [
         'job_card_id',
+        'fleet_driver_id',
         'estimate_id',
         'line_key',
         'description',
@@ -25,6 +26,12 @@ class JobCardEstimateDecision extends Model
         'customer_message_id',
         'ip_address',
     ];
+
+    /** A fleet's driver who decided (within the fleet's limit) */
+    public function fleetDriver()
+    {
+        return $this->belongsTo(\App\Modules\Fleet\Models\FleetDriver::class, 'fleet_driver_id');
+    }
 
     public function user()
     {

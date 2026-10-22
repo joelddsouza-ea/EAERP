@@ -2,9 +2,9 @@
 /**
  * More: visits, bookings, wallet, documents, install the app, call us, sign out.
  */
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
-import { ClipboardDocumentListIcon, CalendarDaysIcon, WalletIcon, DocumentTextIcon, ArrowDownOnSquareIcon, PhoneIcon, ArrowRightOnRectangleIcon } from '@heroicons/vue/24/outline'
+import { ClipboardDocumentListIcon, CalendarDaysIcon, WalletIcon, DocumentTextIcon, ArrowDownOnSquareIcon, PhoneIcon, ArrowRightOnRectangleIcon, ChartBarIcon, UserGroupIcon, ExclamationTriangleIcon } from '@heroicons/vue/24/outline'
 import api from '../api'
 import { session, signOutLocally } from '../session'
 
@@ -42,18 +42,24 @@ async function signOut() {
   router.replace('/login')
 }
 
-const links = [
-  { to: '/jobs', label: 'My visits', icon: ClipboardDocumentListIcon },
-  { to: '/bookings', label: 'My bookings', icon: CalendarDaysIcon },
-  { to: '/wallet', label: 'Wallet & referrals', icon: WalletIcon },
-  { to: '/documents', label: 'My documents', icon: DocumentTextIcon },
-]
+// Drivers: no wallet; fleet owner: fleet dashboard and drivers; both: problem reports
+const links = computed(() => {
+  const role = session.viewer?.role ?? 'customer'
+  return [
+    ...(role === 'fleet_owner' ? [{ to: '/fleet', label: 'Fleet dashboard', icon: ChartBarIcon }, { to: '/fleet/drivers', label: 'Drivers', icon: UserGroupIcon }] : []),
+    ...(role !== 'customer' ? [{ to: '/reports', label: 'Problem reports', icon: ExclamationTriangleIcon }] : []),
+    { to: '/jobs', label: role === 'customer' ? 'My visits' : 'Visits', icon: ClipboardDocumentListIcon },
+    { to: '/bookings', label: role === 'customer' ? 'My bookings' : 'Bookings', icon: CalendarDaysIcon },
+    ...(role !== 'driver' ? [{ to: '/wallet', label: 'Wallet & referrals', icon: WalletIcon }] : []),
+    { to: '/documents', label: role === 'driver' ? 'Cab documents' : 'My documents', icon: DocumentTextIcon },
+  ]
+})
 </script>
 
 <template>
   <div>
     <h1 class="text-xl font-bold text-gray-900">{{ session.customer?.name }}</h1>
-    <p class="text-sm text-gray-500">{{ session.customer?.phone }}</p>
+    <p class="text-sm text-gray-500">{{ session.customer?.phone }}<template v-if="session.viewer?.role === 'driver'"> · driver for {{ session.viewer.fleet_name }}</template></p>
 
     <ul class="mt-4 divide-y divide-gray-100 rounded-2xl bg-white ring-1 ring-gray-200/80">
       <li v-for="l in links" :key="l.to">

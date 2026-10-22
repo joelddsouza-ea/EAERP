@@ -28,6 +28,8 @@ class JobCardEstimateLine extends Model
 
     public const VIA_CUSTOMER = 'customer_link';
     public const VIA_ADVISOR = 'advisor_on_behalf';
+    /** A fleet's driver, within the fleet's limit per job */
+    public const VIA_DRIVER = 'fleet_driver';
 
     /** Wording the owner chose for declined additional work */
     public const DECLINED_LABEL = 'Recommended but not approved by customer';
@@ -45,6 +47,7 @@ class JobCardEstimateLine extends Model
         'approval_status',
         'decided_via',
         'decided_by',
+        'decided_by_driver_id',
         'decided_at',
         'job_card_additional_job_id',
         'job_card_issue_id',
@@ -77,6 +80,11 @@ class JobCardEstimateLine extends Model
     public function decidedBy()
     {
         return $this->belongsTo(User::class, 'decided_by');
+    }
+
+    public function decidedByDriver()
+    {
+        return $this->belongsTo(\App\Modules\Fleet\Models\FleetDriver::class, 'decided_by_driver_id');
     }
 
     public function labourService()

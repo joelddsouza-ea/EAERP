@@ -10,7 +10,7 @@ use Illuminate\Database\Eloquent\Model;
  */
 class CustomerSession extends Model
 {
-    protected $fillable = ['customer_id', 'token_hash', 'via', 'device', 'last_used_at', 'expires_at', 'revoked_at'];
+    protected $fillable = ['customer_id', 'token_hash', 'via', 'device', 'last_used_at', 'expires_at', 'revoked_at', 'fleet_driver_id'];
 
     protected $casts = [
         'last_used_at' => 'datetime',
@@ -21,5 +21,11 @@ class CustomerSession extends Model
     public function customer()
     {
         return $this->belongsTo(Customer::class);
+    }
+
+    /** Set when a fleet's driver signed in (the customer is then the fleet) */
+    public function driver()
+    {
+        return $this->belongsTo(\App\Modules\Fleet\Models\FleetDriver::class, 'fleet_driver_id');
     }
 }

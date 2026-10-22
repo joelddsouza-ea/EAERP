@@ -194,7 +194,9 @@ class InteraktWhatsAppTest extends TestCase
         $this->assertStringContainsString('Not a WhatsApp user', $message->fresh()->error);
 
         $this->postJson($url, ['type' => 'message_received', 'data' => ['customer' => ['country_code' => '+91', 'phone_number' => '9876543210'], 'message' => ['message' => 'STOP']]])
-            ->assertOk()->assertJsonPath('data.handled', 'opted out');
+            ->assertOk();
+        // Answered at once, handled after the response (Interakt waits 3 s at most)
+        $this->assertSame('opted out', \App\Modules\Crm\Models\InteraktWebhookEvent::latest('id')->value('result'));
         $this->assertNotNull($this->customer->fresh()->marketing_opt_out_at);
     }
 }

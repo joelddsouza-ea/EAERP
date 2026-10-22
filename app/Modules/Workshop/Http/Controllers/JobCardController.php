@@ -102,6 +102,7 @@ class JobCardController extends ApiController
     {
         $jobCard->load([
             'customer',
+            'fleetDriver',
             'vehicle.make',
             'vehicle.model',
             'vehicle.category',

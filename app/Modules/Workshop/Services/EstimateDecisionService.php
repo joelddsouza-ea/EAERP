@@ -40,6 +40,7 @@ class EstimateDecisionService
         ?User $user = null,
         ?string $note = null,
         ?string $ip = null,
+        ?int $driverId = null,
     ): array {
         $estimate = $this->currentEstimate($jobCard);
         $this->assertOpen($jobCard);
@@ -68,7 +69,7 @@ class EstimateDecisionService
 
         $changes = [];
 
-        DB::transaction(function () use ($jobCard, $estimate, $lines, $decisions, $via, $user, $note, $ip, &$changes) {
+        DB::transaction(function () use ($jobCard, $estimate, $lines, $decisions, $via, $user, $note, $ip, $driverId, &$changes) {
             $audit = [];
 
             foreach ($decisions as $key => $decision) {
@@ -94,6 +95,7 @@ class EstimateDecisionService
                     'to_status' => $decision,
                     'decided_via' => $via,
                     'user_id' => $user?->id,
+                    'fleet_driver_id' => $driverId,
                     'note' => $note,
                     'ip_address' => $ip,
                 ]);
@@ -102,6 +104,8 @@ class EstimateDecisionService
                     'approval_status' => $decision,
                     'decided_via' => $via,
                     'decided_by' => $user?->id,
+                    // A fleet driver's approvals count against the fleet's limit per job
+                    'decided_by_driver_id' => $driverId,
                     'decided_at' => now(),
                 ]);
             }
@@ -134,7 +138,7 @@ class EstimateDecisionService
         if ($changes) {
             $this->resumeWorkIfAnswered($jobCard->fresh(), $estimate, $via);
 
-            if ($via === Line::VIA_CUSTOMER) {
+            if ($via === Line::VIA_CUSTOMER || $via === Line::VIA_DRIVER) {
                 $this->notifyAdvisor($jobCard, $estimate);
             }
         }

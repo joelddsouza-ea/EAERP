@@ -10,6 +10,8 @@ import { computed, type Component } from 'vue'
 import { useRoute } from 'vue-router'
 import {
   HomeIcon,
+  ExclamationTriangleIcon,
+  ChatBubbleOvalLeftEllipsisIcon,
   UsersIcon,
   TruckIcon,
   ClipboardDocumentListIcon,
@@ -85,7 +87,7 @@ export function useNavigation() {
   const can = (permission: string) => auth.hasPermission(permission)
   const any = (...permissions: string[]) => permissions.some(can)
   // Optional modules switched off in Settings › Modules drop out of the menu
-  const on = (module: 'accounts' | 'crm' | 'hr' | 'customer_app') => auth.hasFeature(module)
+  const on = (module: 'accounts' | 'crm' | 'hr' | 'customer_app' | 'fleet') => auth.hasFeature(module)
 
   /** Every master, by module, for the Settings page */
   const settingsGroups = computed<NavGroup[]>(() => {
@@ -114,6 +116,8 @@ export function useNavigation() {
     }
 
     const crm: NavItem[] = []
+    // Everything Interakt: connection, templates & buttons, contacts & events (also used without the CRM module)
+    if (can('crm.whatsapp.manage')) crm.push({ name: 'WhatsApp & Interakt', to: '/crm/whatsapp/settings', icon: ChatBubbleLeftRightIcon, hint: 'Share links or Interakt, templates and buttons, incoming chats, contact & event sync' })
     if (on('crm') && any('crm.settings.manage', 'crm.leads.manage')) {
       crm.push(
         { name: 'Journeys', to: '/crm-settings?tab=journeys', icon: PresentationChartLineIcon, hint: 'Which creative goes when (nurturing, service due, win-back…)' },
@@ -148,7 +152,6 @@ export function useNavigation() {
     if (auth.hasRole('owner')) company.push({ name: 'Modules (switch on / off)', to: '/settings/modules', icon: AdjustmentsHorizontalIcon, hint: 'Purchases & stock, Accounts, CRM, Attendance & payroll' })
     if (auth.hasRole('owner')) company.push({ name: 'App Address & Customer App', to: '/settings/app', icon: GlobeAltIcon, hint: 'Public address for links and the Android app, UPI ID for customer payments' })
     if (auth.hasRole('owner') && on('customer_app')) company.push({ name: 'AI Assistant (customer app)', to: '/settings/ai', icon: SparklesIcon, hint: 'Anthropic key, model, daily limit and monthly budget, body-shop price guide' })
-    if (auth.hasRole('owner')) company.push({ name: 'WhatsApp (Interakt API)', to: '/settings/whatsapp', icon: ChatBubbleLeftRightIcon, hint: 'Share links or Interakt; the approved template for each message' })
     if (can('user-admin.users.view')) company.push({ name: 'Users & App Logins', to: '/users', icon: UserGroupIcon })
     if (can('user-admin.branches.view')) company.push({ name: 'Branches (location, weekly off)', to: '/branches', icon: BuildingOffice2Icon })
     if (can('user-admin.roles.view')) company.push({ name: 'Roles & Access', to: '/roles', icon: ShieldCheckIcon })
@@ -179,6 +182,7 @@ export function useNavigation() {
     const crmOn = on('crm')
     if (crmOn && any('crm.leads.view', 'crm.leads.work')) crm.push({ name: 'Leads & Follow-ups', short: 'Leads', to: '/crm/leads', icon: MegaphoneIcon })
     if (crmOn && can('crm.bookings.manage')) crm.push({ name: 'Bookings', short: 'Bookings', to: '/crm/bookings', icon: CalendarDaysIcon })
+    if (crmOn && can('crm.whatsapp.inbox')) crm.push({ name: 'WhatsApp Inbox', short: 'WhatsApp', to: '/crm/whatsapp', icon: ChatBubbleOvalLeftEllipsisIcon })
     if (crmOn && can('crm.messages.send')) crm.push({ name: 'Messages to Send', short: 'Messages', to: '/crm/messages', icon: ChatBubbleLeftRightIcon })
     if (crmOn && any('crm.reports.view')) crm.push({ name: 'Insights & Feedback', short: 'Insights', to: '/crm/insights', icon: PresentationChartLineIcon })
 
@@ -189,6 +193,7 @@ export function useNavigation() {
     const customers: NavItem[] = []
     if (can('workshop.customers.view')) customers.push({ name: 'Customers', short: 'Customers', to: '/customers', icon: UsersIcon })
     if (can('workshop.vehicles.view')) customers.push({ name: 'Vehicles', short: 'Vehicles', to: '/vehicles', icon: TruckIcon })
+    if (on('fleet') && can('workshop.fleet.reports')) customers.push({ name: 'Fleet Reports', short: 'Fleet', to: '/fleet/reports', icon: ExclamationTriangleIcon })
 
     const parts: NavItem[] = []
     const purchases = auth.hasFeature('purchases')
@@ -239,7 +244,7 @@ export function useNavigation() {
     const order = fieldStaff
       ? ['/my-day', '/my-jobs', '/trips', '/attendance', '/job-cards']
       : marketing
-        ? ['/crm/leads', '/crm/bookings', '/crm/messages', '/my-day', '/attendance']
+        ? ['/crm/leads', '/crm/whatsapp', '/crm/bookings', '/crm/messages', '/my-day', '/attendance']
         : ['/', '/job-cards', '/crm/leads', '/crm/bookings', '/parts-desk', '/customers', '/payments', '/invoices', '/accounts/expenses', '/my-day']
     return order.map((to) => all.find((i) => i.to === to)).filter((i): i is NavItem => !!i).slice(0, 4)
   })

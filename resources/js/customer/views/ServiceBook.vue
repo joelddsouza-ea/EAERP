@@ -8,6 +8,7 @@ import { useRoute, RouterLink } from 'vue-router'
 import { ChevronLeftIcon, ArrowDownTrayIcon, CalendarDaysIcon } from '@heroicons/vue/24/outline'
 import api, { message, money, date } from '../api'
 import { toast } from '../ui'
+import { session } from '../session'
 
 interface Book {
   vehicle: {
@@ -82,6 +83,10 @@ async function downloadPdf() {
       <RouterLink to="/documents" class="mt-2 block text-right text-xs font-medium text-primary-700">Add insurance / PUC ›</RouterLink>
 
       <RouterLink :to="`/book?vehicle=${book.vehicle.id}`" class="mt-3 flex items-center justify-center gap-2 rounded-xl bg-primary-600 py-3 font-semibold text-white"><CalendarDaysIcon class="h-5 w-5" /> Book a service for this car</RouterLink>
+      <div v-if="session.viewer && session.viewer.role !== 'customer'" class="mt-2 grid grid-cols-2 gap-2 text-sm font-medium">
+        <RouterLink :to="`/reports/new?vehicle=${book.vehicle.id}`" class="rounded-xl bg-white py-2.5 text-center text-gray-800 ring-1 ring-gray-300">Report a problem</RouterLink>
+        <RouterLink :to="`/cars/${book.vehicle.id}/km`" class="rounded-xl bg-white py-2.5 text-center text-gray-800 ring-1 ring-gray-300">Log km</RouterLink>
+      </div>
 
       <section v-if="book.observations.length" class="mt-5 rounded-2xl bg-amber-50 p-4 ring-1 ring-amber-200">
         <h2 class="font-semibold text-amber-900">Recommended on earlier visits</h2>

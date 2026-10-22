@@ -27,6 +27,7 @@ const MyJobs = () => import('@/views/workshop/MyJobs.vue')
 const MyTrips = () => import('@/views/workshop/MyTrips.vue')
 const TripDetail = () => import('@/views/workshop/TripDetail.vue')
 const TripBoard = () => import('@/views/workshop/TripBoard.vue')
+const FleetReports = () => import('@/views/workshop/FleetReports.vue')
 const TripSettings = () => import('@/views/workshop/masters/TripSettings.vue')
 
 // Billing views
@@ -58,7 +59,7 @@ declare module 'vue-router' {
     /** Phones: hide the bottom tab bar (the screen has its own action bar) */
     hideTabBar?: boolean
     /** Only while this optional module is switched on */
-    feature?: 'purchases' | 'accounts' | 'crm' | 'hr' | 'customer_app'
+    feature?: 'purchases' | 'accounts' | 'crm' | 'hr' | 'customer_app' | 'fleet'
   }
 }
 
@@ -263,6 +264,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: 'Pickups & Drops', permissions: ['workshop.trips.view', 'workshop.trips.manage'] },
       },
       {
+        path: 'fleet/reports',
+        name: 'fleet-reports',
+        component: FleetReports,
+        meta: { feature: 'fleet', title: 'Fleet Reports', permission: 'workshop.fleet.reports' },
+      },
+      {
         path: 'trips/:id(\\d+)',
         name: 'trip-detail',
         component: TripDetail,
@@ -353,11 +360,13 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/billing/UpiClaims.vue'),
         meta: { feature: 'customer_app', title: 'UPI payments to confirm', permission: 'billing.payments.create' },
       },
+      // Moved into the CRM (Phase 11)
+      { path: 'settings/whatsapp', redirect: '/crm/whatsapp/settings' },
       {
-        path: 'settings/whatsapp',
-        name: 'settings-whatsapp',
-        component: () => import('@/views/WhatsAppSettings.vue'),
-        meta: { title: 'WhatsApp', roles: ['owner'] },
+        path: 'crm/whatsapp/settings',
+        name: 'crm-whatsapp-settings',
+        component: () => import('@/views/crm/WhatsAppSettings.vue'),
+        meta: { title: 'WhatsApp & Interakt', permission: 'crm.whatsapp.manage' },
       },
       {
         path: 'settings',
@@ -384,6 +393,12 @@ const routes: RouteRecordRaw[] = [
         name: 'crm-bookings',
         component: () => import('@/views/crm/Bookings.vue'),
         meta: { feature: 'crm',  title: 'Bookings', permission: 'crm.bookings.manage' },
+      },
+      {
+        path: 'crm/whatsapp',
+        name: 'crm-whatsapp',
+        component: () => import('@/views/crm/WhatsAppInbox.vue'),
+        meta: { feature: 'crm', title: 'WhatsApp Inbox', permission: 'crm.whatsapp.inbox' },
       },
       {
         path: 'crm/messages',

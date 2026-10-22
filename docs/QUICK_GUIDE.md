@@ -83,6 +83,21 @@ lead is updated, not duplicated. Each new lead is given to an executive in turn;
 **Messages to send** (*CRM › Messages to send*) — follow-up creatives, quotes and booking messages wait here.
 Tap **Send on WhatsApp** → WhatsApp opens with the text → send → come back → the next one is ready.
 
+**WhatsApp Inbox** (*CRM › WhatsApp Inbox*, when Interakt is on) — customers' and leads' WhatsApp chats.
+- **Mine** = your leads' chats, your open jobs' customers, and chats given to you; **Nobody's** = not yet taken
+  (open one and *Give to…* yourself). Managers also see **All**. A green number = unread; you also get a bell.
+- **Someone new writes in → a lead is made by itself** (source *WhatsApp chat*), given to an executive in turn.
+  If their first message is a campaign's *WhatsApp start text* (Click-to-WhatsApp ads), the lead is that
+  campaign's. A customer with a car in the workshop goes to that job's advisor instead (no lead).
+- **Reply** with text, a photo or a PDF for **24 hours after their last message** (WhatsApp's rule; the box
+  shows the time left). After that only an approved template can go (e.g. *Chat opener*); their reply opens the
+  chat again.
+- Ticks: ✓ sent, ✓✓ delivered, blue ✓✓ read, ⚠ not delivered (the reason shows). Job and booking messages sent
+  by the system appear in the same chat. **Make lead**, **Close** / **Reopen** from the top of the chat.
+- Button taps on our messages (e.g. *Interested*, *Call me*, *Not now*) show in the chat and move the lead by
+  themselves (interested / call now with a bell / follow up in 30 days).
+- The lead page shows the same chat. A reply of **STOP** ends marketing messages to that number.
+
 **Bookings** (*CRM › Bookings*) — today's slots and who is coming.
 - Online bookings (customers book themselves from their link) show **To confirm** — call and **Confirm**.
 - **Car arrived** (drive-in) → check the car number / type → the **job card form opens already filled**.
@@ -218,11 +233,19 @@ accounts, users, branches (workshop location for attendance), roles.
 **Modules (owner)** — switch **Purchases & stock**, **Accounts**, **CRM & leads** and **Attendance & payroll**
 on or off. Nothing is deleted. After switching Accounts back on, use *Bring the books up to date*.
 
-**WhatsApp (owner)** — *Share links* (default: staff tap to send from the workshop phone) or **Interakt**
-(WhatsApp Business API). To use Interakt: paste the API key, copy the webhook URL into Interakt, then for each
-message under *Templates* copy the "Text for Interakt", get it approved in Interakt and enter its name. Messages
-with an approved template go by themselves (with delivered / read ticks); the rest stay in *Messages to send*.
-Switch back to share links any time.
+**WhatsApp & Interakt (owner)** — *Settings › CRM › WhatsApp & Interakt* (was *Settings › WhatsApp*).
+- *Connection*: *Share links* (default: staff tap to send from the workshop phone) or **Interakt** (WhatsApp
+  Business API). Paste the API key; copy the **webhook URL** into Interakt › Developer Settings, and enter the
+  same **webhook secret key** in both places. Switches: *new chats become leads*, *send contacts / events to
+  Interakt*, *give chats to the same person in Interakt*. The card "What Interakt has sent us" shows if chats,
+  ticks and taps are arriving — incoming chats need Interakt's higher plan.
+- *Templates & buttons*: **Fetch from Interakt** lists your approved templates (with their status); for each
+  message pick its template (or copy the "Text for Interakt", get it approved, then pick it). For quick-reply
+  buttons choose what a tap does: lead interested / call me / not now. A rejected template gives the owner a bell.
+- *Contacts & events*: leads and customers go to Interakt with their details and tags every 15 minutes; events
+  (LeadCreated, BookingConfirmed, JobDelivered, ServiceDue …) can start an Interakt ongoing campaign.
+  **Send all contacts now** for the first sync.
+- Messages without an approved template stay in *Messages to send*. Switch back to share links any time.
 
 **App Address & Customer App (owner)** — the public address of the system (every link sent to customers uses it;
 leave empty while testing), with a QR code for setting up staff phones, the UPI ID customers pay to, and the
@@ -242,6 +265,29 @@ monthly budget, body-shop price guide, and what it was asked.
   (the payment is recorded on the job and the customer told) or *Reject* with a reason they see.
 - App bookings arrive in *CRM › Bookings* like web bookings ("Booked online"), with a bell: call to confirm.
   Accident-help requests arrive as body-shop leads.
+
+## 12. Fleet cabs & drivers (advisors, managers, owner) — *Customers* and *Customers › Fleet Reports*
+
+- **Make a cab owner a fleet**: open the customer › *Fleet* card › tick **Cab fleet**. Add the cabs as vehicles,
+  then **Add driver** (name, mobile, the cabs they drive). The fleet owner can also add drivers in the app.
+- **Drivers sign in** to the customer app with their own mobile number (code read out from the fleet's page, or
+  sent by WhatsApp), or with the link they get. They see only their cabs; no wallet, no adding cars.
+- **Driver's approval limit**: a driver can approve extra work up to a total per job — the default is in
+  *Settings › App address & customer app › Fleet cabs*; a fleet can have its own on its *Fleet* card. Anything
+  above it waits for the fleet owner: they get an app note and a WhatsApp message in *Messages to send*, and the
+  advisor gets a bell. A driver can decline; they can't change what the owner decided.
+- **Job card**: for a fleet cab choose the **Driver who brought the cab**. That driver hears about stages in the
+  app and gets a WhatsApp "cab ready" message with their own link. Fleets pay per job, as usual.
+- **Fleet Reports**: problems drivers report (breakdowns first, with photos, km and location). **Book in**
+  (drive-in or pickup from where the cab stands), **Open job card**, or **Close** with a note. A job card opened
+  for the cab picks its open reports up by itself. The driver and the owner are told every step.
+- **Km**: drivers log the odometer in the app; job cards add theirs. Cabs within the warning km of their next
+  service get a reminder (owner and drivers) once.
+- The owner's **Fleet dashboard** (in the app): every cab at the workshop or on the road, approvals waiting,
+  money due, km and next service, spend this month / year per cab.
+- Whole feature: *Settings › Modules › Fleet cabs & drivers*.
+- Customer app: drivers and the fleet owner see the screens in *More* (Fleet dashboard, Drivers, Problem
+  reports) and on a cab (*Report a problem*, *Log km*).
 
 ---
 

@@ -20,6 +20,13 @@ const router = createRouter({
     { path: '/documents', name: 'documents', component: () => import('./views/Documents.vue') },
     { path: '/assistant', name: 'assistant', component: () => import('./views/Assistant.vue') },
     { path: '/more', name: 'more', component: () => import('./views/More.vue') },
+    // Fleets: the owner's dashboard and drivers; problem reports and km (owner and drivers)
+    { path: '/fleet', name: 'fleet', component: () => import('./views/Fleet.vue') },
+    { path: '/fleet/drivers', name: 'fleet-drivers', component: () => import('./views/FleetDrivers.vue') },
+    { path: '/reports', name: 'reports', component: () => import('./views/Reports.vue') },
+    { path: '/fleet/reports', redirect: '/reports' },
+    { path: '/reports/new', name: 'report-new', component: () => import('./views/ReportProblem.vue') },
+    { path: '/cars/:id(\\d+)/km', name: 'car-km', component: () => import('./views/Odometer.vue') },
     { path: '/:pathMatch(.*)*', redirect: '/' },
   ],
 })

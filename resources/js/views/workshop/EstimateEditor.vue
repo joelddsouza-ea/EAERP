@@ -772,7 +772,7 @@ onMounted(load)
                 <div class="mt-1 flex flex-wrap items-center gap-2">
                   <Badge size="sm" :variant="approvalVariant(line.approval_status)">{{ line.approval_label }}</Badge>
                   <span v-if="line.decided_at" class="text-xs text-gray-400">
-                    {{ line.decided_via === 'advisor_on_behalf' ? `Recorded by ${line.decided_by}` : 'By customer' }} · {{ when(line.decided_at) }}
+                    {{ line.decided_via === 'advisor_on_behalf' ? `Recorded by ${line.decided_by}` : line.decided_via === 'fleet_driver' ? `By driver ${line.decided_by_driver ?? ''}` : 'By customer' }} · {{ when(line.decided_at) }}
                   </span>
                 </div>
                 <div v-if="line.media.length" class="mt-2 flex gap-1">

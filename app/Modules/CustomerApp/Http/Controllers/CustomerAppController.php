@@ -16,6 +16,8 @@ use App\Modules\CustomerApp\Services\CustomerExtrasService;
 use App\Modules\CustomerApp\Services\CustomerNotifier;
 use App\Modules\CustomerApp\Services\CustomerPortalService;
 use App\Modules\CustomerApp\Services\PaymentClaimService;
+use App\Modules\CustomerApp\Support\AppViewer;
+use App\Modules\Fleet\Models\FleetDriver;
 use App\Modules\Workshop\Models\Customer;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\JsonResponse;
@@ -25,6 +27,7 @@ use Illuminate\Http\Response;
 /**
  * The customer app's API. Sign-in routes are public; everything else needs a customer session
  * (middleware auth.customer) and only ever touches the signed-in customer's own records.
+ * A fleet's driver is narrowed further to the cabs linked to them (AppViewer).
  */
 class CustomerAppController extends ApiController
 {
@@ -36,6 +39,17 @@ class CustomerAppController extends ApiController
     protected function customer(Request $request): Customer
     {
         return $request->attributes->get('customer');
+    }
+
+    protected function viewer(Request $request): AppViewer
+    {
+        return $request->attributes->get('viewer') ?? new AppViewer($this->customer($request));
+    }
+
+    /** Owner-only screens (wallet, adding cars, deleting documents) */
+    protected function notForDrivers(Request $request): void
+    {
+        abort_if($this->viewer($request)->isDriver(), 403, 'Ask the fleet owner to do this.');
     }
 
     protected function guarded(callable $fn, ?string $message = null): JsonResponse
@@ -52,12 +66,12 @@ class CustomerAppController extends ApiController
     public function signInWithLink(Request $request): JsonResponse
     {
         $data = $request->validate(['kind' => 'required|in:job,crm', 'token' => 'required|string|max:100']);
-        $customer = $this->auth->fromLink($data['kind'], $data['token']);
-        if (!$customer) {
+        $account = $this->auth->accountFromLink($data['kind'], $data['token']);
+        if (!$account) {
             return $this->error('This link has expired. Sign in with your mobile number instead.', 404);
         }
 
-        $response = $this->session($customer, $data['kind'] === 'job' ? 'job_link' : 'crm_link', $request);
+        $response = $this->session($account['customer'], $data['kind'] === 'job' ? 'job_link' : 'crm_link', $request, $account['driver']);
         // A job link opens that job in the app
         if ($data['kind'] === 'job') {
             $payload = $response->getData(true);
@@ -89,22 +103,43 @@ class CustomerAppController extends ApiController
     public function verifyCode(Request $request): JsonResponse
     {
         $data = $request->validate(['phone' => 'required|string|max:20', 'code' => 'required|string|max:10']);
-        $customer = $this->auth->verifyCode($data['phone'], $data['code']);
-        if (!$customer) {
+        $accounts = $this->auth->verifyCode($data['phone'], $data['code']);
+        if (!$accounts) {
             return $this->error('That code is not right or has expired.', 422, ['code' => ['Wrong or expired code.']]);
         }
 
-        return $this->session($customer, 'otp', $request);
+        // One number, several accounts (own car + driver for a fleet): the app asks which
+        if (count($accounts) > 1) {
+            return $this->success([
+                'choose' => collect($accounts)->map(fn ($a) => CustomerAuthService::presentAccount($a))->values(),
+                'ticket' => $this->auth->choiceTicket($data['phone']),
+            ], 'Choose how to sign in');
+        }
+
+        return $this->session($accounts[0]['customer'], 'otp', $request, $accounts[0]['driver']);
     }
 
-    protected function session(Customer $customer, string $via, Request $request): JsonResponse
+    public function chooseAccount(Request $request): JsonResponse
     {
-        $issued = $this->auth->issue($customer, $via, $request->userAgent());
+        $data = $request->validate(['ticket' => 'required|string|max:1000', 'key' => 'required|string|max:20']);
+        $account = $this->auth->choose($data['ticket'], $data['key']);
+        if (!$account) {
+            return $this->error('Please sign in again.', 422);
+        }
+
+        return $this->session($account['customer'], 'otp', $request, $account['driver']);
+    }
+
+    protected function session(Customer $customer, string $via, Request $request, ?FleetDriver $driver = null): JsonResponse
+    {
+        $issued = $this->auth->issue($customer, $via, $request->userAgent(), $driver);
+        $name = $driver?->name ?? $customer->name;
 
         return $this->success([
             'token' => $issued['token'],
-            'customer' => ['id' => $customer->id, 'name' => $customer->name, 'phone' => $customer->phone],
-        ], "Welcome, {$customer->name}");
+            'customer' => ['id' => $customer->id, 'name' => $name, 'phone' => $driver?->phone ?? $customer->phone],
+            'viewer' => (new AppViewer($customer, $driver))->present(),
+        ], "Welcome, {$name}");
     }
 
     public function logout(Request $request): JsonResponse
@@ -120,7 +155,7 @@ class CustomerAppController extends ApiController
 
     public function home(Request $request): JsonResponse
     {
-        return $this->success($this->portal->home($this->customer($request)) + [
+        return $this->success($this->portal->home($this->customer($request), $this->viewer($request)) + [
             'assistant' => app(AiAssistant::class)->status($this->customer($request)),
             'push_key' => WorkshopSettings::get('customer_app.push_enabled') ? app(CustomerNotifier::class)->publicKey() : null,
         ]);
@@ -129,15 +164,15 @@ class CustomerAppController extends ApiController
     public function jobs(Request $request): JsonResponse
     {
         $customer = $this->customer($request);
-        $jobs = \App\Modules\Workshop\Models\JobCard::withoutGlobalScopes()->with(['vehicle.make', 'vehicle.model', 'package'])
-            ->where('customer_id', $customer->id)->latest('id')->limit(50)->get();
+        $jobs = $this->viewer($request)->scope(\App\Modules\Workshop\Models\JobCard::withoutGlobalScopes()->with(['vehicle.make', 'vehicle.model', 'package'])
+            ->where('customer_id', $customer->id))->latest('id')->limit(50)->get();
 
         return $this->success($jobs->map(fn ($j) => $this->portal->jobCard($j))->values());
     }
 
     public function job(Request $request, int $job): JsonResponse
     {
-        return $this->success($this->portal->jobScreen($this->customer($request), $job));
+        return $this->success($this->portal->jobScreen($this->customer($request), $job, $this->viewer($request)));
     }
 
     public function claimPayment(Request $request, int $job, PaymentClaimService $claims): JsonResponse
@@ -147,7 +182,7 @@ class CustomerAppController extends ApiController
             'utr' => 'required|string|max:30',
             'screenshot' => 'nullable|image|max:' . (int) config('workshop.job_sheets.max_photo_kb'),
         ]);
-        $jobCard = $this->portal->job($this->customer($request), $job);
+        $jobCard = $this->portal->job($this->customer($request), $job, $this->viewer($request));
 
         return $this->guarded(fn () => $claims->present($claims->claim($this->customer($request), $jobCard, (float) $data['amount'], $data['utr'], $request->file('screenshot'))),
             'Thank you! We will confirm once it reaches our bank (usually within a few hours).');
@@ -155,7 +190,7 @@ class CustomerAppController extends ApiController
 
     public function serviceBook(Request $request, int $vehicle): JsonResponse
     {
-        return $this->success($this->portal->serviceBook($this->customer($request), $vehicle));
+        return $this->success($this->portal->serviceBook($this->customer($request), $vehicle, $this->viewer($request)));
     }
 
     /**
@@ -164,7 +199,7 @@ class CustomerAppController extends ApiController
     public function serviceBookPdf(Request $request, int $vehicle): Response
     {
         $customer = $this->customer($request);
-        $book = $this->portal->serviceBook($customer, $vehicle);
+        $book = $this->portal->serviceBook($customer, $vehicle, $this->viewer($request));
         $pdf = Pdf::loadView('exports.service-history', [
             'book' => $book,
             'customer' => $customer,
@@ -177,6 +212,7 @@ class CustomerAppController extends ApiController
 
     public function addVehicle(Request $request, CustomerBookingService $bookings): JsonResponse
     {
+        $this->notForDrivers($request);
         $data = $request->validate([
             'registration_no' => 'required|string|min:6|max:15',
             'make_id' => 'nullable|integer|exists:vehicle_makes,id',
@@ -202,7 +238,10 @@ class CustomerAppController extends ApiController
 
     public function bookingOptions(Request $request, CustomerBookingService $bookings): JsonResponse
     {
-        return $this->success($bookings->options($this->customer($request), $request->integer('vehicle_id') ?: null));
+        $vehicleId = $request->integer('vehicle_id') ?: null;
+        abort_unless($this->viewer($request)->canSeeVehicle($vehicleId) || !$vehicleId, 404);
+
+        return $this->success($bookings->options($this->customer($request), $vehicleId));
     }
 
     public function slots(Request $request, CustomerBookingService $bookings): JsonResponse
@@ -230,6 +269,11 @@ class CustomerAppController extends ApiController
             'ai_request_id' => 'nullable|integer',
         ], ['address.required_unless' => 'Enter the address.']);
         $customer = $this->customer($request);
+        $viewer = $this->viewer($request);
+        abort_unless($viewer->canSeeVehicle((int) $data['vehicle_id']), 404);
+        if ($viewer->isDriver()) {
+            $data['notes'] = trim('Booked by driver ' . $viewer->driver->name . ' (' . $viewer->driver->phone . '). ' . ($data['notes'] ?? ''));
+        }
 
         return $this->guarded(function () use ($bookings, $customer, $data) {
             $booking = $bookings->book($customer, $data);
@@ -243,21 +287,22 @@ class CustomerAppController extends ApiController
 
     public function bookings(Request $request, CustomerBookingService $bookings): JsonResponse
     {
-        return $this->success($bookings->list($this->customer($request)));
+        return $this->success($bookings->list($this->customer($request), $this->viewer($request)->vehicleIds()));
     }
 
     public function cancelBooking(Request $request, int $booking, CustomerBookingService $bookings): JsonResponse
     {
         $reason = $request->validate(['reason' => 'nullable|string|max:255'])['reason'] ?? null;
 
-        return $this->guarded(fn () => ['status' => $bookings->cancel($this->customer($request), $booking, $reason)->status], 'Booking cancelled');
+        return $this->guarded(fn () => ['status' => $bookings->cancel($this->customer($request), $booking, $reason, $this->viewer($request)->vehicleIds())->status], 'Booking cancelled');
     }
 
     // ------------------------------------------------------------------ inbox and push
 
     public function notifications(Request $request): JsonResponse
     {
-        $rows = CustomerNotification::where('customer_id', $this->customer($request)->id)->latest('id')->limit(100)->get();
+        $rows = CustomerNotification::where('customer_id', $this->customer($request)->id)
+            ->where('recipient_key', (int) $this->viewer($request)->driverId())->latest('id')->limit(100)->get();
 
         return $this->success($rows->map(fn (CustomerNotification $n) => [
             'id' => $n->id, 'kind' => $n->kind, 'title' => $n->title, 'body' => $n->body, 'link' => $n->link,
@@ -268,7 +313,8 @@ class CustomerAppController extends ApiController
     public function readNotifications(Request $request): JsonResponse
     {
         $ids = $request->validate(['ids' => 'nullable|array', 'ids.*' => 'integer'])['ids'] ?? null;
-        CustomerNotification::where('customer_id', $this->customer($request)->id)->whereNull('read_at')
+        CustomerNotification::where('customer_id', $this->customer($request)->id)
+            ->where('recipient_key', (int) $this->viewer($request)->driverId())->whereNull('read_at')
             ->when($ids, fn ($q) => $q->whereIn('id', $ids))->update(['read_at' => now()]);
 
         return $this->success(null);
@@ -281,7 +327,7 @@ class CustomerAppController extends ApiController
             'keys.p256dh' => 'required|string|max:200',
             'keys.auth' => 'required|string|max:100',
         ]);
-        $notifier->subscribe($this->customer($request)->id, $data, $request->userAgent());
+        $notifier->subscribe($this->customer($request)->id, $data, $request->userAgent(), $this->viewer($request)->driverId());
 
         return $this->success(null, 'Notifications on');
     }
@@ -290,12 +336,14 @@ class CustomerAppController extends ApiController
 
     public function wallet(Request $request, CustomerExtrasService $extras): JsonResponse
     {
+        $this->notForDrivers($request);
+
         return $this->success($extras->wallet($this->customer($request)));
     }
 
     public function documents(Request $request, CustomerExtrasService $extras): JsonResponse
     {
-        return $this->success($extras->documents($this->customer($request)));
+        return $this->success($extras->documents($this->customer($request), $this->viewer($request)->vehicleIds()));
     }
 
     public function addDocument(Request $request, CustomerExtrasService $extras): JsonResponse
@@ -308,12 +356,16 @@ class CustomerAppController extends ApiController
             'expiry_date' => 'nullable|date',
             'file' => 'required|file|mimes:jpg,jpeg,png,webp,heic,pdf|max:10240',
         ]);
+        // A driver files papers for one of their cabs (or their own licence)
+        $viewer = $this->viewer($request);
+        abort_unless(empty($data['vehicle_id']) ? !$viewer->isDriver() || $data['type'] === 'licence' : $viewer->canSeeVehicle((int) $data['vehicle_id']), 404);
 
         return $this->guarded(fn () => $extras->presentDocument($extras->addDocument($this->customer($request), $data, $request->file('file'))), 'Saved');
     }
 
     public function deleteDocument(Request $request, int $document, CustomerExtrasService $extras): JsonResponse
     {
+        $this->notForDrivers($request);
         $extras->deleteDocument($this->customer($request), $document);
 
         return $this->success(null, 'Deleted');
@@ -330,7 +382,7 @@ class CustomerAppController extends ApiController
     {
         $data = $this->assistantInput($request);
         $customer = $this->customer($request);
-        $vehicle = !empty($data['vehicle_id']) ? $this->portal->vehicle($customer, (int) $data['vehicle_id']) : null;
+        $vehicle = !empty($data['vehicle_id']) ? $this->portal->vehicle($customer, (int) $data['vehicle_id'], $this->viewer($request)) : null;
 
         return $this->guarded(fn () => $this->presentAi($ai->diagnose($customer, $vehicle, $data['question'], $request->file('photos') ?? [])));
     }
@@ -339,7 +391,7 @@ class CustomerAppController extends ApiController
     {
         $data = $this->assistantInput($request);
         $customer = $this->customer($request);
-        $vehicle = !empty($data['vehicle_id']) ? $this->portal->vehicle($customer, (int) $data['vehicle_id']) : null;
+        $vehicle = !empty($data['vehicle_id']) ? $this->portal->vehicle($customer, (int) $data['vehicle_id'], $this->viewer($request)) : null;
 
         return $this->guarded(fn () => $this->presentAi($ai->accident($customer, $vehicle, $data['question'], $request->file('photos') ?? [])));
     }
@@ -359,7 +411,7 @@ class CustomerAppController extends ApiController
     {
         $data = $request->validate(['line_key' => 'required|string|max:80']);
         $customer = $this->customer($request);
-        $jobCard = $this->portal->job($customer, $job);
+        $jobCard = $this->portal->job($customer, $job, $this->viewer($request));
 
         return $this->guarded(fn () => ['text' => $ai->explainLine($customer, $jobCard, $data['line_key'])]);
     }

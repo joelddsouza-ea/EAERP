@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Model;
  */
 class CustomerNotification extends Model
 {
-    protected $fillable = ['customer_id', 'kind', 'title', 'body', 'link', 'dedupe_key', 'read_at', 'pushed_at'];
+    protected $fillable = ['customer_id', 'kind', 'title', 'body', 'link', 'dedupe_key', 'read_at', 'pushed_at', 'fleet_driver_id', 'recipient_key'];
 
     protected $casts = [
         'read_at' => 'datetime',

@@ -11,6 +11,8 @@ Route::prefix('v1/customer')->middleware('module:customer_app')->group(function 
     Route::post('auth/link', [App::class, 'signInWithLink'])->middleware('throttle:customer-sign-in');
     Route::post('auth/code', [App::class, 'requestCode'])->middleware('throttle:customer-code');
     Route::post('auth/verify', [App::class, 'verifyCode'])->middleware('throttle:customer-sign-in');
+    // One number, several accounts (own car / driver for a fleet): pick one after the code
+    Route::post('auth/choose', [App::class, 'chooseAccount'])->middleware('throttle:customer-sign-in');
 
     Route::middleware(['auth.customer', 'throttle:customer'])->group(function () {
         Route::post('auth/logout', [App::class, 'logout']);

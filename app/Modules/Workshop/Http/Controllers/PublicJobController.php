@@ -19,6 +19,8 @@ use App\Modules\Workshop\Services\ServiceReportService;
 use App\Modules\Workshop\Services\CustomerLinkService;
 use App\Modules\Billing\Services\BillingDocuments;
 use App\Modules\Billing\Services\BillingService;
+use App\Modules\Fleet\Models\FleetDriver;
+use App\Modules\Fleet\Services\FleetApprovalService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -93,6 +95,10 @@ class PublicJobController extends ApiController
             'bill' => $this->customerBill($jobCard),
             // Driver / home technician on the way (live position while the trip is en route)
             'driver' => app(\App\Modules\CustomerApp\Services\CustomerPortalService::class)->liveDriver($jobCard),
+            // A fleet driver's own link: their approval limit and the lines the owner decided
+            'fleet' => $link->fleet_driver_id && ($fleetDriver = FleetDriver::find($link->fleet_driver_id))
+                ? app(FleetApprovalService::class)->pageInfo($jobCard, $fleetDriver)
+                : null,
         ]);
     }
 
@@ -157,7 +163,7 @@ class PublicJobController extends ApiController
 
     public function decide(Request $request, string $token): JsonResponse
     {
-        [, $jobCard] = $this->resolve($token);
+        [$link, $jobCard] = $this->resolve($token);
 
         $data = $request->validate([
             'decisions' => 'required|array|min:1|max:100',
@@ -165,29 +171,41 @@ class PublicJobController extends ApiController
             'decisions.*.decision' => ['required', Rule::in([Line::APPROVED, Line::DECLINED])],
             'comment' => 'nullable|string|max:2000',
         ]);
+        $decisions = collect($data['decisions'])->pluck('decision', 'line_key')->all();
 
-        $this->decisions->decide(
-            $jobCard,
-            collect($data['decisions'])->pluck('decision', 'line_key')->all(),
-            Line::VIA_CUSTOMER,
-            null,
-            null,
-            $request->ip(),
-        );
-
-        if (!empty($data['comment'])) {
-            $this->addComment($jobCard, $data['comment']);
+        // A fleet driver's link: approvals are held to the fleet's limit, the rest goes to the owner
+        $driverResult = null;
+        if ($link->fleet_driver_id) {
+            $driver = FleetDriver::where('is_active', true)->find($link->fleet_driver_id)
+                ?? throw new EstimateException('This link is not valid any more. Please ask the workshop for a new one.', [], 404);
+            $driverResult = app(FleetApprovalService::class)->decide($jobCard, $driver, $decisions, $request->ip());
+        } else {
+            $this->decisions->decide($jobCard, $decisions, Line::VIA_CUSTOMER, null, null, $request->ip());
         }
 
-        return $this->show($token);
+        if (!empty($data['comment'])) {
+            $this->addComment($jobCard, $data['comment'], isset($driver) ? $driver : null);
+        }
+
+        $response = $this->show($token);
+        if ($driverResult && ($driverResult['held'] || $driverResult['owner_decided'])) {
+            $payload = $response->getData(true);
+            $payload['data']['fleet_result'] = $driverResult;
+            $payload['message'] = $driverResult['held']
+                ? 'Approved what fits your limit. Rs ' . number_format(array_sum(array_column($driverResult['held'], 'amount')), 0) . ' has been sent to the fleet owner to approve.'
+                : 'Some items were already decided by the fleet owner and were not changed.';
+            $response->setData($payload);
+        }
+
+        return $response;
     }
 
     public function comment(Request $request, string $token): JsonResponse
     {
-        [, $jobCard] = $this->resolve($token);
+        [$link, $jobCard] = $this->resolve($token);
         $data = $request->validate(['body' => 'required|string|max:2000']);
 
-        $this->addComment($jobCard, $data['body']);
+        $this->addComment($jobCard, $data['body'], $link->fleet_driver_id ? FleetDriver::find($link->fleet_driver_id) : null);
 
         return $this->show($token);
     }
@@ -235,13 +253,13 @@ class PublicJobController extends ApiController
             ->first();
     }
 
-    private function addComment(JobCard $jobCard, string $body): void
+    private function addComment(JobCard $jobCard, string $body, ?FleetDriver $driver = null): void
     {
         $estimate = $this->sentEstimate($jobCard) ?? throw new EstimateException('No estimate to comment on yet.', [], 404);
 
         $estimate->comments()->create([
             'author_type' => JobCardEstimateComment::AUTHOR_CUSTOMER,
-            'body' => $body,
+            'body' => $driver ? "Driver {$driver->name}: {$body}" : $body,
         ]);
     }
 }

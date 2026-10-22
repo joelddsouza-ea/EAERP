@@ -10,7 +10,8 @@ namespace App\Core\Support;
  *    to date" posts what happened meanwhile);
  *  - crm: no leads, bookings, journeys or reminders; job cards are made directly as before;
  *  - hr: no attendance, leave or payroll; "Collected by staff" payments are not offered;
- *  - customer_app: customers can't sign in to the app; job and CRM links keep working.
+ *  - customer_app: customers can't sign in to the app; job and CRM links keep working;
+ *  - fleet: no drivers, problem reports or fleet dashboard; fleet customers are ordinary customers.
  */
 class Modules
 {
@@ -19,6 +20,7 @@ class Modules
         'crm' => 'CRM & leads',
         'hr' => 'Attendance & payroll',
         'customer_app' => 'Customer app',
+        'fleet' => 'Fleet cabs & drivers',
     ];
 
     public static function enabled(string $module): bool
@@ -44,5 +46,10 @@ class Modules
     public static function customerApp(): bool
     {
         return self::enabled('customer_app');
+    }
+
+    public static function fleet(): bool
+    {
+        return self::enabled('fleet');
     }
 }

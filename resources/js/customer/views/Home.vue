@@ -5,9 +5,9 @@
  */
 import { ref, onMounted, computed } from 'vue'
 import { RouterLink } from 'vue-router'
-import { WrenchScrewdriverIcon, TruckIcon, ExclamationCircleIcon, PlusIcon, CalendarDaysIcon, SparklesIcon, DocumentTextIcon, WalletIcon, PhoneIcon } from '@heroicons/vue/24/outline'
+import { WrenchScrewdriverIcon, TruckIcon, ExclamationCircleIcon, PlusIcon, CalendarDaysIcon, SparklesIcon, DocumentTextIcon, WalletIcon, PhoneIcon, ExclamationTriangleIcon, ChartBarIcon, ClipboardIcon } from '@heroicons/vue/24/outline'
 import api, { message, money, date, type Home } from '../api'
-import { session } from '../session'
+import { session, setViewer } from '../session'
 import { ui, toast, enablePush } from '../ui'
 
 const home = ref<Home | null>(null)
@@ -27,6 +27,7 @@ async function load() {
   try {
     home.value = (await api.get('/home')).data.data
     ui.unread = home.value!.unread
+    setViewer(home.value!.viewer)
     // Phone notifications: asked once, quietly skipped where not supported
     if (home.value!.push_key && localStorage.getItem('ea_push_asked') !== '1') {
       try { localStorage.setItem('ea_push_asked', '1') } catch { /* blocked */ }
@@ -45,6 +46,7 @@ onMounted(load)
 <template>
   <div>
     <h1 class="text-xl font-bold text-gray-900">{{ greeting }}, {{ (home?.customer.name ?? session.customer?.name ?? '').split(' ')[0] }}</h1>
+    <p v-if="home?.viewer.role === 'driver'" class="text-sm text-gray-500">Driver for {{ home.viewer.fleet_name }}</p>
 
     <div v-if="loading" class="mt-10 text-center text-gray-500">Loading…</div>
 
@@ -62,11 +64,18 @@ onMounted(load)
           </div>
           <p class="mt-3 inline-flex rounded-full bg-gray-100 px-3 py-1 text-sm font-medium text-gray-800">{{ j.status_label }}</p>
           <div class="mt-3 space-y-1.5 text-sm">
-            <p v-if="j.approvals_pending" class="flex items-center gap-2 font-medium text-amber-700"><ExclamationCircleIcon class="h-5 w-5" /> {{ j.approvals_pending }} item(s) need your approval</p>
+            <p v-if="j.approvals_pending" class="flex items-center gap-2 font-medium text-amber-700"><ExclamationCircleIcon class="h-5 w-5" /> {{ j.approvals_pending }} item(s) need your approval<template v-if="j.driver_limit_left !== null"> (you can approve {{ money(j.driver_limit_left) }})</template></p>
             <p v-if="j.driver_on_the_way" class="flex items-center gap-2 font-medium text-green-700"><TruckIcon class="h-5 w-5" /> Our team is on the way: track live</p>
             <p v-if="j.balance" class="flex items-center gap-2 font-medium text-gray-800"><WalletIcon class="h-5 w-5" /> {{ money(j.balance) }} to pay</p>
           </div>
         </RouterLink>
+      </section>
+
+      <!-- Fleet: the owner's dashboard; owner and drivers report problems -->
+      <section v-if="home.viewer.role !== 'customer'" class="mt-4 grid grid-cols-2 gap-2 text-center text-xs font-medium text-gray-700">
+        <RouterLink to="/reports/new" class="rounded-2xl bg-white p-3 shadow-sm ring-1 ring-gray-200/80"><ExclamationTriangleIcon class="mx-auto mb-1 h-6 w-6 text-primary-600" />Report a problem</RouterLink>
+        <RouterLink v-if="home.viewer.role === 'fleet_owner'" to="/fleet" class="rounded-2xl bg-white p-3 shadow-sm ring-1 ring-gray-200/80"><ChartBarIcon class="mx-auto mb-1 h-6 w-6 text-primary-600" />Fleet dashboard</RouterLink>
+        <RouterLink v-else to="/reports" class="rounded-2xl bg-white p-3 shadow-sm ring-1 ring-gray-200/80"><ClipboardIcon class="mx-auto mb-1 h-6 w-6 text-primary-600" />My reports</RouterLink>
       </section>
 
       <!-- Quick actions -->
@@ -75,16 +84,16 @@ onMounted(load)
         <RouterLink v-if="home.assistant.enabled" to="/assistant" class="rounded-2xl bg-white p-3 shadow-sm ring-1 ring-gray-200/80"><SparklesIcon class="mx-auto mb-1 h-6 w-6 text-primary-600" />What's wrong with my car?</RouterLink>
         <RouterLink v-else to="/documents" class="rounded-2xl bg-white p-3 shadow-sm ring-1 ring-gray-200/80"><DocumentTextIcon class="mx-auto mb-1 h-6 w-6 text-primary-600" />My documents</RouterLink>
         <a v-if="home.support_phone" :href="`tel:${home.support_phone}`" class="rounded-2xl bg-white p-3 shadow-sm ring-1 ring-gray-200/80"><PhoneIcon class="mx-auto mb-1 h-6 w-6 text-primary-600" />Call us</a>
-        <RouterLink v-else to="/wallet" class="rounded-2xl bg-white p-3 shadow-sm ring-1 ring-gray-200/80"><WalletIcon class="mx-auto mb-1 h-6 w-6 text-primary-600" />Wallet</RouterLink>
+        <RouterLink v-else-if="home.viewer.role !== 'driver'" to="/wallet" class="rounded-2xl bg-white p-3 shadow-sm ring-1 ring-gray-200/80"><WalletIcon class="mx-auto mb-1 h-6 w-6 text-primary-600" />Wallet</RouterLink>
       </section>
 
       <!-- Cars -->
       <section class="mt-5">
         <div class="mb-2 flex items-center justify-between">
-          <h2 class="font-semibold text-gray-900">My cars</h2>
-          <RouterLink to="/cars/new" class="inline-flex items-center gap-1 text-sm font-medium text-primary-700"><PlusIcon class="h-4 w-4" /> Add a car</RouterLink>
+          <h2 class="font-semibold text-gray-900">{{ home.viewer.role === 'customer' ? 'My cars' : home.viewer.role === 'driver' ? 'My cabs' : 'Cabs' }}</h2>
+          <RouterLink v-if="home.viewer.role !== 'driver'" to="/cars/new" class="inline-flex items-center gap-1 text-sm font-medium text-primary-700"><PlusIcon class="h-4 w-4" /> Add a car</RouterLink>
         </div>
-        <p v-if="!home.vehicles.length" class="rounded-2xl bg-white p-4 text-sm text-gray-500 ring-1 ring-gray-200/80">No cars yet. Add your car to book and get reminders.</p>
+        <p v-if="!home.vehicles.length" class="rounded-2xl bg-white p-4 text-sm text-gray-500 ring-1 ring-gray-200/80">{{ home.viewer.role === 'driver' ? 'No cabs are linked to you yet. Ask the fleet owner to add you to a cab.' : 'No cars yet. Add your car to book and get reminders.' }}</p>
         <div class="space-y-3">
           <RouterLink v-for="v in home.vehicles" :key="v.id" :to="`/cars/${v.id}`" class="block rounded-2xl bg-white p-4 shadow-sm ring-1 ring-gray-200/80">
             <div class="flex items-center justify-between">

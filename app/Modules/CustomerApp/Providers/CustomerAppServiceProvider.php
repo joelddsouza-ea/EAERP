@@ -81,13 +81,12 @@ class CustomerAppServiceProvider extends ServiceProvider
         };
         $kind = $status === 'awaiting_approval' ? 'approval' : (str_contains($status, 'en_route') ? 'driver' : 'stage');
 
-        app(CustomerNotifier::class)->notify(
-            $job->customer_id,
-            $kind,
-            ($job->vehicle?->registration_no ? $job->vehicle->registration_no . ': ' : '') . $label,
-            $body,
-            "/app/jobs/{$job->id}",
-            "stage:{$job->id}:{$status}",
-        );
+        $title = ($job->vehicle?->registration_no ? $job->vehicle->registration_no . ': ' : '') . $label;
+        app(CustomerNotifier::class)->notify($job->customer_id, $kind, $title, $body, "/app/jobs/{$job->id}", "stage:{$job->id}:{$status}");
+
+        // A fleet cab: the driver who brought it in (else the cab's drivers) hear too
+        foreach (\App\Modules\Fleet\Services\FleetNotifications::driversFor($job) as $driverId) {
+            app(CustomerNotifier::class)->notify($job->customer_id, $kind, $title, $body, "/app/jobs/{$job->id}", "stage:{$job->id}:{$status}", $driverId);
+        }
     }
 }

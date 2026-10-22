@@ -6,6 +6,7 @@ use App\Modules\Crm\Http\Controllers\InsightsController;
 use App\Modules\Crm\Http\Controllers\LeadController;
 use App\Modules\Crm\Http\Controllers\MessageQueueController;
 use App\Modules\Crm\Http\Controllers\PublicCrmController;
+use App\Modules\Crm\Http\Controllers\WhatsAppController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1/crm')->middleware(['auth:sanctum', 'branch.context', 'module:crm'])->group(function () {
@@ -77,7 +78,32 @@ Route::prefix('v1/crm')->middleware(['auth:sanctum', 'branch.context', 'module:c
         Route::put('settings', [CrmMasterController::class, 'saveSettings']);
     });
     Route::post('masters/campaigns/{campaign}/spend', [CrmMasterController::class, 'saveSpend'])->middleware('permission:crm.campaigns.spend');
+
+    // WhatsApp inbox (Interakt): chats with leads and customers
+    Route::middleware('permission:crm.whatsapp.inbox')->prefix('whatsapp')->group(function () {
+        Route::get('conversations', [WhatsAppController::class, 'index']);
+        Route::get('unread', [WhatsAppController::class, 'unread']);
+        Route::get('people', [WhatsAppController::class, 'people']);
+        Route::get('conversations/{conversation}', [WhatsAppController::class, 'show']);
+        Route::post('conversations/{conversation}/reply', [WhatsAppController::class, 'reply'])->middleware('throttle:60,1');
+        Route::post('conversations/{conversation}/template', [WhatsAppController::class, 'template'])->middleware('throttle:30,1');
+        Route::post('conversations/{conversation}/assign', [WhatsAppController::class, 'assign']);
+        Route::post('conversations/{conversation}/status', [WhatsAppController::class, 'status']);
+        Route::post('conversations/{conversation}/lead', [WhatsAppController::class, 'createLead']);
+        Route::get('leads/{lead}', [WhatsAppController::class, 'forLead']);
+        Route::post('leads/{lead}', [WhatsAppController::class, 'startForLead']);
+    });
+    // Interakt tools (CRM › WhatsApp settings)
+    Route::middleware('permission:crm.whatsapp.manage')->prefix('whatsapp')->group(function () {
+        Route::post('templates/fetch', [WhatsAppController::class, 'fetchTemplates'])->middleware('throttle:10,1');
+        Route::get('templates/interakt', [WhatsAppController::class, 'cachedTemplates']);
+        Route::get('sync', [WhatsAppController::class, 'syncStatus']);
+        Route::post('sync/all', [WhatsAppController::class, 'syncAll'])->middleware('throttle:5,1');
+    });
 });
+
+// Attachments we send in WhatsApp chats: Interakt fetches them by this signed address
+Route::get('v1/public/wa-media/{name}', [WhatsAppController::class, 'media'])->middleware('throttle:120,1')->where('name', '[0-9a-f\-]{36}\.[a-z0-9]{1,5}');
 
 Route::get('v1/crm/creatives/{creative}/file', [CrmMasterController::class, 'creativeFile'])
     ->middleware(['signed', 'module:crm'])

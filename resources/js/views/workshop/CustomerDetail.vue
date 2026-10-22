@@ -12,6 +12,7 @@ import Badge from '@/components/ui/Badge.vue'
 import Spinner from '@/components/ui/Spinner.vue'
 import BookingDialog from '@/components/crm/BookingDialog.vue'
 import CustomerAppCard from '@/components/customer/CustomerAppCard.vue'
+import FleetCard from '@/components/customer/FleetCard.vue'
 import { useAuthStore } from '@/stores/auth.store'
 import { crmApi, fmtDateTime, type CustomerTimeline, type LeadOptions } from '@/api/crm.api'
 
@@ -175,6 +176,9 @@ onMounted(() => {
             </ul>
           </Card>
         </div>
+
+        <!-- Fleet: drivers, their cabs, the driver's approval limit, problem reports -->
+        <FleetCard v-if="auth.hasFeature('fleet')" :customer-id="customerId" />
       </div>
 
       <!-- Customer 360 -->

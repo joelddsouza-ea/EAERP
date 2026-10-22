@@ -121,10 +121,13 @@ class CustomerBookingService
         }
     }
 
-    public function list(Customer $customer): array
+    /**
+     * @param array<int>|null $vehicleIds a fleet driver's cabs (null = all the customer's)
+     */
+    public function list(Customer $customer, ?array $vehicleIds = null): array
     {
         return Booking::with(['vehicle:id,registration_no', 'package:id,name', 'branch:id,name'])
-            ->where('customer_id', $customer->id)->latest('booking_date')->limit(30)->get()
+            ->where('customer_id', $customer->id)->when($vehicleIds !== null, fn ($q) => $q->whereIn('vehicle_id', $vehicleIds ?: [0]))->latest('booking_date')->limit(30)->get()
             ->map(fn (Booking $b) => [
                 'id' => $b->id,
                 'number' => $b->number,
@@ -141,9 +144,9 @@ class CustomerBookingService
             ])->values()->all();
     }
 
-    public function cancel(Customer $customer, int $bookingId, ?string $reason): Booking
+    public function cancel(Customer $customer, int $bookingId, ?string $reason, ?array $vehicleIds = null): Booking
     {
-        $booking = Booking::where('customer_id', $customer->id)->findOrFail($bookingId);
+        $booking = Booking::where('customer_id', $customer->id)->when($vehicleIds !== null, fn ($q) => $q->whereIn('vehicle_id', $vehicleIds ?: [0]))->findOrFail($bookingId);
         if (!in_array($booking->status, [Booking::BOOKED, Booking::CONFIRMED], true)) {
             throw new CustomerAppException('This booking can no longer be cancelled here. Please call us.');
         }

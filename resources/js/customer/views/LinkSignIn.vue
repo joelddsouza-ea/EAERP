@@ -15,7 +15,7 @@ const error = ref<string | null>(null)
 onMounted(async () => {
   try {
     const res = await api.post('/auth/link', { kind: route.params.kind, token: route.params.token })
-    signIn(res.data.data.token, res.data.data.customer)
+    signIn(res.data.data.token, res.data.data.customer, res.data.data.viewer)
     const job = res.data.data.job_id
     router.replace(job ? `/jobs/${job}` : '/')
   } catch (err) {

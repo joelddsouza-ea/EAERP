@@ -34,7 +34,13 @@ class JobCardResource extends JsonResource
                 'id' => $this->customer->id,
                 'name' => $this->customer->name,
                 'phone' => $this->customer->phone,
+                'is_fleet' => (bool) $this->customer->is_fleet,
             ]),
+            // A fleet cab: the driver who brought it in
+            'fleet_driver_id' => $this->fleet_driver_id,
+            'fleet_driver' => $this->fleet_driver_id && $this->relationLoaded('fleetDriver') && $this->fleetDriver
+                ? ['id' => $this->fleetDriver->id, 'name' => $this->fleetDriver->name, 'phone' => $this->fleetDriver->phone]
+                : null,
             'vehicle' => $this->whenLoaded('vehicle', fn() => [
                 'id' => $this->vehicle->id,
                 'registration_no' => $this->vehicle->registration_no,

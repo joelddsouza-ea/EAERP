@@ -27,6 +27,8 @@ class WhatsAppTemplate extends Model
         'payment_received' => 'Payment received',
         'report_ready' => 'Service report ready',
         'drop_en_route' => 'Car on its way back (drop)',
+        'fleet_owner_approval' => 'Fleet: owner asked to approve above the driver\'s limit',
+        'fleet_driver_ready' => 'Fleet: cab ready (to the driver)',
     ];
 
     // CRM messages: key => [label, setting holding the text]
@@ -34,15 +36,20 @@ class WhatsAppTemplate extends Model
         'crm.quote' => ['Plan quote to a lead', 'crm.messages.plan_quote'],
         'crm.booking_confirmed' => ['Booking confirmed', 'crm.messages.booking_confirmed'],
         'crm.booking_reminder' => ['Booking reminder', 'crm.messages.booking_reminder'],
+        // Sent from the WhatsApp inbox when the 24-hour window has closed
+        'crm.chat_opener' => ['Chat opener (WhatsApp inbox)', 'crm.messages.chat_opener'],
     ];
 
     protected $table = 'whatsapp_templates';
 
-    protected $fillable = ['key', 'label', 'provider_name', 'language', 'body_params', 'header_type', 'button_param', 'is_active'];
+    protected $fillable = ['key', 'label', 'provider_name', 'language', 'body_params', 'header_type', 'button_param', 'is_active', 'approval_status', 'category', 'buttons', 'button_actions', 'synced_at'];
 
     protected $casts = [
         'body_params' => 'array',
         'is_active' => 'boolean',
+        'buttons' => 'array',
+        'button_actions' => 'array',
+        'synced_at' => 'datetime',
     ];
 
     public function isMapped(): bool

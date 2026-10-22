@@ -22,6 +22,8 @@ class CustomerResource extends JsonResource
             'pincode' => $this->pincode,
             'gstin' => $this->gstin,
             'customer_type' => $this->customer_type,
+            'is_fleet' => (bool) $this->is_fleet,
+            'fleet_driver_limit' => $this->fleet_driver_limit !== null ? (float) $this->fleet_driver_limit : null,
             'source' => $this->source,
             'company_name' => $this->company_name,
             'notes' => $this->notes,

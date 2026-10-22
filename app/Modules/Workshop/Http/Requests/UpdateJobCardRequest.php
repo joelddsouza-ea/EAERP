@@ -34,6 +34,8 @@ class UpdateJobCardRequest extends FormRequest
             'discount_reason' => 'nullable|string|max:255',
             'internal_notes' => 'nullable|string',
             'customer_approved' => 'nullable|boolean',
+            // A fleet cab: the driver who brought it in
+            'fleet_driver_id' => ['nullable', 'integer', \Illuminate\Validation\Rule::exists('fleet_drivers', 'id')->where('customer_id', (int) $this->route('jobCard')?->customer_id)],
         ];
     }
 

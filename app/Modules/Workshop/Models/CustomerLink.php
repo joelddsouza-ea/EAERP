@@ -20,6 +20,8 @@ class CustomerLink extends Model
         'revoked_at',
         'last_viewed_at',
         'created_by',
+        // A fleet driver's own link to the job (their approvals are held to the fleet's limit)
+        'fleet_driver_id',
     ];
 
     protected $hidden = [

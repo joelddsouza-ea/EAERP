@@ -3,9 +3,14 @@
 namespace App\Core\Services\WhatsApp;
 
 use App\Core\Models\WhatsAppTemplate;
+use App\Core\Support\Modules;
 use App\Modules\Crm\Models\Creative;
 use App\Modules\Crm\Models\Lead;
 use App\Modules\Crm\Services\LeadService;
+use App\Modules\Crm\Services\WhatsApp\InboundWhatsAppService;
+use App\Modules\Crm\Services\WhatsApp\WhatsAppButtonService;
+use App\Modules\Crm\Services\WhatsApp\WhatsAppInboxService;
+use App\Modules\Crm\Services\WhatsApp\WhatsAppTemplateSync;
 use App\Modules\Workshop\Models\Customer;
 use App\Modules\Workshop\Models\CustomerMessage;
 use Illuminate\Support\Facades\DB;
@@ -72,6 +77,9 @@ class WhatsAppDispatcher
             ]);
             if ($message->lead_id) {
                 app(LeadService::class)->log($message->lead_id, 'whatsapp', null, mb_strimwidth($message->body, 0, 400, '…'), null, ['via' => 'interakt']);
+            }
+            if (Modules::crm()) {
+                app(WhatsAppInboxService::class)->recordTemplate($message);
             }
         } else {
             $message->update(['error' => $result['error']]);
@@ -156,27 +164,37 @@ class WhatsAppDispatcher
     // ------------------------------------------------------------------ webhook
 
     /**
-     * Interakt webhook: delivery status of our messages, and customers' replies.
+     * Interakt webhook: delivery status of our messages, button taps, customers' messages,
+     * template approvals and account alerts. Chats, taps and leads are the CRM's
+     * (App\Modules\Crm\Services\WhatsApp); without the CRM only STOP is acted on.
      */
     public function handleWebhook(array $payload): string
     {
-        $type = (string) ($payload['type'] ?? '');
+        $type = (string) ($payload['type'] ?? $payload['field'] ?? '');
         $data = $payload['data'] ?? [];
         $msg = $data['message'] ?? [];
+        $crm = Modules::crm();
 
-        if (str_starts_with($type, 'message_api_')) {
+        if ($type === 'message_api_clicked') {
+            return $crm ? app(WhatsAppButtonService::class)->handle($payload) : 'ignored';
+        }
+
+        if (str_starts_with($type, 'message_api_') || str_starts_with($type, 'message_campaign_')) {
+            if ($crm) {
+                app(WhatsAppInboxService::class)->statusUpdate($type, $msg);
+            }
             $message = $this->findMessage($msg);
             if (!$message) {
-                return 'unknown message';
+                return $crm ? 'status noted' : 'unknown message';
             }
             $at = now();
-            match ($type) {
-                'message_api_sent' => $message->status === CustomerMessage::PREPARED
+            match (preg_replace('/^message_(api|campaign)_/', '', $type)) {
+                'sent' => $message->status === CustomerMessage::PREPARED
                     ? $message->update(['status' => CustomerMessage::SENT, 'sent_at' => $message->sent_at ?? $at, 'error' => null])
                     : null,
-                'message_api_delivered' => $message->update(['delivered_at' => $message->delivered_at ?? $at]),
-                'message_api_read' => $message->update(['delivered_at' => $message->delivered_at ?? $at, 'read_at' => $message->read_at ?? $at]),
-                'message_api_failed' => $message->update([
+                'delivered' => $message->update(['delivered_at' => $message->delivered_at ?? $at]),
+                'read' => $message->update(['delivered_at' => $message->delivered_at ?? $at, 'read_at' => $message->read_at ?? $at]),
+                'failed' => $message->update([
                     // Back to the queue so a person can send it by hand
                     'status' => CustomerMessage::PREPARED,
                     'sent_at' => null,
@@ -189,13 +207,21 @@ class WhatsAppDispatcher
         }
 
         if ($type === 'message_received') {
-            return $this->reply($data);
+            return $crm ? app(InboundWhatsAppService::class)->handle($data) : $this->optOutOnly($data);
+        }
+
+        if ($type === 'message_template_status_update') {
+            return app(WhatsAppTemplateSync::class)->statusUpdate($data ?: $payload);
+        }
+
+        if (in_array($type, ['account_alerts', 'account_update', 'account_review_update', 'business_capability_update', 'phone_number_quality_update'], true)) {
+            return app(WhatsAppTemplateSync::class)->accountAlert($type, $payload);
         }
 
         return 'ignored';
     }
 
-    protected function findMessage(array $msg): ?CustomerMessage
+    public function findMessage(array $msg): ?CustomerMessage
     {
         if (!empty($msg['id'])) {
             $found = CustomerMessage::where('provider_message_id', (string) $msg['id'])->first();
@@ -203,39 +229,58 @@ class WhatsAppDispatcher
                 return $found;
             }
         }
-        $callback = $msg['callback_data'] ?? $msg['meta_data']['callback_data'] ?? null;
+        $callback = self::callbackData($msg);
 
         return is_numeric($callback) ? CustomerMessage::find((int) $callback) : null;
     }
 
-    /**
-     * A customer wrote back: noted on their open lead; "STOP" ends marketing messages.
-     */
-    protected function reply(array $data): string
+    /** Our callbackData comes back in meta_data.source_data (older payloads: callback_data) */
+    public static function callbackData(array $msg): ?string
     {
-        $phone = ShareLinkChannel::normalizePhone(($data['customer']['country_code'] ?? '') . ($data['customer']['phone_number'] ?? ''))
-            ?? ShareLinkChannel::normalizePhone($data['customer']['channel_phone_number'] ?? null);
-        if (!$phone) {
-            return 'no phone';
-        }
-        $ten = substr($phone, -10);
+        $value = $msg['meta_data']['source_data']['callback_data'] ?? $msg['callback_data'] ?? $msg['meta_data']['callback_data'] ?? null;
+
+        return $value !== null ? (string) $value : null;
+    }
+
+    /**
+     * Without the CRM: a customer's "STOP" still ends marketing messages.
+     */
+    protected function optOutOnly(array $data): string
+    {
+        $phone = self::senderPhone($data);
         $text = trim((string) ($data['message']['message'] ?? ''));
 
-        $lead = Lead::whereIn('status', Lead::OPEN)->where('phone', 'like', "%{$ten}")->latest('id')->first();
-        if ($lead) {
-            app(LeadService::class)->log($lead, 'reply', null, mb_strimwidth($text !== '' ? $text : '(media)', 0, 1000, '…'), null, ['via' => 'interakt']);
-        }
-
-        if (preg_match('/^\s*(stop|unsubscribe)\s*$/i', $text)) {
-            $customers = Customer::where(fn ($q) => $q->whereRaw("REPLACE(REPLACE(REPLACE(phone, ' ', ''), '-', ''), '+', '') LIKE ?", ["%{$ten}"])
-                ->orWhereRaw("REPLACE(REPLACE(REPLACE(COALESCE(whatsapp_phone, ''), ' ', ''), '-', ''), '+', '') LIKE ?", ["%{$ten}"]))->whereNull('marketing_opt_out_at');
-            $customers->update(['marketing_opt_out_at' => now()]);
-            Lead::where('phone', 'like', "%{$ten}")->whereNull('opted_out_at')->update(['opted_out_at' => now()]);
+        if ($phone && self::isStop($text)) {
+            self::optOut($phone);
 
             return 'opted out';
         }
 
-        return $lead ? 'reply logged' : 'reply';
+        return 'reply';
+    }
+
+    public static function senderPhone(array $data): ?string
+    {
+        return ShareLinkChannel::normalizePhone(($data['customer']['country_code'] ?? '') . ($data['customer']['phone_number'] ?? ''))
+            ?? ShareLinkChannel::normalizePhone($data['customer']['channel_phone_number'] ?? null);
+    }
+
+    public static function isStop(string $text): bool
+    {
+        return (bool) preg_match('/^\s*(stop|unsubscribe)\s*$/i', $text);
+    }
+
+    /**
+     * No more marketing messages to this number (customers and leads).
+     */
+    public static function optOut(string $phone): int
+    {
+        $ten = substr($phone, -10);
+        $n = Customer::where(fn ($q) => $q->whereRaw("REPLACE(REPLACE(REPLACE(phone, ' ', ''), '-', ''), '+', '') LIKE ?", ["%{$ten}"])
+            ->orWhereRaw("REPLACE(REPLACE(REPLACE(COALESCE(whatsapp_phone, ''), ' ', ''), '-', ''), '+', '') LIKE ?", ["%{$ten}"]))
+            ->whereNull('marketing_opt_out_at')->update(['marketing_opt_out_at' => now()]);
+
+        return $n + Lead::where('phone', 'like', "%{$ten}")->whereNull('opted_out_at')->update(['opted_out_at' => now()]);
     }
 
     /**

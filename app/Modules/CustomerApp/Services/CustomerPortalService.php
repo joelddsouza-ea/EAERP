@@ -8,6 +8,8 @@ use App\Modules\Billing\Services\BillingService;
 use App\Modules\Crm\Services\RetentionService;
 use App\Modules\CustomerApp\Models\CustomerNotification;
 use App\Modules\CustomerApp\Models\PaymentClaim;
+use App\Modules\CustomerApp\Support\AppViewer;
+use App\Modules\Fleet\Services\FleetApprovalService;
 use App\Modules\Hr\Models\StaffLiveStatus;
 use App\Modules\Hr\Support\Geo;
 use App\Modules\Workshop\Enums\JobCardStatus;
@@ -37,23 +39,25 @@ class CustomerPortalService
         protected EstimateDecisionService $decisions,
     ) {}
 
-    public function home(Customer $customer): array
+    public function home(Customer $customer, ?AppViewer $viewer = null): array
     {
-        $vehicles = Vehicle::with(['make:id,name', 'model:id,name'])->where('customer_id', $customer->id)->where('is_active', true)->orderBy('id')->get();
-        $jobs = JobCard::withoutGlobalScopes()->with(['vehicle:id,registration_no,make_id,model_id', 'vehicle.make:id,name', 'vehicle.model:id,name', 'package:id,name'])
-            ->where('customer_id', $customer->id)->whereNotIn('status', self::CLOSED)->latest('id')->get();
+        $viewer ??= new AppViewer($customer);
+        $vehicles = $viewer->scope(Vehicle::with(['make:id,name', 'model:id,name'])->where('customer_id', $customer->id)->where('is_active', true), 'id')->orderBy('id')->get();
+        $jobs = $viewer->scope(JobCard::withoutGlobalScopes()->with(['vehicle:id,registration_no,make_id,model_id', 'vehicle.make:id,name', 'vehicle.model:id,name', 'package:id,name'])
+            ->where('customer_id', $customer->id)->whereNotIn('status', self::CLOSED))->latest('id')->get();
 
         return [
-            'customer' => ['id' => $customer->id, 'name' => $customer->name, 'phone' => $customer->phone],
-            'active_jobs' => $jobs->map(fn (JobCard $j) => $this->jobCard($j))->values(),
+            'customer' => ['id' => $customer->id, 'name' => $viewer->driver?->name ?? $customer->name, 'phone' => $viewer->driver?->phone ?? $customer->phone],
+            'viewer' => $viewer->present(),
+            'active_jobs' => $jobs->map(fn (JobCard $j) => $this->jobCard($j, $viewer))->values(),
             'vehicles' => $vehicles->map(fn (Vehicle $v) => $this->vehicleCard($v))->values(),
-            'unread' => CustomerNotification::where('customer_id', $customer->id)->whereNull('read_at')->count(),
-            'credit' => CustomerCredit::balanceFor($customer->id),
+            'unread' => CustomerNotification::where('customer_id', $customer->id)->where('recipient_key', (int) $viewer->driverId())->whereNull('read_at')->count(),
+            'credit' => $viewer->isDriver() ? 0 : CustomerCredit::balanceFor($customer->id),
             'support_phone' => WorkshopSettings::get('customer_app.support_phone'),
         ];
     }
 
-    public function jobCard(JobCard $job): array
+    public function jobCard(JobCard $job, ?AppViewer $viewer = null): array
     {
         $summary = $this->billing->summary($job);
         $estimate = JobCardEstimate::where('job_card_id', $job->id)->where('status', JobCardEstimate::STATUS_SENT)->latest('version')->first(['id']);
@@ -73,10 +77,12 @@ class CustomerPortalService
             'approvals_pending' => $pending,
             'balance' => $summary['bill_total'] !== null ? max(0, (float) $summary['balance']) : null,
             'driver_on_the_way' => JobTrip::where('job_card_id', $job->id)->where('status', JobTrip::EN_ROUTE)->exists(),
+            // A fleet driver: what they may still approve on this job
+            'driver_limit_left' => $viewer?->isDriver() ? app(FleetApprovalService::class)->remaining($job) : null,
         ];
     }
 
-    protected function vehicleCard(Vehicle $v): array
+    public function vehicleCard(Vehicle $v): array
     {
         $due = app(RetentionService::class)->serviceDueDate($v);
 
@@ -101,34 +107,39 @@ class CustomerPortalService
     /**
      * The customer's job, or 404 (never another customer's).
      */
-    public function job(Customer $customer, int $jobId): JobCard
+    public function job(Customer $customer, int $jobId, ?AppViewer $viewer = null): JobCard
     {
         $job = JobCard::withoutGlobalScopes()->where('customer_id', $customer->id)->find($jobId);
-        if (!$job) {
+        if (!$job || ($viewer && !$viewer->canSeeVehicle($job->vehicle_id))) {
             throw (new ModelNotFoundException())->setModel(JobCard::class, [$jobId]);
         }
 
         return $job;
     }
 
-    public function vehicle(Customer $customer, int $vehicleId): Vehicle
+    public function vehicle(Customer $customer, int $vehicleId, ?AppViewer $viewer = null): Vehicle
     {
+        if ($viewer && !$viewer->canSeeVehicle($vehicleId)) {
+            throw (new ModelNotFoundException())->setModel(Vehicle::class, [$vehicleId]);
+        }
+
         return Vehicle::with(['make:id,name', 'model:id,name'])->where('customer_id', $customer->id)->findOrFail($vehicleId);
     }
 
     /**
      * One job in the app: its page token (the job page renders it), payment state and the live driver.
      */
-    public function jobScreen(Customer $customer, int $jobId): array
+    public function jobScreen(Customer $customer, int $jobId, ?AppViewer $viewer = null): array
     {
-        $job = $this->job($customer, $jobId);
+        $job = $this->job($customer, $jobId, $viewer);
         $job->loadMissing(['vehicle.make', 'vehicle.model', 'package']);
-        // Past jobs too: the link is renewed when the customer opens it from the app
-        $link = $this->links->ensure($job);
+        // Past jobs too: the link is renewed when the customer opens it from the app.
+        // A driver gets their own link: approvals on it are held to the fleet's limit
+        $link = $this->links->ensure($job, null, $viewer?->driverId());
         $summary = $this->billing->summary($job);
 
         return [
-            'job' => $this->jobCard($job),
+            'job' => $this->jobCard($job, $viewer),
             'page_token' => $link->token ?? null,
             'payment' => [
                 'bill_total' => $summary['bill_total'],
@@ -176,9 +187,9 @@ class CustomerPortalService
     /**
      * Every visit of one car: delivered jobs with their documents, open observations, due dates.
      */
-    public function serviceBook(Customer $customer, int $vehicleId): array
+    public function serviceBook(Customer $customer, int $vehicleId, ?AppViewer $viewer = null): array
     {
-        $vehicle = $this->vehicle($customer, $vehicleId);
+        $vehicle = $this->vehicle($customer, $vehicleId, $viewer);
         $jobs = JobCard::withoutGlobalScopes()->with('package:id,name')
             ->where('vehicle_id', $vehicle->id)->where('customer_id', $customer->id)->where('status', JobCardStatus::Delivered->value)
             ->latest('id')->limit(50)->get();

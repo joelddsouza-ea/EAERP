@@ -56,9 +56,13 @@ class CustomerExtrasService
 
     // ------------------------------------------------------------------ documents
 
-    public function documents(Customer $customer): array
+    /**
+     * @param array<int>|null $vehicleIds a fleet driver's cabs (null = all the customer's)
+     */
+    public function documents(Customer $customer, ?array $vehicleIds = null): array
     {
-        return CustomerDocument::with('vehicle:id,registration_no')->where('customer_id', $customer->id)->latest('id')->get()
+        return CustomerDocument::with('vehicle:id,registration_no')->where('customer_id', $customer->id)
+            ->when($vehicleIds !== null, fn ($q) => $q->whereIn('vehicle_id', $vehicleIds ?: [0]))->latest('id')->get()
             ->map(fn (CustomerDocument $d) => $this->presentDocument($d))->values()->all();
     }
 

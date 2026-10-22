@@ -12,8 +12,8 @@ use App\Modules\Workshop\Notifications\StaffAlert;
 use Illuminate\Console\Command;
 
 /**
- * Every 15 minutes: journey steps that are due, first-contact SLA alerts, no-shows, and
- * (in the evening) tomorrow's booking reminders.
+ * Every 15 minutes: journey steps that are due, first-contact SLA alerts, no-shows,
+ * (in the evening) tomorrow's booking reminders, and contacts / events waiting for Interakt.
  */
 class RunCrm extends Command
 {
@@ -21,7 +21,7 @@ class RunCrm extends Command
 
     protected $description = 'Run due journey steps, SLA alerts, no-shows and booking reminders';
 
-    public function handle(JourneyService $journeys, BookingService $bookings): int
+    public function handle(JourneyService $journeys, BookingService $bookings, \App\Modules\Crm\Services\WhatsApp\InteraktSyncService $interakt): int
     {
         if (!\App\Core\Support\Modules::crm()) {
             $this->info('CRM is switched off.');
@@ -34,7 +34,9 @@ class RunCrm extends Command
         $noShows = $bookings->markNoShows();
         $reminders = now()->hour >= 17 ? $bookings->sendReminders() : 0;
 
-        $this->info("journey steps: {$sent}, SLA alerts: {$alerts}, no-shows: {$noShows}, reminders: {$reminders}");
+        $synced = $interakt->drain();
+
+        $this->info("journey steps: {$sent}, SLA alerts: {$alerts}, no-shows: {$noShows}, reminders: {$reminders}, interakt sync: {$synced['sent']} sent / {$synced['waiting']} waiting");
 
         return self::SUCCESS;
     }

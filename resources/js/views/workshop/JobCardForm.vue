@@ -14,6 +14,8 @@ import { jobCardIssuesApi } from '@/api/jobSheets.api'
 import Spinner from '@/components/ui/Spinner.vue'
 import { tripsApi, type CustomerAddress, type ServiceMode, type TripPerson } from '@/api/trips.api'
 import { usePermissions } from '@/composables/usePermissions'
+import { fleetApi } from '@/api/fleet.api'
+import { useAuthStore } from '@/stores/auth.store'
 
 const route = useRoute()
 const router = useRouter()
@@ -37,7 +39,30 @@ const form = ref({
   km_reading: null as number | null,
   fuel_level: null as FuelLevel | null,
   estimated_delivery: '',
+  /** A fleet cab: the driver who brought it in */
+  fleet_driver_id: null as number | null,
 })
+
+// ---- Fleet cabs: which of the fleet's drivers brought it in (they get the job in their app)
+const auth = useAuthStore()
+const fleetDrivers = ref<{ id: number; name: string; phone: string; drives_this_cab: boolean }[]>([])
+const fleetDriverOptions = computed(() =>
+  fleetDrivers.value.map((d) => ({ value: d.id, label: `${d.name} · ${d.phone}${d.drives_this_cab ? '' : ' (other cab)'}` })),
+)
+async function loadFleetDrivers() {
+  const customer = selectedCustomer.value
+  if (!customer?.is_fleet || !auth.hasFeature('fleet') || !form.value.vehicle_id) {
+    fleetDrivers.value = []
+    return
+  }
+  try {
+    fleetDrivers.value = (await fleetApi.driversForJob(customer.id, form.value.vehicle_id)).data.data
+    const own = fleetDrivers.value.filter((d) => d.drives_this_cab)
+    if (!form.value.fleet_driver_id && !isEditing.value && own.length === 1) form.value.fleet_driver_id = own[0].id
+  } catch {
+    fleetDrivers.value = []
+  }
+}
 
 // ---- Drive-in, pickup & drop, or home service (new job cards only)
 
@@ -299,6 +324,7 @@ async function fetchJobCard() {
       fuel_level: jobCard.fuel_level,
       // datetime-local inputs need "YYYY-MM-DDTHH:mm"
       estimated_delivery: jobCard.estimated_delivery?.slice(0, 16) || '',
+      fleet_driver_id: jobCard.fleet_driver_id ?? null,
     }
 
     if (jobCard.customer) {
@@ -417,6 +443,8 @@ async function prefillFromQuery() {
     if (vehicleId && customerVehicles.value.some((v) => v.id === vehicleId)) {
       form.value.vehicle_id = vehicleId
     }
+    // Opened from a fleet driver's problem report
+    if (route.query.fleet_driver_id) form.value.fleet_driver_id = Number(route.query.fleet_driver_id)
   } catch {
     // Pick them by hand
   }
@@ -462,6 +490,7 @@ watch(
     selectVehicle(id)
     // Prices and grades depend on the car type
     loadOptions()
+    loadFleetDrivers()
   },
   { immediate: true }
 )
@@ -538,6 +567,15 @@ watch(
             :disabled="!form.customer_id || customerVehicles.length === 0"
             placeholder="Select vehicle"
             required
+          />
+
+          <Select
+            v-if="fleetDrivers.length"
+            v-model="form.fleet_driver_id"
+            label="Driver who brought the cab"
+            :options="fleetDriverOptions"
+            :error="errors.fleet_driver_id"
+            placeholder="Not recorded"
           />
 
           <div v-if="form.customer_id && customerVehicles.length === 0" class="text-sm text-amber-600">

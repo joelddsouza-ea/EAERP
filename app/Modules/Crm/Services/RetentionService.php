@@ -227,8 +227,15 @@ class RetentionService
         $byDate = $v->next_service_due_date ? $v->next_service_due_date->copy() : null;
         $byKm = null;
 
-        if ($v->next_service_due_km && $v->last_service_km && $v->last_service_at) {
+        // Km logged since (drivers in the app, job cards): already past the due km means due now
+        $lastKm = \App\Modules\Fleet\Models\OdometerReading::latestFor($v->id);
+        if ($v->next_service_due_km && $lastKm && $lastKm->km >= $v->next_service_due_km) {
+            $byKm = today();
+        } elseif ($v->next_service_due_km && $v->last_service_km && $v->last_service_at) {
             $visits = JobCard::withoutGlobalScopes()->where('vehicle_id', $v->id)->whereNotNull('km_reading')->orderBy('created_at')->get(['km_reading', 'created_at']);
+            if ($lastKm && $lastKm->source !== 'job_card' && $lastKm->read_at) {
+                $visits->push((object) ['km_reading' => $lastKm->km, 'created_at' => $lastKm->read_at]);
+            }
             if ($visits->count() >= 2) {
                 $first = $visits->first();
                 $last = $visits->last();

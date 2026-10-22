@@ -3,7 +3,7 @@
  * A 401 means the session ended: back to sign-in.
  */
 import axios, { type AxiosError } from 'axios'
-import { session, signOutLocally } from './session'
+import { session, signOutLocally, type Viewer } from './session'
 import router from './router'
 
 const api = axios.create({
@@ -63,6 +63,8 @@ export interface JobCardSummary {
   approvals_pending: number
   balance: number | null
   driver_on_the_way: boolean
+  /** A fleet driver: what they may still approve on this job */
+  driver_limit_left: number | null
 }
 
 export interface VehicleCard {
@@ -79,6 +81,7 @@ export interface VehicleCard {
 
 export interface Home {
   customer: { id: number; name: string; phone: string }
+  viewer: Viewer
   active_jobs: JobCardSummary[]
   vehicles: VehicleCard[]
   unread: number
@@ -108,6 +111,72 @@ export interface PaymentClaimRow {
   status: 'pending' | 'confirmed' | 'rejected'
   reason: string | null
   created_at: string | null
+}
+
+// ------------------------------------------------------------------ fleets
+
+export interface FleetReport {
+  id: number
+  number: string
+  kind: string
+  kind_label: string
+  description: string
+  vehicle: { id: number; registration_no: string | null }
+  driver: { id: number; name: string; phone: string } | null
+  odometer_km: number | null
+  maps_url: string | null
+  location_text: string | null
+  status: 'open' | 'booked' | 'job_opened' | 'closed'
+  status_label: string
+  staff_note: string | null
+  booking: { number: string; date: string | null; slot: string | null; mode: string } | null
+  job: { id: number; job_number: string; status: string } | null
+  media: { id: number; media_type: 'photo' | 'video'; url: string }[]
+  created_at: string | null
+}
+
+export interface FleetCab {
+  id: number
+  registration_no: string
+  car: string
+  drivers: { id: number; name: string; phone: string }[]
+  state: 'workshop' | 'on_road'
+  job: (JobCardSummary & { driver: string | null }) | null
+  km: number | null
+  km_at: string | null
+  next_service_due_km: number | null
+  km_to_service: number | null
+  service_due_soon: boolean
+  next_service_due: string | null
+  open_reports: number
+  spend_year: number
+}
+
+export interface FleetDashboard {
+  fleet: { name: string; driver_limit: number }
+  totals: {
+    cabs: number
+    at_workshop: number
+    approvals_waiting: number
+    balance_due: number
+    open_reports: number
+    service_due_soon: number
+    spend_month: number
+    spend_year: number
+  }
+  cabs: FleetCab[]
+}
+
+export interface FleetDriverRow {
+  id: number
+  name: string
+  phone: string
+  is_active: boolean
+  notes: string | null
+  created_via: string
+  vehicles: { id: number; registration_no: string }[]
+  vehicle_ids: number[]
+  last_seen_at: string | null
 }
 
 export interface JobScreen {

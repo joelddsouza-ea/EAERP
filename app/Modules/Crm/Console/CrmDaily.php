@@ -23,7 +23,9 @@ class CrmDaily extends Command
         }
 
         $counts = $retention->daily();
-        $this->info("service due: {$counts['service_due']}, insurance: {$counts['insurance']}, win back: {$counts['win_back']}");
+        // Interakt campaigns can start from these events (CRM › WhatsApp › Contacts & events)
+        $events = app(\App\Modules\Crm\Services\WhatsApp\InteraktSyncService::class)->queueDueEvents();
+        $this->info("service due: {$counts['service_due']}, insurance: {$counts['insurance']}, win back: {$counts['win_back']}, interakt due events: {$events}");
 
         return self::SUCCESS;
     }

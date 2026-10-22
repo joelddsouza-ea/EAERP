@@ -67,6 +67,7 @@ return [
         'crm' => true,
         'hr' => true,
         'customer_app' => true,
+        'fleet' => true,
     ],
 
     // Phase 6 attendance & payroll (all editable in Masters › HR & Payroll)
@@ -119,6 +120,16 @@ return [
 
     // Phase 7 CRM (editable in Settings › CRM)
     'crm' => [
+        // Phase 11: WhatsApp through Interakt, handled in the CRM (CRM › WhatsApp settings)
+        'whatsapp' => [
+            // A new number writing in becomes a lead (round-robin like other leads)
+            'auto_lead' => true,
+            // Contacts (traits + tags) and events (LeadCreated, JobDelivered …) sent to Interakt
+            'sync_contacts' => true,
+            'sync_events' => true,
+            // Also give the chat to the same person in Interakt's own inbox (their login e-mail)
+            'assign_in_interakt' => false,
+        ],
         // First contact with a new lead within this many minutes (working hours below)
         'sla_minutes' => 15,
         'work_start' => '09:30',
@@ -145,6 +156,8 @@ return [
             'booking_confirmed' => "Hi :name, your booking :number at :workshop is confirmed for :date, :slot. :mode_line\nSee you then! To change it: :book_link",
             'booking_reminder' => "Hi :name, a reminder: your :car is booked for tomorrow (:date, :slot) at :workshop. :mode_line",
             'plan_quote' => "Hi :name, here are our :plan prices for your :car:\n:prices\n:inclusions\nBook a slot in 30 seconds: :book_link",
+            // CRM › WhatsApp inbox: re-opens a chat after 24 hours (only :name and :workshop)
+            'chat_opener' => 'Hello :name, this is :workshop. We have an update for you. Please reply to this message so we can continue here on WhatsApp.',
         ],
     ],
 
@@ -253,6 +266,7 @@ return [
             'webhook_secret' => null,
             'country_code' => '+91',
             'enabled_at' => null,
+            'signing_secret' => null,
         ],
     ],
 
@@ -270,6 +284,14 @@ return [
         'otp_minutes' => 10,
         // Notifications on the installed web app (web push)
         'push_enabled' => true,
+    ],
+
+    // Phase 10: cab fleets (Settings › App Address & Customer App › Fleet cabs)
+    'fleet' => [
+        // A driver may approve extra work up to this total (₹, GST-inclusive) per job; a fleet can have its own
+        'driver_limit' => 2000,
+        // Warn the owner and drivers when a cab is this close to its next service (km)
+        'service_due_km_warning' => 500,
     ],
 
     // Phase 9: the customer app's AI assistant (Claude). Off until the owner adds an API key

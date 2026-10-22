@@ -2,6 +2,7 @@
 /**
  * Sign in: mobile number → a 6-digit code (on WhatsApp, or read out by the workshop).
  * Customers who open a job / booking link from WhatsApp are signed in without this screen.
+ * A number with several accounts (own car, driver for a fleet) picks one after the code.
  */
 import { ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -11,7 +12,9 @@ import { signIn } from '../session'
 const route = useRoute()
 const router = useRouter()
 
-const step = ref<'phone' | 'code'>('phone')
+const step = ref<'phone' | 'code' | 'choose'>('phone')
+const accounts = ref<{ key: string; label: string; name: string }[]>([])
+const ticket = ref('')
 const phone = ref('')
 const code = ref('')
 const busy = ref(false)
@@ -46,13 +49,36 @@ async function verify() {
   busy.value = true
   try {
     const res = await api.post('/auth/verify', { phone: phone.value, code: code.value })
-    signIn(res.data.data.token, res.data.data.customer)
-    router.replace(String(route.query.next || '/'))
+    if (res.data.data.choose) {
+      accounts.value = res.data.data.choose
+      ticket.value = res.data.data.ticket
+      step.value = 'choose'
+      return
+    }
+    done(res.data.data)
   } catch (err) {
     error.value = message(err)
   } finally {
     busy.value = false
   }
+}
+
+async function choose(key: string) {
+  error.value = null
+  busy.value = true
+  try {
+    done((await api.post('/auth/choose', { ticket: ticket.value, key })).data.data)
+  } catch (err) {
+    error.value = message(err)
+    step.value = 'phone'
+  } finally {
+    busy.value = false
+  }
+}
+
+function done(data: any) {
+  signIn(data.token, data.customer, data.viewer)
+  router.replace(String(route.query.next || '/'))
 }
 </script>
 
@@ -74,6 +100,15 @@ async function verify() {
       </button>
       <p class="mt-6 text-center text-xs text-gray-500">Got a link from us on WhatsApp? Just open it: you'll be signed in.</p>
     </form>
+
+    <div v-else-if="step === 'choose'" class="mx-auto mt-8 w-full max-w-sm">
+      <p class="text-center font-medium text-gray-800">This number has more than one account. Sign in as:</p>
+      <button v-for="a in accounts" :key="a.key" type="button" :disabled="busy" class="mt-3 w-full rounded-xl bg-white px-4 py-3 text-left ring-1 ring-gray-300 disabled:opacity-60" @click="choose(a.key)">
+        <span class="block font-semibold text-gray-900">{{ a.label }}</span>
+        <span class="block text-sm text-gray-500">{{ a.name }}</span>
+      </button>
+      <p v-if="error" class="mt-2 text-sm text-red-700">{{ error }}</p>
+    </div>
 
     <form v-else class="mx-auto mt-8 w-full max-w-sm" @submit.prevent="verify">
       <p class="rounded-xl bg-gray-50 p-3 text-sm text-gray-700">{{ info }}</p>

@@ -203,7 +203,7 @@ export interface Insights {
 
 export interface CrmMasters {
   sources: { id: number; name: string; slug: string; is_paid: boolean; is_active: boolean; webhook_url: string | null }[]
-  campaigns: { id: number; name: string; external_ref: string | null; lead_source_id: number; source: string | null; is_active: boolean; spends: { period: string; amount: number }[] }[]
+  campaigns: { id: number; name: string; external_ref: string | null; whatsapp_start_text?: string | null; lead_source_id: number; source: string | null; is_active: boolean; spends: { period: string; amount: number }[] }[]
   lost_reasons: { id: number; name: string; nurture: boolean; is_active: boolean; sort_order: number }[]
   creatives: Creative[]
   journeys: JourneyRow[]
@@ -323,6 +323,94 @@ export const crmApi = {
   saveJourney: (j: Partial<JourneyRow>) => (j.id ? apiClient.put(`/crm/masters/journeys/${j.id}`, j) : apiClient.post('/crm/masters/journeys', j)),
   saveSlots: (branchId: number | null, slots: CrmMasters['slots']) => apiClient.put('/crm/masters/slots', { branch_id: branchId, slots }),
   saveSettings: (settings: Record<string, any>): R<CrmMasters> => apiClient.put('/crm/masters/settings', { settings }),
+
+  // WhatsApp inbox (Interakt)
+  whatsappConversations: (params: { filter?: string; status?: string; search?: string }): R<{ conversations: WaConversation[]; sees_all: boolean; api_on: boolean }> =>
+    apiClient.get('/crm/whatsapp/conversations', { params }),
+  whatsappUnread: (): R<{ chats: number }> => apiClient.get('/crm/whatsapp/unread'),
+  whatsappPeople: (): R<{ id: number; name: string }[]> => apiClient.get('/crm/whatsapp/people'),
+  whatsappThread: (id: number): R<WaThread> => apiClient.get(`/crm/whatsapp/conversations/${id}`),
+  whatsappReply: (id: number, body: string, file?: File | null): R<WaMessage> => {
+    const form = new FormData()
+    if (body) form.append('body', body)
+    if (file) form.append('file', file)
+    return apiClient.post(`/crm/whatsapp/conversations/${id}/reply`, form, { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 120000 })
+  },
+  whatsappTemplate: (id: number, key: string, values: Record<string, string> = {}): R<WaMessage> => apiClient.post(`/crm/whatsapp/conversations/${id}/template`, { key, values }),
+  whatsappAssign: (id: number, userId: number): R<WaConversation> => apiClient.post(`/crm/whatsapp/conversations/${id}/assign`, { user_id: userId }),
+  whatsappStatus: (id: number, status: 'open' | 'closed'): R<WaConversation> => apiClient.post(`/crm/whatsapp/conversations/${id}/status`, { status }),
+  whatsappCreateLead: (id: number, campaignId?: number | null): R<{ lead_id: number }> => apiClient.post(`/crm/whatsapp/conversations/${id}/lead`, { campaign_id: campaignId || null }),
+  whatsappForLead: (leadId: number): R<WaThread | (Omit<WaThread, 'conversation'> & { conversation: null; phone: string }) | null> => apiClient.get(`/crm/whatsapp/leads/${leadId}`),
+  whatsappStartForLead: (leadId: number): R<WaThread> => apiClient.post(`/crm/whatsapp/leads/${leadId}`),
+  // Interakt tools (CRM › WhatsApp settings)
+  whatsappFetchTemplates: (): R<{ ok: boolean; error: string | null; templates: InteraktTemplate[]; updated: number }> => apiClient.post('/crm/whatsapp/templates/fetch'),
+  whatsappInteraktTemplates: (): R<{ templates: InteraktTemplate[] }> => apiClient.get('/crm/whatsapp/templates/interakt'),
+  whatsappSyncStatus: (): R<InteraktSyncStatus> => apiClient.get('/crm/whatsapp/sync'),
+  whatsappSyncAll: (): R<InteraktSyncStatus> => apiClient.post('/crm/whatsapp/sync/all'),
+}
+
+export interface WaConversation {
+  id: number
+  phone: string
+  name: string | null
+  status: 'open' | 'closed'
+  unread: number
+  last_preview: string | null
+  last_message_at: string | null
+  /** Free-form replies are allowed for 24 h after the customer's last message */
+  window_open: boolean
+  window_closes_at: string | null
+  lead: { id: number; name: string; status: string } | null
+  customer: { id: number; name: string } | null
+  assigned_to: { id: number; name: string } | null
+  from_ad: boolean
+}
+
+export interface WaMessage {
+  id: number
+  direction: 'in' | 'out'
+  kind: 'text' | 'image' | 'document' | 'video' | 'audio' | 'template' | 'button' | 'other'
+  body: string | null
+  media_url: string | null
+  file_name: string | null
+  status: 'queued' | 'sent' | 'delivered' | 'read' | 'failed' | 'received'
+  error: string | null
+  by: string | null
+  at: string | null
+}
+
+export interface WaThread {
+  conversation: WaConversation & {
+    job: { id: number; job_number: string; status: string } | null
+    first_text: string | null
+    referral: Record<string, unknown> | null
+    opted_out: boolean
+  }
+  messages: WaMessage[]
+  templates: { key: string; label: string; name: string; params: string[] }[]
+  api_on: boolean
+}
+
+export interface InteraktTemplate {
+  name: string
+  display_name: string
+  language: string
+  category: string
+  status: string
+  body: string
+  variables: number
+  header: string
+  buttons: { type: string; text: string }[]
+}
+
+export interface InteraktSyncStatus {
+  waiting: number
+  sent_today: number
+  gave_up: number
+  errors: { subject: string; what: string; error: string; attempts: number; at: string | null }[]
+  contacts_on: boolean
+  events_on: boolean
+  events: string[]
 }
 
 // Public (no login) — the customer's CRM link pages

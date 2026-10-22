@@ -23,3 +23,6 @@ Illuminate\Support\Facades\Schedule::command('whatsapp:send-due')->everyFiveMinu
 
 // Phase 9: customer app inbox reminders (service due, insurance / PUC / documents, pending work)
 Illuminate\Support\Facades\Schedule::command('customerapp:reminders')->dailyAt('09:30');
+
+// Phase 10: fleet cabs due for service by km (owner and drivers, in the app)
+Illuminate\Support\Facades\Schedule::command('fleet:daily')->dailyAt('09:40');

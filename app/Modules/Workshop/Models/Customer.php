@@ -27,6 +27,9 @@ class Customer extends BaseModel
         'referral_code',
         'marketing_opt_out_at',
         'birthday',
+        // Phase 10: cab fleets (drivers sign in to the app; limit null = Settings › Fleet default)
+        'is_fleet',
+        'fleet_driver_limit',
     ];
 
     public const SOURCES = ['walk_in' => 'Walk-in', 'referral' => 'Referral', 'online' => 'Online / Google', 'lead' => 'Lead (marketing)', 'corporate' => 'Corporate', 'other' => 'Other'];
@@ -35,6 +38,8 @@ class Customer extends BaseModel
         'is_active' => 'boolean',
         'marketing_opt_out_at' => 'datetime',
         'birthday' => 'date',
+        'is_fleet' => 'boolean',
+        'fleet_driver_limit' => 'decimal:2',
     ];
 
     /**
@@ -62,6 +67,14 @@ class Customer extends BaseModel
     public function addresses()
     {
         return $this->hasMany(CustomerAddress::class)->orderByDesc('is_default')->orderByDesc('id');
+    }
+
+    /**
+     * A fleet's drivers.
+     */
+    public function drivers()
+    {
+        return $this->hasMany(\App\Modules\Fleet\Models\FleetDriver::class);
     }
 
     public function followUpCalls()

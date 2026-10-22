@@ -2,14 +2,16 @@
 /**
  * One lead, mobile-first: call / WhatsApp / send the plan quote / book, log what happened
  * on the call (the next follow-up is set from it), its timeline, bookings and messages.
+ * With Interakt on, the lead's WhatsApp chat is here too (reply, or a template after 24 h).
  */
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { PhoneIcon, ChatBubbleLeftRightIcon, CalendarDaysIcon, DocumentTextIcon } from '@heroicons/vue/24/outline'
 import {
   crmApi, STATUS_COLORS, TEMP_COLORS, MODE_LABELS, relTime, fmtDateTime,
-  type LeadDetail, type LeadOptions, type QueueMessage,
+  type LeadDetail, type LeadOptions, type QueueMessage, type WaThread,
 } from '@/api/crm.api'
+import WhatsAppChat from '@/components/crm/WhatsAppChat.vue'
 import { usePermissions } from '@/composables/usePermissions'
 import { useToast } from '@/composables/useToast'
 import Card from '@/components/ui/Card.vue'
@@ -34,10 +36,36 @@ async function load() {
   try {
     lead.value = (await crmApi.lead(id.value)).data.data
     messages.value = (await crmApi.leadMessages(id.value)).data.data
+    loadChat()
   } catch (err) {
     toast.apiError(err)
     router.push('/crm/leads')
   }
+}
+
+// ---- WhatsApp chat (Interakt): null until the number has a chat; apiOn false = share links only
+const chat = ref<WaThread | null>(null)
+const chatApiOn = ref(false)
+async function loadChat() {
+  if (!can('crm.whatsapp.inbox')) return
+  try {
+    const data = (await crmApi.whatsappForLead(id.value)).data.data
+    chatApiOn.value = !!data?.api_on
+    chat.value = data && data.conversation ? (data as WaThread) : null
+  } catch {
+    chat.value = null
+  }
+}
+async function startChat() {
+  try {
+    chat.value = (await crmApi.whatsappStartForLead(id.value)).data.data
+  } catch (err) {
+    toast.apiError(err)
+  }
+}
+async function chatSent() {
+  await loadChat()
+  lead.value = (await crmApi.lead(id.value)).data.data
 }
 onMounted(async () => {
   load()
@@ -209,9 +237,23 @@ const isClosed = computed(() => lead.value && ['won', 'lost'].includes(lead.valu
             <p v-if="lead.status === 'won'" class="mt-2 text-sm font-semibold text-green-700">Won — ₹ {{ lead.won_revenue.toLocaleString('en-IN') }}</p>
           </Card>
 
+          <!-- WhatsApp chat (Interakt) -->
+          <Card v-if="chat || chatApiOn" :padding="false">
+            <template #header>
+              <div class="flex items-center justify-between">
+                <h3 class="font-semibold">WhatsApp chat</h3>
+                <RouterLink v-if="chat" :to="`/crm/whatsapp?c=${chat.conversation.id}`" class="text-sm text-primary-700">Open in inbox ›</RouterLink>
+              </div>
+            </template>
+            <WhatsAppChat v-if="chat" :thread="chat" compact @sent="chatSent" />
+            <div v-else class="p-4 text-sm text-gray-600">
+              No chat yet. <button type="button" class="font-medium text-primary-700 underline" @click="startChat">Start one</button> (a template first; their reply opens the chat).
+            </div>
+          </Card>
+
           <!-- Messages for this lead -->
           <Card v-if="messages.length" :padding="false">
-            <template #header><h3 class="font-semibold">WhatsApp messages</h3></template>
+            <template #header><h3 class="font-semibold">Messages (quotes, journeys, bookings)</h3></template>
             <ul class="divide-y divide-gray-100 text-sm">
               <li v-for="m in messages" :key="m.id" class="px-4 py-3">
                 <div class="flex items-center gap-2">

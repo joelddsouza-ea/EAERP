@@ -16,22 +16,25 @@ use Minishlink\WebPush\WebPush;
 /**
  * The customer app's inbox, and phone notifications for customers who installed the web app
  * (Web Push, VAPID keys made on first use). A reminder with a dedupe key is written once.
+ * For a fleet, $driverId sends it to one of its drivers instead of the owner.
  */
 class CustomerNotifier
 {
-    public function notify(int $customerId, string $kind, string $title, ?string $body = null, ?string $link = null, ?string $dedupe = null): ?CustomerNotification
+    public function notify(int $customerId, string $kind, string $title, ?string $body = null, ?string $link = null, ?string $dedupe = null, ?int $driverId = null): ?CustomerNotification
     {
         if (!Modules::customerApp()) {
             return null;
         }
 
-        if ($dedupe && CustomerNotification::where('customer_id', $customerId)->where('dedupe_key', $dedupe)->exists()) {
+        if ($dedupe && CustomerNotification::where('customer_id', $customerId)->where('recipient_key', (int) $driverId)->where('dedupe_key', $dedupe)->exists()) {
             return null;
         }
 
         try {
             $n = CustomerNotification::create([
                 'customer_id' => $customerId,
+                'fleet_driver_id' => $driverId,
+                'recipient_key' => (int) $driverId,
                 'kind' => $kind,
                 'title' => mb_substr($title, 0, 150),
                 'body' => $body ? mb_substr($body, 0, 500) : null,
@@ -57,7 +60,9 @@ class CustomerNotifier
         if (!WorkshopSettings::get('customer_app.push_enabled')) {
             return;
         }
-        $subs = CustomerPushSubscription::where('customer_id', $n->customer_id)->get();
+        $subs = CustomerPushSubscription::where('customer_id', $n->customer_id)
+            ->where(fn ($q) => $n->fleet_driver_id ? $q->where('fleet_driver_id', $n->fleet_driver_id) : $q->whereNull('fleet_driver_id'))
+            ->get();
         if ($subs->isEmpty()) {
             return;
         }
@@ -141,11 +146,11 @@ class CustomerNotifier
         return ['publicKey' => $b64(chr(4) . $pad($ec['x']) . $pad($ec['y'])), 'privateKey' => $b64($pad($ec['d']))];
     }
 
-    public function subscribe(int $customerId, array $data, ?string $device): void
+    public function subscribe(int $customerId, array $data, ?string $device, ?int $driverId = null): void
     {
         CustomerPushSubscription::updateOrCreate(
             ['endpoint_hash' => hash('sha256', $data['endpoint'])],
-            ['customer_id' => $customerId, 'endpoint' => $data['endpoint'], 'p256dh' => $data['keys']['p256dh'], 'auth' => $data['keys']['auth'], 'device' => $device ? mb_substr($device, 0, 250) : null, 'last_error_at' => null],
+            ['customer_id' => $customerId, 'fleet_driver_id' => $driverId, 'endpoint' => $data['endpoint'], 'p256dh' => $data['keys']['p256dh'], 'auth' => $data['keys']['auth'], 'device' => $device ? mb_substr($device, 0, 250) : null, 'last_error_at' => null],
         );
     }
 }

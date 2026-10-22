@@ -65,6 +65,44 @@ class WhatsAppSettings
         return $secret;
     }
 
+    /**
+     * The secret key entered in Interakt's webhook settings: when set, every webhook call must
+     * carry a matching Interakt-Signature (HMAC-SHA256 of the body). Stored encrypted.
+     */
+    public static function signingSecret(): ?string
+    {
+        $stored = WorkshopSettings::get('whatsapp.interakt.signing_secret');
+        if (!$stored) {
+            return null;
+        }
+        try {
+            return Crypt::decryptString($stored);
+        } catch (DecryptException) {
+            return null;
+        }
+    }
+
+    public static function setSigningSecret(?string $secret): void
+    {
+        $secret = trim((string) $secret);
+        WorkshopSettings::set('whatsapp.interakt.signing_secret', $secret === '' ? null : Crypt::encryptString($secret));
+    }
+
+    /**
+     * Interakt-Signature: "sha256=" + hex HMAC-SHA256 of the raw body with the shared secret.
+     */
+    public static function signatureValid(string $rawBody, ?string $header): bool
+    {
+        $secret = self::signingSecret();
+        if ($secret === null) {
+            return true;
+        }
+        $given = strtolower(trim((string) $header));
+        $given = str_starts_with($given, 'sha256=') ? substr($given, 7) : $given;
+
+        return $given !== '' && hash_equals(hash_hmac('sha256', $rawBody, $secret), $given);
+    }
+
     public static function webhookUrl(): string
     {
         return \App\Core\Support\PublicUrl::to('/api/v1/public/whatsapp/interakt/' . self::webhookSecret());

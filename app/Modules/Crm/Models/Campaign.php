@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Model;
  */
 class Campaign extends Model
 {
-    protected $fillable = ['lead_source_id', 'name', 'external_ref', 'is_active'];
+    protected $fillable = ['lead_source_id', 'name', 'external_ref', 'is_active', 'whatsapp_start_text'];
 
     protected $casts = ['is_active' => 'boolean'];
 

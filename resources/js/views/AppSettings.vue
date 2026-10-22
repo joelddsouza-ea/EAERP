@@ -131,6 +131,24 @@ onMounted(load)
         </div>
       </Card>
 
+      <Card class="mb-4">
+        <h2 class="mb-1 font-semibold text-gray-900">Fleet cabs</h2>
+        <p class="mb-3 text-sm text-gray-500">
+          For cab owners (tick "Cab fleet" on the customer's page). Their drivers sign in to the customer app and approve extra work
+          up to this total per job; above it the fleet owner is asked. A fleet can have its own limit on its page.
+        </p>
+        <div class="grid gap-3 text-sm sm:grid-cols-2">
+          <label class="block">
+            <span class="text-gray-600">Driver may approve per job (₹, GST incl.)</span>
+            <input v-model.number="form['fleet.driver_limit']" type="number" min="0" step="100" class="input mt-1" />
+          </label>
+          <label class="block">
+            <span class="text-gray-600">Warn when a cab is this close to its service (km)</span>
+            <input v-model.number="form['fleet.service_due_km_warning']" type="number" min="0" step="100" class="input mt-1" />
+          </label>
+        </div>
+      </Card>
+
       <div class="flex justify-end gap-2">
         <Button variant="secondary" :disabled="!changed.length" @click="form = { ...state.settings }">Discard</Button>
         <Button :loading="busy" :disabled="!changed.length" @click="save">Save changes ({{ changed.length }})</Button>

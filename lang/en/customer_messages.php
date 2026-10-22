@@ -42,6 +42,11 @@ return [
     // New photos/videos since the last message (on its own, or added to a stage message)
     'gallery_update' => "Hello :name, new photos/videos of your car :car have been added (Job :job).\n:gallery\nOpen or refresh your page to see them: :link",
 
+    // Fleet cabs: extra work above the driver's limit waits for the owner
+    'fleet_owner_approval' => "Hello :name, your driver :driver asks you to approve extra work on :car (Job :job). It is above the Rs :limit a driver can approve:\n:lines\nApprove or decline here: :link",
+    // To the fleet driver who brought the cab in (their own link)
+    'fleet_driver_ready' => "Hello :name, the cab :car is ready to collect from :workshop (Job :job).\nBill and details: :link",
+
     // Fragments
     'gallery_line' => 'New photos/videos — :sections. Your page updates by itself; refresh it if it is already open.',
     'pending_some' => ':count additional item(s) need your approval.',

@@ -18,7 +18,7 @@ class EstimatePresenter
 
     public function present(JobCardEstimate $estimate, bool $forCustomer = false): array
     {
-        $estimate->loadMissing(['lines.media', 'lines.decidedBy:id,name', 'comments.user:id,name', 'sentBy:id,name']);
+        $estimate->loadMissing(['lines.media', 'lines.decidedBy:id,name', 'lines.decidedByDriver:id,name', 'comments.user:id,name', 'sentBy:id,name']);
 
         $plan = $estimate->lines->where('section', Line::SECTION_PLAN)->values();
         $additional = $estimate->lines->where('section', Line::SECTION_ADDITIONAL)->values();
@@ -112,6 +112,8 @@ class EstimatePresenter
             },
             'decided_via' => $line->decided_via,
             'decided_by' => $line->decidedBy?->name,
+            // A fleet driver who approved / declined within the fleet's limit
+            'decided_by_driver' => $line->decidedByDriver?->name,
             'decided_at' => $line->decided_at?->toIso8601String(),
             'media' => $media->map(fn (JobCardMedia $m) => [
                 'id' => $m->id,

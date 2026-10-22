@@ -415,6 +415,10 @@ async function saveSettings() {
         <select v-model="campaign.lead_source_id" class="input"><option v-for="s in data.sources" :key="s.id" :value="s.id">{{ s.name }}</option></select>
         <input v-model="campaign.name" class="input" placeholder="Name" />
         <input v-model="campaign.external_ref" class="input" placeholder="Campaign name / id as the platform sends it" />
+        <div>
+          <input v-model="campaign.whatsapp_start_text" class="input" maxlength="200" placeholder="WhatsApp start text (Click-to-WhatsApp ads)" />
+          <p class="mt-1 text-xs text-gray-500">The ready-made first message of the ad, e.g. "Hi, I want the monsoon check-up offer". A WhatsApp chat starting with it becomes this campaign's lead.</p>
+        </div>
         <label class="flex items-center gap-2"><input v-model="campaign.is_active" type="checkbox" class="h-4 w-4 rounded" /> Active</label>
       </div>
       <template #footer><Button variant="secondary" @click="campaign = null">Cancel</Button><Button :loading="busy" :disabled="!campaign?.name" @click="saveCampaign">Save</Button></template>

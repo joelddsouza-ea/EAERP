@@ -86,16 +86,20 @@ function statusOf(line: EstimateLine) {
   return choices[line.line_key] ?? line.approval_status
 }
 
+/** A fleet driver can't change what the fleet owner decided */
+const ownerLine = (line: EstimateLine) => !!page.value?.fleet?.owner_lines.includes(line.line_key)
+
 function choose(line: EstimateLine, decision: 'approved' | 'declined') {
+  if (ownerLine(line)) return
   choices[line.line_key] = decision
 }
 
 function approveAll() {
-  for (const l of workLines.value) choices[l.line_key] = 'approved'
+  for (const l of workLines.value) if (!ownerLine(l)) choices[l.line_key] = 'approved'
 }
 
 function declineAll() {
-  for (const l of workLines.value) choices[l.line_key] = 'declined'
+  for (const l of workLines.value) if (!ownerLine(l)) choices[l.line_key] = 'declined'
 }
 
 function resetChoices() {
@@ -162,12 +166,14 @@ async function save() {
   saving.value = true
   notice.value = null
   try {
-    page.value = decisions.length
-      ? (await publicJobApi.decide(token, decisions, comment.value.trim() || undefined)).data.data
-      : (await publicJobApi.comment(token, comment.value.trim())).data.data
+    const res = decisions.length
+      ? await publicJobApi.decide(token, decisions, comment.value.trim() || undefined)
+      : await publicJobApi.comment(token, comment.value.trim())
+    page.value = res.data.data
     resetChoices()
     comment.value = ''
-    notice.value = 'Thank you, the workshop has your answer.'
+    // A fleet driver: approvals above the limit went to the fleet owner
+    notice.value = res.data.data.fleet_result ? (res.data.message ?? null) : 'Thank you, the workshop has your answer.'
   } catch (err) {
     notice.value = errorMessage(err)
   } finally {
@@ -268,6 +274,9 @@ onMounted(load)
               </div>
             </div>
 
+            <p v-if="page.fleet && page.decisions_open" class="mb-3 rounded-lg bg-blue-50 p-2.5 text-sm text-blue-900">
+              You can approve up to {{ money(page.fleet.remaining) }} more on this job (limit {{ money(page.fleet.limit) }}). Anything above it is sent to the fleet owner to approve.
+            </p>
             <ul class="space-y-3">
               <li v-for="line in workLines" :key="line.line_key" class="rounded-lg border p-3" :class="statusOf(line) === 'declined' ? 'border-gray-200 bg-gray-50' : statusOf(line) === 'approved' ? 'border-green-200 bg-green-50' : 'border-amber-200 bg-amber-50'">
                 <div class="flex justify-between gap-3">
@@ -292,8 +301,12 @@ onMounted(load)
                 <p v-if="line.decided_via === 'advisor_on_behalf' && !choices[line.line_key]" class="mt-2 text-xs text-gray-600">
                   Recorded by {{ line.decided_by }} on {{ when(line.decided_at) }} after speaking with you.
                 </p>
+                <p v-else-if="line.decided_via === 'fleet_driver' && line.decided_by_driver && !choices[line.line_key]" class="mt-2 text-xs text-gray-600">
+                  {{ line.approval_status === 'approved' ? 'Approved' : 'Declined' }} by driver {{ line.decided_by_driver }} on {{ when(line.decided_at) }}.
+                </p>
+                <p v-if="ownerLine(line)" class="mt-2 text-xs text-gray-600">Decided by the fleet owner.</p>
 
-                <div v-if="page.decisions_open" class="mt-3 grid grid-cols-2 gap-2">
+                <div v-if="page.decisions_open && !ownerLine(line)" class="mt-3 grid grid-cols-2 gap-2">
                   <button
                     class="inline-flex items-center justify-center gap-1 rounded-lg border py-2 text-sm font-medium"
                     :class="statusOf(line) === 'approved' ? 'bg-green-600 border-green-600 text-white' : 'bg-white border-gray-300 text-gray-700'"

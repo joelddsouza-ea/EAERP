@@ -82,6 +82,9 @@ class User extends Authenticatable
      */
     public function getAllPermissions(): array
     {
+        // Strict mode: roles may be loaded without their permissions
+        $this->loadMissing('roles.permissions');
+
         return $this->roles
             ->flatMap(fn($role) => $role->permissions->pluck('slug'))
             ->unique()
