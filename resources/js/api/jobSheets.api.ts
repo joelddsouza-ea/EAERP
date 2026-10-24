@@ -202,6 +202,9 @@ export const jobSheetMastersApi = {
   createSection(templateId: number, name: string) {
     return apiClient.post<ApiResponse<ChecklistMasterSection>>(`/workshop/job-sheet-masters/templates/${templateId}/sections`, { name })
   },
+  updateSection(templateId: number, sectionId: number, data: { name?: string; outside_kind?: string | null }) {
+    return apiClient.put<ApiResponse<ChecklistMasterSection>>(`/workshop/job-sheet-masters/templates/${templateId}/sections/${sectionId}`, data)
+  },
   createItem(sectionId: number, data: Partial<ChecklistMasterItem>) {
     return apiClient.post<ApiResponse<ChecklistMasterItem>>(`/workshop/job-sheet-masters/sections/${sectionId}/items`, data)
   },

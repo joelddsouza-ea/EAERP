@@ -9,6 +9,10 @@ import { useRouter } from 'vue-router'
 import { SparklesIcon, CameraIcon, XMarkIcon, ExclamationTriangleIcon, CheckCircleIcon, PhoneIcon } from '@heroicons/vue/24/outline'
 import api, { message, money, type Home } from '../api'
 import { toast } from '../ui'
+import MediaPicker from '@/components/media/MediaPicker.vue'
+
+// Camera first (Android Chrome): photo / video / gallery as separate choices
+const picker = ref<InstanceType<typeof MediaPicker> | null>(null)
 
 type Mode = 'diagnose' | 'accident'
 
@@ -125,10 +129,10 @@ function reset() {
               <img :src="p.url" alt="" class="h-full w-full object-cover" />
               <button type="button" class="absolute right-0.5 top-0.5 rounded-full bg-black/60 p-0.5 text-white" aria-label="Remove" @click="photos.splice(i, 1)"><XMarkIcon class="h-4 w-4" /></button>
             </div>
-            <label v-if="photos.length < 3" class="flex h-20 w-20 cursor-pointer flex-col items-center justify-center rounded-lg text-xs text-gray-500 ring-1 ring-dashed ring-gray-300">
+            <button v-if="photos.length < 3" type="button" class="flex h-20 w-20 flex-col items-center justify-center rounded-lg text-xs text-gray-500 ring-1 ring-dashed ring-gray-300" @click="picker?.open()">
               <CameraIcon class="h-6 w-6" /> Add
-              <input type="file" accept="image/*" capture="environment" multiple class="hidden" @change="addPhotos" />
-            </label>
+            </button>
+            <MediaPicker ref="picker" variant="menu" :kinds="['photo']" gallery @change="addPhotos" />
           </div>
         </div>
         <button type="submit" :disabled="busy || question.trim().length < 5 || status.paused || status.left_today < 1" class="w-full rounded-xl bg-primary-600 py-3 font-semibold text-white disabled:opacity-50">

@@ -137,6 +137,9 @@ class RolesAndPermissionsSeeder extends Seeder
 
         // WhatsApp inbox and Interakt in the CRM
         $this->call(Phase11WhatsAppPermissionsSeeder::class);
+
+        // Advisors make the bill too; tax invoice / close on proforma for back office and managers
+        $this->call(Phase12FloorBillingPermissionsSeeder::class);
     }
 
     protected function assignRolePermissions(): void

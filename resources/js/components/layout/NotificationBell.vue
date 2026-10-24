@@ -1,7 +1,9 @@
 <script setup lang="ts">
 /**
  * Staff notifications (parts prices requested / ready, parts to procure, customer
- * answered an estimate). Polls every minute; tapping one opens the related screen.
+ * answered an estimate…). Polls every minute; tapping one opens the related screen.
+ * "Update to send" (a technician / driver finished a step) shows the ready WhatsApp
+ * message, sent to the customer from the bell itself.
  */
 import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
@@ -10,6 +12,7 @@ import { BellIcon } from '@heroicons/vue/24/outline'
 import { formatDistanceToNow } from 'date-fns'
 import { notificationsApi } from '@/api/estimates.api'
 import type { StaffNotification } from '@/api/types'
+import ReadyMessage from '@/components/whatsapp/ReadyMessage.vue'
 
 const router = useRouter()
 
@@ -35,6 +38,15 @@ async function open(n: StaffNotification, close: () => void) {
     notificationsApi.markRead(n.id).catch(() => undefined)
   }
   router.push(n.link)
+}
+
+/** The customer update was sent (or skipped): the notification is done */
+function updateHandled(n: StaffNotification) {
+  if (!n.read) {
+    n.read = true
+    unread.value = Math.max(0, unread.value - 1)
+    notificationsApi.markRead(n.id).catch(() => undefined)
+  }
 }
 
 async function markAllRead() {
@@ -80,7 +92,15 @@ onBeforeUnmount(() => clearInterval(timer))
       </div>
       <ul class="max-h-96 overflow-auto divide-y divide-gray-100">
         <li v-for="n in items" :key="n.id">
-          <button class="w-full px-4 py-3 text-left hover:bg-gray-50" @click="open(n, close)">
+          <!-- A staff member's update: read it and send it to the customer from here -->
+          <div v-if="n.kind === 'customer_update' && n.message_id && !n.read" class="px-4 py-3">
+            <button class="text-left" @click="open(n, close)">
+              <p class="text-sm font-semibold text-gray-900">{{ n.title }}</p>
+            </button>
+            <p class="mb-1 text-[11px] text-gray-400">{{ n.body.split(':')[0] }} · {{ ago(n.created_at) }}</p>
+            <ReadyMessage :message-id="n.message_id" :body="n.message ?? ''" :share-url="n.share_url ?? null" compact @done="updateHandled(n)" />
+          </div>
+          <button v-else class="w-full px-4 py-3 text-left hover:bg-gray-50" @click="open(n, close)">
             <p class="text-sm" :class="n.read ? 'text-gray-600' : 'font-semibold text-gray-900'">{{ n.title }}</p>
             <p class="text-xs text-gray-500 mt-0.5">{{ n.body }}</p>
             <p class="text-[11px] text-gray-400 mt-1">{{ ago(n.created_at) }}</p>

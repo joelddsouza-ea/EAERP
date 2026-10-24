@@ -364,7 +364,7 @@ class EstimateApprovalTest extends TestCase
 
         $this->publicDecide($this->token($job), [$otherKeys['Wiper Blade Set'] => 'approved'])->assertNotFound();
 
-        $job->forceFill(['status' => 'post_work_trial'])->save();
+        $job->forceFill(['status' => 'qc_pending'])->save();
         $keys = $this->keys(collect($this->getJson('/api/v1/public/j/' . $this->token($job))->json('data'))->get('estimate'));
         $this->publicDecide($this->token($job), [$keys['Wiper Blade Set'] => 'approved'])->assertStatus(422);
     }

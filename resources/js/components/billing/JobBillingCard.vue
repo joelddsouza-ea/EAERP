@@ -1,9 +1,10 @@
 <script setup lang="ts">
 /**
  * Billing & Delivery for a job: payments at any time (advance, during work, final),
- * the final bill (proforma) made from the approved estimate — back office deletes
- * lines, adds other items and approves it — then a GST tax invoice or "close on
- * proforma", the gate pass (issued when paid; owner/manager may override) and
+ * the final bill (proforma) made from the approved estimate — the advisor sends the
+ * checked job to back office, who (or the advisor) rechecks quantity, cost and selling
+ * price, adds or removes lines and approves it for the customer to pay — then a GST tax
+ * invoice or "close on proforma" (back office / managers only), the gate pass (issued when paid; owner/manager may override) and
  * "Vehicle out", which delivers the job. A payment may be split over several methods;
  * money paid beyond the bill is refunded or kept as the customer's credit before the
  * gate pass.
@@ -22,6 +23,7 @@ import Modal from '@/components/ui/Modal.vue'
 import Input from '@/components/ui/Input.vue'
 import Select from '@/components/ui/Select.vue'
 import Textarea from '@/components/ui/Textarea.vue'
+import ReadyMessage from '@/components/whatsapp/ReadyMessage.vue'
 
 const props = defineProps<{ jobCardId: number; jobStatus: string }>()
 const emit = defineEmits<{ changed: [] }>()
@@ -31,7 +33,7 @@ const data = ref<JobBillingSummary | null>(null)
 const busy = ref<string | null>(null)
 
 const bill = computed(() => data.value?.bill ?? null)
-const can = computed(() => data.value?.can ?? { manage: false, approve: false, pay: false, settle: false, override_gate_pass: false, vehicle_out: false })
+const can = computed(() => data.value?.can ?? { manage: false, approve: false, pay: false, settle: false, finalize: false, request: false, override_gate_pass: false, vehicle_out: false })
 const closed = computed(() => ['delivered', 'cancelled'].includes(props.jobStatus))
 const refundDue = computed(() => data.value?.refund_due ?? 0)
 // Exactly paid: an overpayment still has to be refunded or kept as credit
@@ -222,19 +224,28 @@ const SECTIONS: Record<string, string> = { plan: 'Service plan', additional: 'Ad
 const showSection = (i: number) => !!bill.value && (i === 0 || bill.value.lines[i - 1].section !== bill.value.lines[i].section)
 
 // HSN/SAC of a line, editable while the bill can change
-const hsnEditing = ref<number | null>(null)
-const hsnValue = ref('')
-function editHsn(l: BillLine) {
-  hsnEditing.value = l.id
-  hsnValue.value = l.hsn_code ?? ''
+// Recheck a line before the bill goes out: quantity, selling price, cost, HSN/SAC
+const lineEditing = ref<BillLine | null>(null)
+const lineForm = ref({ quantity: '' as number | string, unit_price: '' as number | string, unit_cost: '' as number | string, hsn_code: '' })
+function editLine(l: BillLine) {
+  lineEditing.value = l
+  lineForm.value = { quantity: l.quantity, unit_price: l.unit_price, unit_cost: l.unit_cost ?? '', hsn_code: l.hsn_code ?? '' }
 }
-async function saveHsn(l: BillLine) {
-  if (!bill.value || hsnValue.value.trim() === (l.hsn_code ?? '')) {
-    hsnEditing.value = null
-    return
+/** Margin on cost, as on the estimate (rate against the cost per unit) */
+const marginPct = (price: number | string, cost: number | string | null) =>
+  cost !== null && cost !== '' && Number(cost) > 0 ? Math.round(((Number(price) - Number(cost)) / Number(cost)) * 1000) / 10 : null
+async function saveLine() {
+  const l = lineEditing.value
+  if (!bill.value || !l) return
+  const f = lineForm.value
+  const payload: { hsn_code?: string; quantity?: number; unit_price?: number; unit_cost?: number | null } = {
+    quantity: Number(f.quantity),
+    unit_price: Number(f.unit_price),
+    unit_cost: f.unit_cost === '' ? null : Number(f.unit_cost),
   }
-  const ok = await act(`hsn-${l.id}`, () => jobBillingApi.setHsn(props.jobCardId, bill.value!.id, l.id, hsnValue.value.trim()), 'HSN/SAC saved')
-  if (ok) hsnEditing.value = null
+  if (f.hsn_code.trim() && f.hsn_code.trim() !== (l.hsn_code ?? '')) payload.hsn_code = f.hsn_code.trim()
+  const ok = await act(`line-${l.id}`, () => jobBillingApi.updateItem(props.jobCardId, bill.value!.id, l.id, payload), 'Line saved')
+  if (ok) lineEditing.value = null
 }
 
 const removing = ref<BillLine | null>(null)
@@ -391,15 +402,29 @@ defineExpose({ reload: load })
           <template v-if="data.proforma_from">{{ data.proforma_from }}</template>
           <template v-else>The final bill (proforma) is made from the approved estimate.</template>
         </p>
-        <Button
-          v-if="can.manage && !data.proforma_from"
-          class="mt-2"
-          size="sm"
-          :loading="busy === 'proforma'"
-          @click="act('proforma', () => jobBillingApi.createProforma(jobCardId))"
-        >
-          Make proforma from estimate
-        </Button>
+        <p v-if="data.billing_requested" class="mt-2 rounded bg-blue-50 border border-blue-100 p-2 text-xs text-blue-800">
+          Sent to back office for the bill{{ data.billing_requested.by ? ` by ${data.billing_requested.by}` : '' }},
+          {{ new Date(data.billing_requested.at).toLocaleString('en-IN') }}.
+        </p>
+        <div class="mt-2 flex flex-wrap gap-2">
+          <Button
+            v-if="can.request && jobStatus === 'ready_for_delivery' && !data.billing_requested"
+            size="sm"
+            variant="secondary"
+            :loading="busy === 'request'"
+            @click="act('request', () => jobBillingApi.requestBill(jobCardId))"
+          >
+            Send to back office for bill
+          </Button>
+          <Button
+            v-if="can.manage && !data.proforma_from"
+            size="sm"
+            :loading="busy === 'proforma'"
+            @click="act('proforma', () => jobBillingApi.createProforma(jobCardId))"
+          >
+            Make proforma from estimate
+          </Button>
+        </div>
       </template>
 
       <template v-else>
@@ -445,16 +470,13 @@ defineExpose({ reload: load })
                   <!-- Internal: the GRN the part / service came in on (purchases module) -->
                   <span v-if="l.grn_number" class="ml-1 rounded bg-gray-100 px-1 text-[10px] font-medium text-gray-500">{{ l.grn_number }}</span>
                   <span class="block text-xs text-gray-400">
-                    <template v-if="hsnEditing === l.id">
-                      HSN/SAC
-                      <input v-model="hsnValue" class="input inline-block w-24 py-0 px-1 text-xs" maxlength="8" @keyup.enter="saveHsn(l)" @keyup.esc="hsnEditing = null" />
-                      <button type="button" class="text-primary-600 font-medium" @click="saveHsn(l)">Save</button>
-                    </template>
-                    <template v-else>
-                      HSN/SAC {{ l.hsn_code ?? '—' }}
-                      <button v-if="bill.editable && can.manage" type="button" class="text-primary-600 hover:underline" @click="editHsn(l)">edit</button>
-                    </template>
+                    HSN/SAC {{ l.hsn_code ?? '—' }}
                     · {{ l.gst_inclusive ? 'price incl. GST' : l.gst_applicable ? 'GST added' : 'no GST' }}
+                    <!-- Internal: cost and margin, for the recheck before billing -->
+                    <template v-if="can.manage && l.unit_cost !== null">
+                      · cost {{ money(l.unit_cost) }}<template v-if="marginPct(l.unit_price, l.unit_cost) !== null"> ({{ marginPct(l.unit_price, l.unit_cost) }}% margin)</template>
+                    </template>
+                    <button v-if="bill.editable && can.manage" type="button" class="ml-1 text-primary-600 hover:underline" @click="editLine(l)">edit</button>
                   </span>
                   <button
                     v-if="bill.editable && can.manage && bill.lines.length > 1"
@@ -514,12 +536,18 @@ defineExpose({ reload: load })
             :loading="busy === 'approve'"
             @click="act('approve', () => jobBillingApi.approve(jobCardId, bill!.id))"
           >
-            Approve bill
+            Approve &amp; send to customer
           </Button>
         </div>
 
+        <!-- Approved: send the bill to the customer for payment -->
+        <div v-if="data.bill_message" class="mt-3 rounded-lg border border-green-200 bg-white p-3">
+          <p class="mb-1 text-sm font-semibold text-gray-900">Send the bill to the customer</p>
+          <ReadyMessage :message-id="data.bill_message.id" :body="data.bill_message.body" :share-url="data.bill_message.share_url" @done="load" />
+        </div>
+
         <!-- Finish billing: tax invoice, or close on the paid proforma -->
-        <div v-if="bill.kind === 'proforma' && bill.status === 'approved' && can.approve" class="mt-3 rounded-lg border border-primary-200 bg-primary-50 p-3">
+        <div v-if="bill.kind === 'proforma' && bill.status === 'approved' && can.finalize" class="mt-3 rounded-lg border border-primary-200 bg-primary-50 p-3">
           <p class="text-sm font-semibold text-gray-900">Finish billing</p>
           <p class="text-xs text-gray-600 mt-0.5">Remove any lines first (or untick them in the tax invoice step).</p>
           <div class="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -536,7 +564,8 @@ defineExpose({ reload: load })
           </div>
         </div>
         <p v-if="bill.status === 'draft'" class="mt-2 text-xs text-gray-500">
-          Back office approves the bill; the job moves to Invoiced once the car is ready and the customer gets the bill on WhatsApp.
+          Recheck quantity, cost and selling price (edit on each line), then approve: the job moves to Invoiced and the customer gets the bill to pay.
+          The tax invoice or closing on the proforma is done by back office or a manager.
         </p>
       </template>
     </div>
@@ -689,6 +718,34 @@ defineExpose({ reload: load })
         <Button variant="secondary" @click="itemOpen = false">Cancel</Button>
         <Button :loading="busy === 'item'" :disabled="!item.description.trim() || !(Number(item.quantity) > 0) || item.unit_price === ''" @click="saveItem">
           Add to bill
+        </Button>
+      </template>
+    </Modal>
+
+    <!-- Recheck a line: quantity, selling price, cost, HSN/SAC -->
+    <Modal :open="lineEditing !== null" title="Recheck line" @close="lineEditing = null">
+      <div v-if="lineEditing" class="space-y-3">
+        <p class="text-sm font-medium text-gray-900">{{ lineEditing.description }}</p>
+        <div class="grid grid-cols-2 gap-3">
+          <Input v-model="lineForm.quantity" type="number" label="Qty" required />
+          <Input v-model="lineForm.unit_price" type="number" :label="lineEditing.gst_inclusive ? 'Selling rate incl. GST (₹)' : 'Selling rate before GST (₹)'" required />
+          <Input v-model="lineForm.unit_cost" type="number" label="Cost per unit (₹)" hint="Internal, never printed" />
+          <Input v-model="lineForm.hsn_code" label="HSN/SAC" maxlength="8" />
+        </div>
+        <p class="text-sm text-gray-600">
+          Line ₹ {{ money(Number(lineForm.quantity || 0) * Number(lineForm.unit_price || 0)) }}
+          <template v-if="lineEditing.discount > 0"> less discount ₹ {{ money(lineEditing.discount) }}</template>
+          <template v-if="marginPct(lineForm.unit_price, lineForm.unit_cost) !== null"> · margin {{ marginPct(lineForm.unit_price, lineForm.unit_cost) }}%</template>
+        </p>
+      </div>
+      <template #footer>
+        <Button variant="secondary" @click="lineEditing = null">Cancel</Button>
+        <Button
+          :loading="busy === `line-${lineEditing?.id}`"
+          :disabled="!(Number(lineForm.quantity) > 0) || lineForm.unit_price === '' || Number(lineForm.unit_price) < 0"
+          @click="saveLine"
+        >
+          Save line
         </Button>
       </template>
     </Modal>

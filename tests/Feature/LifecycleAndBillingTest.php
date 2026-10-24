@@ -228,7 +228,7 @@ class LifecycleAndBillingTest extends TestCase
 
         // Proforma from the estimate: every plan line with HSN/SAC, GST-inclusive with 18% extracted,
         // extras discount spread over the lines
-        $this->as($this->advisor)->postJson("{$url}/proforma")->assertForbidden();
+        $this->as($this->tech)->postJson("{$url}/proforma")->assertForbidden();
         $bill = $this->as($this->backoffice)->postJson("{$url}/proforma")->assertCreated()->json('data.bill');
         $this->assertSame('proforma', $bill['kind']);
         $this->assertStringStartsWith('PRF', $bill['number']);
@@ -265,7 +265,7 @@ class LifecycleAndBillingTest extends TestCase
         $this->as($this->backoffice)->patchJson("{$url}/bills/{$bill['id']}/items/{$kit['id']}", ['hsn_code' => '33074900'])->assertOk();
 
         // Approved → Invoiced by itself; the advance counts; the customer gets the bill message
-        $this->as($this->advisor)->postJson("{$url}/bills/{$bill['id']}/approve")->assertForbidden();
+        $this->as($this->tech)->postJson("{$url}/bills/{$bill['id']}/approve")->assertForbidden();
         $summary = $this->as($this->backoffice)->postJson("{$url}/bills/{$bill['id']}/approve")->assertOk()->json('data');
         $this->assertEquals(6575, $summary['balance']);
         $this->assertSame('invoiced', $job->fresh()->status);
@@ -288,7 +288,10 @@ class LifecycleAndBillingTest extends TestCase
         $this->as($this->advisor)->postJson("{$url}/payments", ['amount' => 4000, 'method' => 'cash'])->assertStatus(422);
         $this->as($this->advisor)->postJson("{$url}/gate-pass/vehicle-out")->assertStatus(422);
 
-        // GST tax invoice from the proforma: the deleted line stays out, payments follow
+        // GST tax invoice from the proforma: the deleted line stays out, payments follow.
+        // Only back office, managers and the owner finish billing (not advisors).
+        $this->as($this->advisor)->postJson("{$url}/bills/{$bill['id']}/convert", [])->assertForbidden();
+        $this->as($this->advisor)->postJson("{$url}/bills/{$bill['id']}/close", [])->assertForbidden();
         $this->as($this->backoffice)->postJson("{$url}/bills/{$bill['id']}/convert", ['customer_gstin' => 'bad'])->assertStatus(422);
         // Lines can also be left off in the convert step itself
         $summary = $this->as($this->backoffice)->postJson("{$url}/bills/{$bill['id']}/items", [
@@ -328,6 +331,43 @@ class LifecycleAndBillingTest extends TestCase
         $this->as($this->advisor)->postJson("{$url}/gate-pass/vehicle-out")->assertOk();
         $this->assertSame('delivered', $job->fresh()->status);
         $this->assertNotNull(GatePass::sole()->vehicle_out_at);
+    }
+
+    public function test_advisor_sends_for_billing_and_bill_lines_are_rechecked(): void
+    {
+        $job = $this->jobWithApprovedEstimate();
+        $url = $this->billing($job);
+
+        // Only after the final QC
+        $this->as($this->advisor)->postJson("{$url}/request")->assertStatus(422);
+        $job->update(['status' => 'ready_for_delivery']);
+        $this->as($this->tech)->postJson("{$url}/request")->assertForbidden();
+        $summary = $this->as($this->advisor)->postJson("{$url}/request")->assertOk()->json('data');
+        $this->assertNotNull($summary['billing_requested']);
+        $this->assertNotNull($job->fresh()->billing_requested_at);
+        $this->assertSame(1, $this->backoffice->notifications()->where('data->kind', 'bill_requested')->count());
+        $this->assertSame(1, collect(app(\App\Core\Services\WorkspaceService::class)->myDay($this->backoffice)['cards'])->firstWhere('key', 'bills')['count']);
+
+        // The advisor may make and approve the bill too; lines keep their cost and can be rechecked
+        $bill = $this->as($this->advisor)->postJson("{$url}/proforma")->assertCreated()->json('data.bill');
+        $this->as($this->advisor)->postJson("{$url}/request")->assertStatus(422);
+        $line = $this->line($bill, 'Throttle');
+        $this->as($this->advisor)->patchJson("{$url}/bills/{$bill['id']}/items/{$line['id']}", ['quantity' => 0])->assertStatus(422);
+        $bill = $this->as($this->backoffice)->patchJson("{$url}/bills/{$bill['id']}/items/{$line['id']}", [
+            'quantity' => 2, 'unit_price' => 1500, 'unit_cost' => 900,
+        ])->assertOk()->json('data.bill');
+        $edited = $this->line($bill, 'Throttle');
+        $this->assertEquals(2, $edited['quantity']);
+        $this->assertEquals(1500, $edited['unit_price']);
+        $this->assertEquals(900, $edited['unit_cost']);
+        // 2 x 1500 less its share of the discount, GST inclusive
+        $this->assertEqualsWithDelta(3000 - $edited['discount'], $edited['total'], 0.01);
+        $this->assertEqualsWithDelta(collect($bill['lines'])->sum('total'), $bill['total'], 1);
+
+        $this->as($this->advisor)->postJson("{$url}/bills/{$bill['id']}/approve")->assertOk();
+        $this->assertSame('invoiced', $job->fresh()->status);
+        $this->as($this->advisor)->postJson("{$url}/bills/{$bill['id']}/close", [])->assertForbidden();
+        $this->as($this->advisor)->patchJson("{$url}/bills/{$bill['id']}/items/{$line['id']}", ['quantity' => 1])->assertOk();
     }
 
     public function test_gate_pass_before_full_payment_needs_an_owner_or_manager_and_a_reason(): void

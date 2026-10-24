@@ -29,6 +29,8 @@ import ServiceReportCard from '@/components/estimate/ServiceReportCard.vue'
 import JobBillingCard from '@/components/billing/JobBillingCard.vue'
 import JobStockCard from '@/components/jobcard/JobStockCard.vue'
 import TripsCard from '@/components/jobcard/TripsCard.vue'
+import OutsideWorkCard from '@/components/jobcard/OutsideWorkCard.vue'
+import { technicianTimeApi, hm, type JobTime } from '@/api/technicianTime.api'
 
 const route = useRoute()
 const router = useRouter()
@@ -70,6 +72,18 @@ async function refreshAfterChange() {
   await fetchJobCard()
   statusActions.value?.reload()
 }
+
+// Working time on the job (owner / managers): in work, less waits and outside work, in shift hours
+const workingTime = ref<JobTime | null>(null)
+async function loadWorkingTime() {
+  if (!can('workshop.technician-time.view')) return
+  try {
+    workingTime.value = (await technicianTimeApi.job(jobCardId)).data.data
+  } catch {
+    workingTime.value = null
+  }
+}
+onMounted(loadWorkingTime)
 
 // Job sheets (technician sheets, observation report, pre-delivery)
 const sheets = ref<JobSheet[]>([])
@@ -214,6 +228,15 @@ onMounted(fetchJobCard)
             :job-card-id="jobCard.id"
             :job-status="jobCard.status"
             @changed="onStatusChanged"
+          />
+
+          <!-- Washing / wheel alignment by outside partners; the customer's progress list on or off -->
+          <OutsideWorkCard
+            v-if="!isTechnician"
+            :job-card-id="jobCard.id"
+            :job-closed="['delivered', 'cancelled'].includes(jobCard.status)"
+            :show-timeline="jobCard.show_customer_timeline !== false"
+            @changed="refreshAfterChange"
           />
 
           <!-- 4. Intake: trial drive + inventory photos/videos -->
@@ -385,6 +408,16 @@ onMounted(fetchJobCard)
               <div v-if="jobCard.estimated_delivery" class="flex justify-between">
                 <dt class="text-sm text-gray-500">Promised</dt>
                 <dd class="text-sm font-medium">{{ formatDate(jobCard.estimated_delivery) }}</dd>
+              </div>
+              <div v-if="workingTime" class="border-t border-gray-100 pt-3">
+                <div class="flex justify-between">
+                  <dt class="text-sm text-gray-500">Technician working time</dt>
+                  <dd class="text-sm font-semibold">{{ hm(workingTime.working_minutes) }}</dd>
+                </div>
+                <p class="mt-1 text-xs text-gray-500">
+                  In work {{ hm(workingTime.gross_minutes) }} · waiting approval {{ hm(workingTime.approval_minutes) }} ·
+                  parts {{ hm(workingTime.parts_minutes) }} · outside {{ hm(workingTime.outside_minutes) }} (shift hours)
+                </p>
               </div>
             </dl>
           </Card>

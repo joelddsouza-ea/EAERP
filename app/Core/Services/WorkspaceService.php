@@ -143,6 +143,13 @@ class WorkspaceService
             $cards[] = ['key' => 'approval', 'title' => 'Jobs waiting for customer approval', 'count' => $approval, 'tone' => $approval ? 'action' : 'ok', 'to' => '/job-cards?status=awaiting_approval'];
             $cards[] = ['key' => 'ready', 'title' => 'Ready for delivery (bill & hand over)', 'count' => $ready, 'tone' => $ready ? 'action' : 'ok', 'to' => '/job-cards?status=ready_for_delivery'];
         }
+        // Back office: jobs the advisor sent for the final bill that have no bill yet
+        if ($user->hasRole('backoffice') && $user->hasPermission('billing.proforma.manage')) {
+            $bills = JobCard::where('status', JobCardStatus::ReadyForDelivery->value)->whereNotNull('billing_requested_at')
+                ->whereNotIn('id', Invoice::withoutGlobalScopes()->whereNotNull('job_card_id')->where('status', '!=', 'cancelled')->select('job_card_id'))
+                ->count();
+            $cards[] = ['key' => 'bills', 'title' => 'Bills to make (sent by advisors)', 'count' => $bills, 'tone' => $bills ? 'action' : 'ok', 'to' => '/job-cards?status=ready_for_delivery'];
+        }
         if (Modules::hr() && $user->hasPermission('hr.leave.approve')) {
             $leave = LeaveRequest::where('status', LeaveRequest::PENDING)->when(!$user->isOwner(), fn ($q) => $q->whereIn('branch_id', $user->getAccessibleBranchIds()))->count();
             if ($leave) {

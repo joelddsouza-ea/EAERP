@@ -16,15 +16,21 @@ class ChecklistTemplate extends BaseModel
     public const KIND_BODY_SHOP = 'body_shop';
     public const KIND_OBSERVATION_REPORT = 'observation_report';
     public const KIND_PRE_DELIVERY = 'pre_delivery';
+    /** Trial drive + washing, for jobs whose sheets have neither (general repairs, AC, body shop) */
+    public const KIND_POST_SERVICE = 'post_service';
+
+    /** The standard trial drive & washing sheet (seeded from data/job_sheets/trial-and-washing.php) */
+    public const POST_SERVICE_SLUG = 'trial-and-washing';
 
     /**
-     * Sheets whose activities must be resolved before the trial drive.
+     * The technician's sheets: all submitted before the final QC.
      */
     public const WORK_SHEET_KINDS = [
         self::KIND_SERVICE_ACTIVITIES,
         self::KIND_AC_SERVICE,
         self::KIND_GENERAL_REPAIR,
         self::KIND_BODY_SHOP,
+        self::KIND_POST_SERVICE,
     ];
 
     protected $fillable = [

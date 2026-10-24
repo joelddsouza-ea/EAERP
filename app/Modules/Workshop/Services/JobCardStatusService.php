@@ -2,6 +2,7 @@
 
 namespace App\Modules\Workshop\Services;
 
+use App\Core\Models\Role;
 use App\Core\Models\User;
 use App\Core\Services\NotificationService;
 use App\Modules\Workshop\Enums\JobCardStatus;
@@ -132,12 +133,8 @@ class JobCardStatusService
                 JobCardStatus::IntakeInProgress->value => $jobCard->time_in ??= now(),
                 // First start only; resuming after parts/QA must not reset it
                 JobCardStatus::WorkInProgress->value => $jobCard->work_started_at ??= now(),
-                // Each round of trial drive / wash is recorded afresh
-                JobCardStatus::PostWorkTrial->value => $jobCard->forceFill([
-                    'work_completed_at' => now(),
-                    'post_trial_result' => null, 'post_trial_notes' => null, 'post_trial_by' => null, 'post_trial_at' => null,
-                ]),
-                JobCardStatus::WashPending->value => $jobCard->forceFill(['wash_done_by' => null, 'wash_done_at' => null]),
+                // Work (incl. the trial drive and the wash on the job sheet) is done when it reaches the final QC
+                JobCardStatus::QcPending->value => $fromStatus === JobCardStatus::WorkInProgress->value ? $jobCard->work_completed_at = now() : null,
                 JobCardStatus::ReadyForDelivery->value => $jobCard->qc_completed_at = now(),
                 JobCardStatus::Delivered->value => $jobCard->time_out = now(),
                 JobCardStatus::Cancelled->value => $jobCard->cancel_reason = $notes,
@@ -146,13 +143,13 @@ class JobCardStatusService
 
             $jobCard->save();
 
-            if ($user && $fromStatus === JobCardStatus::WorkInProgress->value && $toStatus === JobCardStatus::PostWorkTrial->value) {
+            if ($user && $fromStatus === JobCardStatus::WorkInProgress->value && $toStatus === JobCardStatus::QcPending->value) {
                 $this->completeWorkSheets($jobCard, $user, $meta);
             }
 
             // Sent back from final QC (or later): the QC checklist is done again next time
             if (in_array($fromStatus, [JobCardStatus::QcPending->value, JobCardStatus::ReadyForDelivery->value], true)
-                && in_array($toStatus, [JobCardStatus::WashPending->value, JobCardStatus::WorkInProgress->value], true)) {
+                && $toStatus === JobCardStatus::WorkInProgress->value) {
                 $jobCard->checklists()
                     ->where('sheet_kind', ChecklistTemplate::KIND_PRE_DELIVERY)
                     ->where('status', JobCardChecklist::STATUS_COMPLETED)
@@ -222,6 +219,20 @@ class JobCardStatusService
 
         if ($toStatus === JobCardStatus::Delivered->value) {
             $this->scheduleFollowUpCalls($jobCard);
+        }
+
+        // Work done: the plan kit goes out of stock by itself (purchases module); never blocks the move
+        if ($toStatus === JobCardStatus::QcPending->value && !$jobCard->kit_issued_at && $jobCard->package_id) {
+            try {
+                $by = $user
+                    ?? ($jobCard->service_advisor_id ? User::find($jobCard->service_advisor_id) : null)
+                    ?? User::whereHas('roles', fn ($q) => $q->where('slug', Role::OWNER))->first();
+                if ($by) {
+                    app(StockService::class)->autoIssueKit($jobCard->fresh(), $by);
+                }
+            } catch (\Throwable $e) {
+                report($e);
+            }
         }
     }
 

@@ -2,7 +2,9 @@
 
 namespace App\Modules\Workshop\Notifications;
 
+use App\Modules\Workshop\Models\CustomerMessage;
 use App\Modules\Workshop\Models\JobCard;
+use App\Modules\Workshop\Models\JobOutsideWork;
 use App\Modules\Workshop\Models\JobTrip;
 use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Notification;
@@ -21,6 +23,8 @@ class StaffAlert extends Notification
         public string $body,
         public string $link,
         public ?int $jobCardId = null,
+        // Extra data for the bell (e.g. a ready customer message to send from there)
+        public array $extra = [],
     ) {}
 
     public function via(object $notifiable): array
@@ -36,7 +40,7 @@ class StaffAlert extends Notification
             'body' => $this->body,
             'link' => $this->link,
             'job_card_id' => $this->jobCardId,
-        ];
+        ] + $this->extra;
     }
 
     public static function partsPriceRequested(JobCard $jobCard, array $partNames, string $advisor): self
@@ -144,6 +148,78 @@ class StaffAlert extends Notification
             'job_sheet_submitted',
             "Job sheet submitted — {$jobCard->job_number}",
             "{$technician} submitted {$sheetName}.",
+            "/job-cards/{$jobCard->id}",
+            $jobCard->id,
+        );
+    }
+
+    /**
+     * A car sent to an outside partner (to the partner's login).
+     */
+    public static function outsideWorkSent(JobCard $jobCard, JobOutsideWork $work): self
+    {
+        $jobCard->loadMissing('vehicle:id,registration_no');
+
+        return new self(
+            'outside_work_sent',
+            "{$work->kindLabel()} — {$jobCard->vehicle?->registration_no}",
+            ($work->note ? "{$work->note}. " : '') . 'Add photos and videos of your work, then tap Done.',
+            "/partner/works/{$work->id}",
+            null,
+        );
+    }
+
+    public static function outsideWorkDone(JobCard $jobCard, JobOutsideWork $work): self
+    {
+        return new self(
+            'outside_work_done',
+            "{$work->kindLabel()} done — {$jobCard->job_number}",
+            "{$work->partner?->name} finished. Tap \"Car is back\" when the car is at the workshop.",
+            "/job-cards/{$jobCard->id}/sheet",
+            $jobCard->id,
+        );
+    }
+
+    /**
+     * A staff member finished a step: a ready WhatsApp message for the customer, which the advisor
+     * reads and sends from the bell itself.
+     */
+    public static function customerUpdate(JobCard $jobCard, CustomerMessage $message, string $staff, ?string $shareUrl, bool $viaApi): self
+    {
+        return new self(
+            'customer_update',
+            "Update to send — {$jobCard->job_number}",
+            "{$staff}: {$message->body}",
+            "/job-cards/{$jobCard->id}",
+            $jobCard->id,
+            ['message_id' => $message->id, 'message' => $message->body, 'share_url' => $shareUrl, 'via_api' => $viaApi],
+        );
+    }
+
+    /**
+     * The automatic plan kit at final QC was short in stock (the coordinator issues it once stock is in).
+     *
+     * @param array<int, array{name: string, unit: string, quantity: float}> $short
+     */
+    public static function kitShort(JobCard $jobCard, array $short): self
+    {
+        $lines = implode(', ', array_map(fn ($s) => "{$s['name']} {$s['quantity']} {$s['unit']}", $short));
+
+        return new self(
+            'kit_short',
+            "Plan kit short in stock — {$jobCard->job_number}",
+            "Not issued: {$lines}. Receive it into stock, then issue it on the job card.",
+            "/job-cards/{$jobCard->id}",
+            $jobCard->id,
+        );
+    }
+
+    public static function billRequested(JobCard $jobCard, string $advisor): self
+    {
+        return new self(
+            'bill_requested',
+            "Bill to make — {$jobCard->job_number}",
+            "{$advisor} checked the job. Recheck parts, cost and price, make the final bill and send it to the customer.",
             "/job-cards/{$jobCard->id}",
             $jobCard->id,
         );

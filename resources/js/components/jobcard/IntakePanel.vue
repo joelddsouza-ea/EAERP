@@ -173,13 +173,13 @@ defineExpose({ reload: load })
         <MediaStrip :media="intake.media" :can-delete="canEdit" :job-card-id="jobCardId" @delete="remove" />
 
         <div v-if="canEdit" class="mt-3 flex flex-wrap items-center gap-2">
-          <input ref="photoInput" type="file" accept="image/*" capture="environment" multiple class="hidden" @change="onFileChosen" />
+          <input ref="photoInput" type="file" accept="image/*" capture="environment" class="hidden" @change="onFileChosen" />
           <input ref="videoInput" type="file" accept="video/*" capture="environment" class="hidden" @change="onFileChosen" />
           <Button size="sm" variant="secondary" :disabled="uploadPercent !== null" @click="photoInput?.click()">
-            <CameraIcon class="h-4 w-4 mr-1" /> Add photos
+            <CameraIcon class="h-4 w-4 mr-1" /> Take photo
           </Button>
           <Button size="sm" variant="secondary" :disabled="uploadPercent !== null" @click="videoInput?.click()">
-            <VideoCameraIcon class="h-4 w-4 mr-1" /> Add video
+            <VideoCameraIcon class="h-4 w-4 mr-1" /> Record video
           </Button>
           <span v-if="uploadPercent !== null" class="text-xs text-gray-500">Uploading… {{ uploadPercent }}%</span>
         </div>

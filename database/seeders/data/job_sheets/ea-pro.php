@@ -13,6 +13,7 @@ return [
     'has_issues_tab' => true,
     'has_observations' => true,
     'sort_order' => '10',
+    'outside_sections' => ['Washing & Cleaning' => 'washing'],
     'sections' => [
         'Engine Compartment' => [
             ['Drain old engine oil completely', '***'],

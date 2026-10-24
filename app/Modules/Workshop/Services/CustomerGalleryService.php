@@ -8,6 +8,7 @@ use App\Modules\Workshop\Models\JobCardAdditionalJob;
 use App\Modules\Workshop\Models\JobCardChecklistItem;
 use App\Modules\Workshop\Models\JobCardIssue;
 use App\Modules\Workshop\Models\JobCardMedia;
+use App\Modules\Workshop\Models\JobOutsideWork;
 use Illuminate\Support\Collection;
 
 /**
@@ -84,6 +85,16 @@ class CustomerGalleryService
                 })->values()->all();
 
             $areas[] = $this->area('additional', 'Additional work', $groups);
+        }
+
+        // Washing / wheel alignment by outside partners
+        if ($outside = $byType->get('outside_work')) {
+            $works = JobOutsideWork::whereIn('id', $outside->pluck('attachable_id')->unique())->get()->keyBy('id');
+            $groups = $outside
+                ->groupBy(fn (JobCardMedia $m) => $works[$m->attachable_id]?->kindLabel() ?? 'Outside work')
+                ->map(fn (Collection $g, string $title) => ['title' => $title, 'items' => $this->items($g)])
+                ->values()->all();
+            $areas[] = $this->area('outside', 'Washing & outside work', $groups);
         }
 
         // Drop / home-visit closing photos (front, rear, left, right…)

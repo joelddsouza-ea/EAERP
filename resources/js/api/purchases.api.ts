@@ -170,6 +170,8 @@ export interface KitLine {
 
 export interface JobStock {
   kit_issued_at: string | null
+  /** What the automatic plan kit at final QC couldn't issue (short in stock) */
+  kit_shortfall: { stock_item_id: number; name: string; unit: string; quantity: number }[]
   suggested_kit: { stock_item_id: number; name: string; unit: string; quantity: number; in_stock: number }[]
   issued: { stock_item_id: number; name: string; unit: string; quantity: number; cost: number }[]
   items: { id: number; name: string; unit: string; category: string }[]

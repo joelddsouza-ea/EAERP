@@ -370,8 +370,7 @@ class PickupDropHomeServiceTest extends TestCase
         $this->as($this->tech)->postJson("/api/v1/workshop/trips/{$visit->id}/readings", ['km_reading' => 15000, 'fuel_level' => 'full'])->assertOk();
         $this->assertSame('work_in_progress', $job->fresh()->status);
 
-        // Trial drive and wash are skipped for a home job: after the sheets, straight to final QC
-        $this->assertSame('ok', app(\App\Modules\Workshop\Services\JobLifecycleService::class)->postTrialResult($job->fresh()));
+        // Trial drive and wash are on the job sheet (workshop-only activities are N/A on a home visit)
 
         // Close needs the bill paid
         $this->as($this->tech)->postJson("/api/v1/workshop/trips/{$visit->id}/close")->assertStatus(422);

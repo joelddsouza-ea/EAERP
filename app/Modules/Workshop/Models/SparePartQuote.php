@@ -19,6 +19,8 @@ class SparePartQuote extends Model
     protected $fillable = [
         'spare_part_request_id',
         'supplier_id',
+        // From our own stock (no supplier): priced at the average cost, issued on approval
+        'stock_item_id',
         'unit_cost',
         'gst_mode',
         'gst_rate',
@@ -41,6 +43,11 @@ class SparePartQuote extends Model
     public function supplier()
     {
         return $this->belongsTo(Supplier::class)->withTrashed();
+    }
+
+    public function stockItem()
+    {
+        return $this->belongsTo(StockItem::class);
     }
 
     public function createdBy()

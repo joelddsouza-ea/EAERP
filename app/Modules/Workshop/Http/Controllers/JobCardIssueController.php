@@ -112,6 +112,10 @@ class JobCardIssueController extends ApiController
 
     private function presentIssue(JobCardIssue $issue): array
     {
+        // Technicians check a new part in person, not against the coordinator's GRN photo
+        $user = request()->user();
+        $showGrnPhotos = !$user || !$this->sheets->isTechnicianOnly($user);
+
         return [
             'id' => $issue->id,
             'job_card_id' => $issue->job_card_id,
@@ -128,7 +132,7 @@ class JobCardIssueController extends ApiController
             'activity_media' => $issue->relationLoaded('sourceItem') && $issue->sourceItem
                 ? JobCardMediaResource::collection($issue->sourceItem->media)->resolve()
                 : [],
-            'part_requests' => $issue->partRequests->map(function ($p) {
+            'part_requests' => $issue->partRequests->map(function ($p) use ($showGrnPhotos) {
                 $line = $p->relationLoaded('grnLines') ? $p->arrivalLine() : null;
 
                 return [
@@ -146,7 +150,7 @@ class JobCardIssueController extends ApiController
                         'quantity' => (float) $line->quantity,
                         'verification' => $line->verification,
                         'verification_note' => $line->verification_note,
-                        'photos' => $line->media->map(fn ($m) => $m->present())->values(),
+                        'photos' => $showGrnPhotos ? $line->media->map(fn ($m) => $m->present())->values() : [],
                     ] : null,
                 ];
             })->values(),

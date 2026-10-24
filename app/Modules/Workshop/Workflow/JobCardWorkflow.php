@@ -14,8 +14,7 @@ use App\Modules\Workshop\Workflow\Guards\IntakeCaptured;
 use App\Modules\Workshop\Workflow\Guards\JobSheetActivitiesResolved;
 use App\Modules\Workshop\Workflow\Guards\NoOpenCriticalIssues;
 use App\Modules\Workshop\Workflow\Guards\PickupHandoverCaptured;
-use App\Modules\Workshop\Workflow\Guards\PostTrialPassed;
-use App\Modules\Workshop\Workflow\Guards\WashRecorded;
+use App\Modules\Workshop\Workflow\Guards\OutsideWorkReturned;
 use App\Modules\Workshop\Workflow\Guards\PreDeliveryChecklistComplete;
 use App\Modules\Workshop\Workflow\Guards\TechnicianAssigned;
 
@@ -81,32 +80,33 @@ class JobCardWorkflow
         'work_in_progress' => [
             'awaiting_parts' => ['perms' => [self::CHANGE, self::SHEET]],
             'awaiting_approval' => ['perms' => [self::CHANGE]],
-            'post_work_trial' => [
+            // The trial drive and the wash are sections of the technician's job sheet (owner, 2026-10-24):
+            // the submitted job goes straight to the advisor's final QC
+            'qc_pending' => [
                 'perms' => [self::CHANGE, self::SHEET],
-                'guards' => [JobSheetActivitiesResolved::class, NoOpenCriticalIssues::class],
+                'guards' => [JobSheetActivitiesResolved::class, NoOpenCriticalIssues::class, OutsideWorkReturned::class],
             ],
         ],
         'awaiting_parts' => [
             'work_in_progress' => ['perms' => [self::CHANGE, self::SHEET, self::PARTS]],
         ],
+        // No longer entered (trial and wash are on the job sheet): jobs left in them move on to final QC
         'post_work_trial' => [
-            'wash_pending' => ['perms' => [self::QC, self::CHANGE], 'guards' => [PostTrialPassed::class]],
-            // Trial drive found issues: back to the technician
+            'qc_pending' => ['perms' => [self::QC, self::CHANGE]],
             'work_in_progress' => ['perms' => [self::QC], 'requires_notes' => true],
         ],
         'wash_pending' => [
-            'qc_pending' => ['perms' => [self::QC, self::CHANGE], 'guards' => [WashRecorded::class]],
+            'qc_pending' => ['perms' => [self::QC, self::CHANGE]],
             'work_in_progress' => ['perms' => [self::QC], 'requires_notes' => true],
         ],
-        // Final QC after the wash: the pre-delivery checklist
+        // Final QC by the advisor: the pre-delivery checklist; a failed check goes back to the technician
         'qc_pending' => [
             'ready_for_delivery' => ['perms' => [self::PRE_DELIVERY, self::CHANGE], 'guards' => [PreDeliveryChecklistComplete::class]],
             'work_in_progress' => ['perms' => [self::QC], 'requires_notes' => true],
-            'wash_pending' => ['perms' => [self::QC], 'requires_notes' => true],
         ],
         'ready_for_delivery' => [
             'invoiced' => ['perms' => ['billing.invoices.create'], 'guards' => [BillApproved::class]],
-            'wash_pending' => ['perms' => [self::CHANGE], 'requires_notes' => true],
+            'work_in_progress' => ['perms' => [self::CHANGE], 'requires_notes' => true],
         ],
         'invoiced' => [
             'gate_pass_generated' => ['perms' => ['billing.payments.create'], 'guards' => [GatePassIssued::class]],
@@ -123,8 +123,8 @@ class JobCardWorkflow
     private const EVENT_EDGES = [
         'post_work_trial' => ['work_in_progress'],
         'wash_pending' => ['work_in_progress'],
-        'qc_pending' => ['work_in_progress', 'wash_pending'],
-        'ready_for_delivery' => ['wash_pending'],
+        'qc_pending' => ['work_in_progress'],
+        'ready_for_delivery' => ['work_in_progress'],
     ];
 
     /**

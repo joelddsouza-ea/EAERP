@@ -160,7 +160,7 @@ class GoodsReceiptService
     }
 
     /**
-     * The technician checks a received part against its GRN photos.
+     * The technician checks a received part in person (GRN photos are for the records, not shown to them).
      */
     public function verify(Line $line, bool $right, ?string $note, User $user): Line
     {

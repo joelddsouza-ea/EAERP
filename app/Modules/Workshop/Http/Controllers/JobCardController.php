@@ -591,7 +591,7 @@ class JobCardController extends ApiController
         $stats = [
             'jobs_in_progress' => JobCard::active()->count(),
             'jobs_today' => JobCard::today()->count(),
-            'pending_qc' => JobCard::status([JobCardStatus::PostWorkTrial->value, JobCardStatus::WashPending->value])->count(),
+            'pending_qc' => JobCard::status([JobCardStatus::QcPending->value])->count(),
             'ready_for_delivery' => JobCard::status(JobCardStatus::ReadyForDelivery->value)->count(),
             'delivered_today' => JobCard::status('delivered')->whereDate('time_out', $today)->count(),
             'by_status' => JobCard::active()

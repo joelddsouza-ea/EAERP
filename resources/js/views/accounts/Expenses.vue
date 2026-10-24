@@ -15,6 +15,7 @@ import Button from '@/components/ui/Button.vue'
 import Badge from '@/components/ui/Badge.vue'
 import Modal from '@/components/ui/Modal.vue'
 import Spinner from '@/components/ui/Spinner.vue'
+import MediaPicker from '@/components/media/MediaPicker.vue'
 
 const branchStore = useBranchStore()
 const { can } = usePermissions()
@@ -233,7 +234,7 @@ async function cancel() {
         <div><label class="label">Note</label><input v-model="form.note" class="input" placeholder="Car / job, if for one" /></div>
         <div>
           <label class="label">Photo of the bill</label>
-          <input type="file" accept="image/*,application/pdf" capture="environment" class="block w-full text-sm" @change="onBill" />
+          <MediaPicker size="sm" :kinds="['photo']" files @change="onBill" />
         </div>
       </div>
       <template #footer>

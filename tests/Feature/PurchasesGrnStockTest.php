@@ -235,9 +235,12 @@ class PurchasesGrnStockTest extends TestCase
         $this->assertTrue($issue['parts_to_verify']);
         $this->assertFalse($issue['parts_arrived']);
         $this->assertNotNull($issue['part_requests'][0]['grn']);
-        $this->assertCount(1, $issue['part_requests'][0]['grn']['photos']);
+        // The technician checks the part in person: no GRN photo for them; the advisor still sees it
+        $this->assertSame([], $issue['part_requests'][0]['grn']['photos']);
+        $advisorView = collect($this->as($this->advisor)->getJson($this->url($job, '/issues'))->assertOk()->json('data'))->first();
+        $this->assertCount(1, $advisorView['part_requests'][0]['grn']['photos']);
         $this->as($this->tech)->patchJson($this->url($job, "/issues/{$issue['id']}"), ['status' => 'resolved'])
-            ->assertStatus(422)->assertJsonPath('message', 'Check the new part against its GRN photo: Right part or Wrong part.');
+            ->assertStatus(422)->assertJsonPath('message', 'Check the new part that arrived: Right part or Wrong part.');
         $this->as($this->tech)->post($this->url($job, "/issues/{$issue['id']}/media"), [
             'file' => UploadedFile::fake()->image('fit.jpg', 300, 200), 'tag' => 'fitted_part',
         ])->assertStatus(422);
@@ -395,6 +398,86 @@ class PurchasesGrnStockTest extends TestCase
         $this->assertEquals(1, (float) StockBalance::where('stock_item_id', $filter->id)->value('quantity'));
         $moves = $this->as($this->owner)->getJson("/api/v1/workshop/purchases/stock/{$filter->id}/movements")->assertOk()->json('data.movements');
         $this->assertSame(['adjust', 'issue', 'in'], array_column($moves, 'type'));
+    }
+
+    public function test_plan_kit_is_issued_by_itself_at_final_qc_and_what_is_short_is_kept(): void
+    {
+        $this->enable();
+        $job = $this->jobAtWork();
+        $oil = StockItem::where('oil_type_id', $job->oil_type_id)->firstOrFail();
+        $filter = StockItem::create(['name' => 'Oil filter', 'category' => 'filter', 'unit' => 'nos', 'gst_rate' => 18, 'reorder_level' => 5]);
+        $litres = (float) PackageOilLitre::where('package_id', $job->package_id)->where('category_id', Vehicle::findOrFail($job->vehicle_id)->category_id)->value('litres');
+        $this->as($this->coordinator)->putJson("/api/v1/workshop/purchases/plan-kits/{$job->package_id}", ['lines' => [
+            ['category_id' => null, 'stock_item_id' => $filter->id, 'quantity' => 1],
+        ]])->assertOk();
+        // Only 2 L of the oil in stock
+        $this->postGrn($this->coordinator, ['payment_mode' => 'cash'], [
+            ['kind' => 'stock', 'stock_item_id' => $oil->id, 'quantity' => 2, 'unit_cost' => 500, 'gst_mode' => 'incl', 'gst_rate' => 18],
+            ['kind' => 'stock', 'stock_item_id' => $filter->id, 'quantity' => 3, 'unit_cost' => 200, 'gst_mode' => 'incl', 'gst_rate' => 18],
+        ])->assertCreated();
+
+        // The technician's work is done: final QC → the kit goes out of stock as far as it can
+        $this->as($this->owner)->patchJson($this->url($job, '/status'), ['status' => 'qc_pending', 'override' => true, 'notes' => 'Test: work done'])->assertOk();
+        $job->refresh();
+        $this->assertNotNull($job->kit_issued_at);
+        $this->assertEquals(2, (float) StockBalance::where('stock_item_id', $filter->id)->value('quantity'));
+        $this->assertEquals(0, (float) StockBalance::where('stock_item_id', $oil->id)->value('quantity'));
+        $this->assertEqualsWithDelta($litres - 2, $job->kit_shortfall[0]['quantity'], 0.001);
+        $this->assertSame(1, $this->coordinator->notifications()->where('data->kind', 'kit_short')->count());
+        $this->as($this->advisor)->getJson($this->url($job, '/stock'))->assertOk()->assertJsonPath('data.kit_shortfall.0.stock_item_id', $oil->id);
+
+        // Stock arrives; issuing the rest clears the shortfall
+        $this->postGrn($this->coordinator, ['payment_mode' => 'cash', 'supplier_bill_no' => 'BH-9'], [
+            ['kind' => 'stock', 'stock_item_id' => $oil->id, 'quantity' => 10, 'unit_cost' => 500, 'gst_mode' => 'incl', 'gst_rate' => 18],
+        ])->assertCreated();
+        $this->as($this->advisor)->postJson($this->url($job, '/stock/issue'), ['lines' => [['stock_item_id' => $oil->id, 'quantity' => $litres - 2]]])->assertOk();
+        $this->assertNull($job->fresh()->kit_shortfall);
+
+        // Module off: nothing is taken
+        $this->enable(false);
+        $other = $this->jobAtWork('MH05GRN2');
+        $this->as($this->owner)->patchJson($this->url($other, '/status'), ['status' => 'qc_pending', 'override' => true, 'notes' => 'Test'])->assertOk();
+        $this->assertNull($other->fresh()->kit_issued_at);
+    }
+
+    public function test_a_part_from_stock_is_priced_at_average_cost_issued_on_approval_and_billed_without_a_grn(): void
+    {
+        $this->enable();
+        $job = $this->jobAtWork();
+        $wiper = StockItem::create(['name' => 'Wiper blade 22in', 'category' => 'consumable', 'unit' => 'nos', 'gst_rate' => 18, 'reorder_level' => 2]);
+        $this->postGrn($this->coordinator, ['payment_mode' => 'cash'], [
+            ['kind' => 'stock', 'stock_item_id' => $wiper->id, 'quantity' => 4, 'unit_cost' => 300, 'gst_mode' => 'incl', 'gst_rate' => 18],
+        ])->assertCreated();
+
+        $part = $this->approvedPart($job, 'Wiper blade');
+        $part->quotes()->delete();
+        $part->update(['status' => SparePartRequest::REQUESTED, 'selected_quote_id' => null]);
+
+        // The coordinator prices it from stock: no supplier, average cost
+        $this->as($this->tech)->postJson("/api/v1/workshop/parts-desk/requests/{$part->id}/from-stock", ['stock_item_id' => $wiper->id])->assertForbidden();
+        $this->as($this->coordinator)->postJson("/api/v1/workshop/parts-desk/requests/{$part->id}/from-stock", ['stock_item_id' => $wiper->id])->assertCreated();
+        $part->refresh();
+        $this->assertSame(SparePartRequest::QUOTED, $part->status);
+        $this->assertNull($part->selectedQuote->supplier_id);
+        $this->assertEquals(300, (float) $part->selectedQuote->landed_unit_cost);
+
+        // On the estimate with the usual margin; the customer approves → issued from stock, part arrived
+        $estimate = $this->as($this->advisor)->postJson($this->url($job, '/estimates'))->assertOk()->json('data');
+        $this->as($this->advisor)->postJson($this->url($job, "/estimates/{$estimate['id']}/parts"), ['spare_part_request_id' => $part->id])->assertCreated();
+        $this->as($this->advisor)->postJson($this->url($job, "/estimates/{$estimate['id']}/send"))->assertOk();
+        $line = \App\Modules\Workshop\Models\JobCardEstimateLine::where('spare_part_request_id', $part->id)->firstOrFail();
+        $this->assertEquals(300, (float) $line->unit_cost);
+        $line->update(['approval_status' => 'approved']);
+        app(\App\Modules\Workshop\Services\PartsQuoteService::class)->syncFromEstimate($job->fresh(), $line->estimate);
+
+        $this->assertSame(SparePartRequest::RECEIVED, $part->fresh()->status);
+        $this->assertEquals(3, (float) StockBalance::where('stock_item_id', $wiper->id)->value('quantity'));
+        $this->assertSame(0, $this->coordinator->notifications()->where('data->kind', 'parts_to_procure')->count());
+
+        // The bill doesn't wait for a GRN for it
+        $job->update(['status' => 'ready_for_delivery']);
+        $summary = $this->as($this->backoffice)->getJson($this->url($job, '/billing'))->assertOk()->json('data');
+        $this->assertNull($summary['proforma_from']);
     }
 
     public function test_bill_waits_for_parts_on_a_grn(): void

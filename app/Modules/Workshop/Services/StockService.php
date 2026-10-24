@@ -9,6 +9,8 @@ use App\Modules\Workshop\Models\PlanKitItem;
 use App\Modules\Workshop\Models\StockBalance;
 use App\Modules\Workshop\Models\StockItem;
 use App\Modules\Workshop\Models\StockMovement;
+use App\Modules\Workshop\Notifications\StaffAlert;
+use App\Modules\Workshop\Support\Purchases;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -202,9 +204,74 @@ class StockService
             if ($isKit && !$jobCard->kit_issued_at) {
                 $jobCard->forceFill(['kit_issued_at' => now()])->save();
             }
+            $this->reduceShortfall($jobCard, $movements);
 
             return $movements;
         });
+    }
+
+    /**
+     * The technician has finished (final QC): the plan kit goes out of stock by itself — the plan
+     * lines are billed from the price master, so stock must follow. Whatever is short is issued as
+     * far as stock allows, kept on the job (kit_shortfall) and the coordinators are told; the bill
+     * is never held up.
+     *
+     * @return array<int, array{stock_item_id: int, name: string, unit: string, quantity: float}> what couldn't be issued
+     */
+    public function autoIssueKit(JobCard $jobCard, User $user): array
+    {
+        if (!Purchases::enabled() || $jobCard->kit_issued_at || !$jobCard->package_id) {
+            return [];
+        }
+
+        $issued = $this->issuedToJob($jobCard)->pluck('quantity', 'stock_item_id');
+        $items = StockItem::whereIn('id', $this->suggestedKit($jobCard)->pluck('stock_item_id'))->get()->keyBy('id');
+        $short = [];
+
+        foreach ($this->suggestedKit($jobCard) as $line) {
+            // Issued by hand already (e.g. the oil at the start of the work)
+            $need = round($line['quantity'] - (float) ($issued[$line['stock_item_id']] ?? 0), 2);
+            if ($need <= 0 || !($item = $items[$line['stock_item_id']] ?? null)) {
+                continue;
+            }
+            $take = round(min($need, max(0, $line['in_stock'])), 2);
+            if ($take > 0) {
+                try {
+                    $this->take($jobCard->branch_id, $item, $take, StockMovement::ISSUE, $user, $jobCard->id, 'Plan kit (automatic)');
+                } catch (EstimateException) {
+                    $take = 0.0;
+                }
+            }
+            if ($need - $take > 0.001) {
+                $short[] = ['stock_item_id' => $item->id, 'name' => $item->name, 'unit' => $item->unit, 'quantity' => round($need - $take, 2)];
+            }
+        }
+
+        $jobCard->forceFill(['kit_issued_at' => now(), 'kit_shortfall' => $short ?: null])->save();
+
+        if ($short) {
+            app(PartsQuoteService::class)->notifyCoordinators($jobCard, StaffAlert::kitShort($jobCard, $short));
+        }
+
+        return $short;
+    }
+
+    /**
+     * Items issued by hand after the automatic kit was short come off the shortfall.
+     *
+     * @param Collection<int, StockMovement> $movements
+     */
+    protected function reduceShortfall(JobCard $jobCard, Collection $movements): void
+    {
+        if (!$jobCard->kit_shortfall) {
+            return;
+        }
+        $given = $movements->groupBy('stock_item_id')->map(fn ($m) => -(float) $m->sum('quantity'));
+        $left = collect($jobCard->kit_shortfall)
+            ->map(fn (array $s) => ['quantity' => round($s['quantity'] - (float) ($given[$s['stock_item_id']] ?? 0), 2)] + $s)
+            ->filter(fn (array $s) => $s['quantity'] > 0.001)
+            ->values()->all();
+        $jobCard->forceFill(['kit_shortfall' => $left ?: null])->save();
     }
 
     /**

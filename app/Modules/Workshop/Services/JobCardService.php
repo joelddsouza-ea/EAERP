@@ -6,6 +6,7 @@ use App\Modules\Workshop\Models\JobCard;
 use App\Modules\Workshop\Models\JobCardBayMove;
 use App\Modules\Workshop\Models\JobCardEstimate;
 use App\Modules\Workshop\Models\JobCardStatusHistory;
+use App\Modules\Workshop\Models\ServicePartner;
 use App\Modules\Workshop\Enums\JobCardStatus;
 use App\Modules\Workshop\Notifications\StaffAlert;
 use App\Core\Models\User;
@@ -39,6 +40,8 @@ class JobCardService
             };
             $trip = $data['trip'] ?? null;
             unset($data['trip']);
+            $alignmentPartnerId = $data['wheel_alignment_partner_id'] ?? null;
+            unset($data['wheel_alignment_partner_id']);
             $data['status_changed_at'] = now();
             $data = $this->normalizeServiceType($data);
             // A technician chosen on the form goes through addTechnician (pivot + notification)
@@ -83,6 +86,11 @@ class JobCardService
             // Pickup & drop / home service: the trips the driver or home technician will do
             if (!$driveIn) {
                 app(TripService::class)->bookForNewJob($jobCard->fresh(), $trip ?? [], auth()->user());
+            }
+
+            // Wheel alignment & balancing ticked: the chosen partner is told and uploads photos/videos
+            if ($alignmentPartnerId) {
+                app(OutsideWorkService::class)->send($jobCard, ServicePartner::KIND_WHEEL_ALIGNMENT, (int) $alignmentPartnerId, auth()->user());
             }
 
             return $jobCard->fresh()->load(['customer', 'vehicle', 'package', 'oilType']);
@@ -297,7 +305,7 @@ class JobCardService
         return [
             'total_jobs' => $jobs->count(),
             'in_progress' => $jobs->where('status', JobCardStatus::WorkInProgress->value)->count(),
-            'pending_qc' => $jobs->where('status', JobCardStatus::PostWorkTrial->value)->count(),
+            'pending_qc' => $jobs->where('status', JobCardStatus::QcPending->value)->count(),
             'jobs' => $jobs,
         ];
     }

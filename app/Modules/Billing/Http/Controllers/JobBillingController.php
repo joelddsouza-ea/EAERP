@@ -145,13 +145,28 @@ class JobBillingController extends ApiController
 
     public function updateItem(Request $request, JobCard $jobCard, Invoice $invoice, InvoiceItem $item): JsonResponse
     {
-        $data = $request->validate(['hsn_code' => ['required', 'string', 'regex:/^[0-9]{4,8}$/']], [
+        $data = $request->validate([
+            'hsn_code' => ['sometimes', 'required', 'string', 'regex:/^[0-9]{4,8}$/'],
+            'quantity' => 'sometimes|required|numeric|min:0.01|max:9999',
+            'unit_price' => 'sometimes|required|numeric|min:0|max:10000000',
+            'unit_cost' => 'sometimes|nullable|numeric|min:0|max:10000000',
+        ], [
             'hsn_code.regex' => 'An HSN/SAC code has 4 to 8 digits.',
         ]);
 
-        $this->billing->updateItemHsn($this->own($jobCard, $invoice), $item, $data['hsn_code']);
+        $this->billing->updateItem($this->own($jobCard, $invoice), $item, $data);
 
-        return $this->success($this->billing->summary($jobCard, $request->user()), 'HSN/SAC saved');
+        return $this->success($this->billing->summary($jobCard, $request->user()), 'Line saved');
+    }
+
+    /**
+     * The advisor has cross-checked the job: ask back office to make the bill.
+     */
+    public function requestBill(Request $request, JobCard $jobCard): JsonResponse
+    {
+        $this->billing->requestBill($jobCard, $request->user());
+
+        return $this->success($this->billing->summary($jobCard->fresh(), $request->user()), 'Sent to back office for the bill');
     }
 
     public function removeItem(Request $request, JobCard $jobCard, Invoice $invoice, InvoiceItem $item): JsonResponse

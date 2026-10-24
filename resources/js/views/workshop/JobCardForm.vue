@@ -15,6 +15,7 @@ import Spinner from '@/components/ui/Spinner.vue'
 import { tripsApi, type CustomerAddress, type ServiceMode, type TripPerson } from '@/api/trips.api'
 import { usePermissions } from '@/composables/usePermissions'
 import { fleetApi } from '@/api/fleet.api'
+import { servicePartnersApi } from '@/api/outsideWork.api'
 import { useAuthStore } from '@/stores/auth.store'
 
 const route = useRoute()
@@ -41,7 +42,23 @@ const form = ref({
   estimated_delivery: '',
   /** A fleet cab: the driver who brought it in */
   fleet_driver_id: null as number | null,
+  /** Off: the customer's page shows no progress list */
+  show_customer_timeline: true,
 })
+
+// ---- Wheel alignment & balancing by an outside partner (ticked on a new job; the partner is told)
+const alignment = ref(false)
+const alignmentPartnerId = ref<number | null>(null)
+const alignmentPartners = ref<{ id: number; name: string }[]>([])
+async function loadAlignmentPartners() {
+  if (!can('workshop.outside-work.send')) return
+  try {
+    alignmentPartners.value = (await servicePartnersApi.options('wheel_alignment')).data.data
+    alignmentPartnerId.value = alignmentPartners.value[0]?.id ?? null
+  } catch {
+    alignmentPartners.value = []
+  }
+}
 
 // ---- Fleet cabs: which of the fleet's drivers brought it in (they get the job in their app)
 const auth = useAuthStore()
@@ -325,6 +342,7 @@ async function fetchJobCard() {
       // datetime-local inputs need "YYYY-MM-DDTHH:mm"
       estimated_delivery: jobCard.estimated_delivery?.slice(0, 16) || '',
       fleet_driver_id: jobCard.fleet_driver_id ?? null,
+      show_customer_timeline: jobCard.show_customer_timeline !== false,
     }
 
     if (jobCard.customer) {
@@ -409,7 +427,8 @@ async function handleSubmit() {
               slot_to: trip.value.slot_to || null,
             },
           }
-      const response = await jobCardsApi.create({ ...payload, ...booking, service_mode: mode.value, customer_id, vehicle_id, complaints: lines, booking_id: bookingId.value })
+      const outside = alignment.value && alignmentPartnerId.value ? { wheel_alignment_partner_id: alignmentPartnerId.value } : {}
+      const response = await jobCardsApi.create({ ...payload, ...booking, ...outside, service_mode: mode.value, customer_id, vehicle_id, complaints: lines, booking_id: bookingId.value })
       toast.success('Job Card Created', 'Now assign the technician(s) and bay.')
       created.value = { id: response.data.data.id, job_number: response.data.data.job_number }
       window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -465,6 +484,7 @@ async function prefillFromQuery() {
 const bookingId = ref<number | null>(null)
 
 onMounted(async () => {
+  if (!isEditing.value) loadAlignmentPartners()
   await fetchJobCard()
   await loadComplaints()
   await prefillFromQuery()
@@ -727,6 +747,26 @@ watch(
               type="datetime-local"
               :error="errors.estimated_delivery"
             />
+
+            <!-- Optional: wheel alignment & balancing by an outside partner (notified with the car's details) -->
+            <div v-if="!isEditing && alignmentPartners.length" class="md:col-span-2 rounded-lg border border-gray-200 p-3 text-sm">
+              <label class="flex items-center gap-2 font-medium text-gray-800">
+                <input v-model="alignment" type="checkbox" class="rounded text-primary-600" />
+                Wheel alignment &amp; balancing (outside partner)
+              </label>
+              <div v-if="alignment" class="mt-2 flex flex-wrap items-center gap-2">
+                <span class="text-gray-600">Partner</span>
+                <select v-model="alignmentPartnerId" class="input w-auto py-1.5">
+                  <option v-for="p in alignmentPartners" :key="p.id" :value="p.id">{{ p.name }}</option>
+                </select>
+                <span class="text-xs text-gray-500">They are told and upload photos/videos. Add the charge on the estimate.</span>
+              </div>
+            </div>
+
+            <label v-if="!isEditing" class="md:col-span-2 flex items-center gap-2 text-sm text-gray-700">
+              <input v-model="form.show_customer_timeline" type="checkbox" class="rounded text-primary-600" />
+              Show the progress timeline to the customer
+            </label>
           </div>
 
           <!-- Customer complaints, one per line -->

@@ -59,11 +59,7 @@ class JobLifecycleService
                 && $this->workflow->enteredBackwards($jobCard)) {
                 break;
             }
-            $note = $jobCard->status === S::PostWorkTrial->value && $next === S::WorkInProgress->value
-                ? 'Trial drive found issues: ' . $jobCard->post_trial_notes
-                : 'Moved automatically.';
-
-            if (!$this->statuses->changeBySystem($jobCard, $next, $via, $note)) {
+            if (!$this->statuses->changeBySystem($jobCard, $next, $via, 'Moved automatically.')) {
                 break;
             }
 
@@ -90,20 +86,15 @@ class JobLifecycleService
             S::WorkInProgress->value => match (true) {
                 $this->approvalPending($jobCard) => S::AwaitingApproval->value,
                 $this->partsAwaited($jobCard) => S::AwaitingParts->value,
-                $this->workSheetsSubmitted($jobCard) => S::PostWorkTrial->value,
+                // Trial drive and wash are sections of the job sheet: straight to the final QC
+                $this->workSheetsSubmitted($jobCard) => S::QcPending->value,
                 default => null,
             },
 
             S::AwaitingParts->value => $this->partsAwaited($jobCard) ? null : S::WorkInProgress->value,
 
-            // Post-service trial drive recorded: OK → wash; issues found → back to work
-            S::PostWorkTrial->value => match ($this->postTrialResult($jobCard)) {
-                'ok' => S::WashPending->value,
-                'issues' => S::WorkInProgress->value,
-                default => null,
-            },
-
-            S::WashPending->value => $this->washDone($jobCard) ? S::QcPending->value : null,
+            // Stages no longer used (trial and wash are on the job sheet): jobs left there move on
+            S::PostWorkTrial->value, S::WashPending->value => S::QcPending->value,
 
             // Final QC after the wash: the pre-delivery checklist
             S::QcPending->value => $this->preDeliverySubmitted($jobCard) ? S::ReadyForDelivery->value : null,
@@ -127,24 +118,6 @@ class JobLifecycleService
     public function waitingFor(JobCard $jobCard): ?string
     {
         return WorkflowStage::for($jobCard->status)?->waiting_for;
-    }
-
-    /**
-     * The trial drive recorded at this Trial Drive stage (cleared each time the job enters it).
-     */
-    public function postTrialResult(JobCard $jobCard): ?string
-    {
-        // Home service: no trial drive or wash at the customer's place
-        if ($jobCard->isHomeService()) {
-            return 'ok';
-        }
-
-        return $jobCard->post_trial_at ? $jobCard->post_trial_result : null;
-    }
-
-    public function washDone(JobCard $jobCard): bool
-    {
-        return $jobCard->isHomeService() || $jobCard->wash_done_at !== null;
     }
 
     public function intakeStarted(JobCard $jobCard): bool

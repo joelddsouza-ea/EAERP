@@ -23,7 +23,7 @@ const statusFilter = ref('work_in_progress')
 const statusOptions = [
   { value: 'work_in_progress', label: 'Work In Progress' },
   { value: 'awaiting_parts', label: 'Awaiting Parts' },
-  { value: 'post_work_trial', label: 'Trial Drive' },
+  { value: 'qc_pending', label: 'Final QC' },
   { value: 'all', label: 'All' },
 ]
 

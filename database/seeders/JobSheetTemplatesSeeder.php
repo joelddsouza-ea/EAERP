@@ -92,11 +92,20 @@ class JobSheetTemplatesSeeder extends Seeder
                 ['template_id' => $template->id, 'name' => $sectionName],
                 ['sort_order' => $sectionOrder]
             );
+            // Washing etc. done by an outside partner (left alone when the data file doesn't say)
+            if (isset($data['outside_sections'][$sectionName])) {
+                $section->update(['outside_kind' => $data['outside_sections'][$sectionName]]);
+            }
 
             foreach ($items as $position => $row) {
-                $itemIndex++;
                 [$name, $marker] = [$row[0], $row[1] ?? ''];
-                $code = $data['slug'] . '.' . str_pad((string) $itemIndex, 3, '0', STR_PAD_LEFT);
+                // Activities added later carry their own code, so the numbering of the others stays put
+                if (isset($row['code'])) {
+                    $code = $row['code'];
+                } else {
+                    $itemIndex++;
+                    $code = $data['slug'] . '.' . str_pad((string) $itemIndex, 3, '0', STR_PAD_LEFT);
+                }
                 $seededCodes[] = $code;
 
                 $parsed = MarkerParser::parse($marker, $starDefault);

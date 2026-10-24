@@ -256,6 +256,13 @@ return [
         ],
     ],
 
+    // "Send update" by staff (technician after a job-sheet section, driver after a trip step):
+    // the advisor gets the message ready and sends it. Editable in Job Stages & Messages.
+    'updates' => [
+        'section_message' => "Hello :name, update on your car :car (Job :job): :section is done.\nPhotos and videos: :link",
+        'stage_message' => "Hello :name, update on your car :car (Job :job): :stage.\nDetails: :link",
+    ],
+
     // Phase 8: WhatsApp Business API through Interakt (Settings › WhatsApp, owner only).
     // Off until the owner switches it on; the API key is stored encrypted.
     'whatsapp' => [

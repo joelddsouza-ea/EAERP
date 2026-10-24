@@ -1,4 +1,4 @@
-import type { JobSheetItem, MediaRequirement } from '@/api/types'
+import type { JobSheetItem } from '@/api/types'
 
 // Keep in sync with config/workshop.php job_sheets limits
 export const MAX_VIDEO_BYTES = 50 * 1024 * 1024
@@ -11,12 +11,6 @@ export interface PreparedMedia {
   kind: 'photo' | 'video'
   poster?: Blob | null
   durationSeconds?: number | null
-}
-
-export function acceptFor(requirement: MediaRequirement): string {
-  if (requirement === 'photo') return 'image/*'
-  if (requirement === 'video') return 'video/*'
-  return 'image/*,video/*'
 }
 
 export function mediaHint(item: JobSheetItem): string | null {

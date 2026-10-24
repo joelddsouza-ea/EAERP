@@ -332,6 +332,11 @@ export const partsApi = {
     return apiClient.post<ApiResponse<SparePartQuote>>(`/workshop/parts-desk/requests/${requestId}/quotes`, data)
   },
 
+  /** The part is in our stock: priced at the average cost, issued when the customer approves */
+  fromStock(requestId: number, stockItemId: number) {
+    return apiClient.post<ApiResponse<SparePartQuote>>(`/workshop/parts-desk/requests/${requestId}/from-stock`, { stock_item_id: stockItemId })
+  },
+
   removeQuote(requestId: number, quoteId: number) {
     return apiClient.delete<ApiResponse<null>>(`/workshop/parts-desk/requests/${requestId}/quotes/${quoteId}`)
   },

@@ -35,6 +35,9 @@ class JobSheetResource extends JsonResource
                 ->groupBy(fn ($item) => $item->section_name ?? 'Activities')
                 ->map(fn ($items, $name) => [
                     'name' => $name,
+                    // washing | wheel_alignment: the section can be sent to an outside partner
+                    'outside_kind' => $items->first()->outside_kind,
+                    'resolved' => $items->every(fn ($i) => $i->status !== 'pending'),
                     'items' => JobSheetItemResource::collection($items->values()),
                 ])
                 ->values()),

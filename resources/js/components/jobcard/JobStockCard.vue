@@ -85,8 +85,13 @@ defineExpose({ reload: load })
     </template>
 
     <div class="space-y-4 text-sm">
+      <!-- The automatic plan kit at final QC was short: issue these once stock is in -->
+      <div v-if="data.kit_shortfall?.length" class="rounded-lg border border-amber-200 bg-amber-50 p-2 text-amber-900">
+        <p class="font-medium">Plan kit not fully issued (short in stock)</p>
+        <p class="text-xs">{{ data.kit_shortfall.map((s) => `${s.name} ${s.quantity} ${s.unit}`).join(', ') }} — issue it with "Issue item" once received.</p>
+      </div>
       <div v-if="canIssue" class="flex flex-wrap gap-2">
-        <Button v-if="!data.kit_issued_at && data.suggested_kit.length" size="sm" @click="openKit">Issue plan kit…</Button>
+        <Button v-if="!data.kit_issued_at && data.suggested_kit.length" size="sm" title="Issued by itself at final QC if not done before" @click="openKit">Issue plan kit now…</Button>
         <Button size="sm" variant="secondary" @click="one = { mode: 'issue', stock_item_id: '', quantity: 1 }">Issue item</Button>
         <Button v-if="data.issued.length" size="sm" variant="secondary" @click="one = { mode: 'return', stock_item_id: '', quantity: 1 }">Return to stock</Button>
       </div>

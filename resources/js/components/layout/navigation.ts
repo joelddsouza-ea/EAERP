@@ -102,6 +102,7 @@ export function useNavigation() {
     }
     if (can('workshop.bays.view')) workshop.push({ name: 'Bays', to: '/bays', icon: HomeModernIcon })
     if (can('workshop.trips.settings')) workshop.push({ name: 'Pickup, Drop & Home Service', to: '/trip-settings', icon: TruckIcon, hint: 'Charges, policy, photos' })
+    if (can('workshop.partners.manage')) workshop.push({ name: 'Outside Service Partners', to: '/service-partners', icon: TruckIcon, hint: 'Washing and wheel alignment partners, their logins' })
     if (on('fleet') && can('workshop.fleet.settings')) workshop.push({ name: 'Fleet Cabs', to: '/fleet-settings', icon: TruckIcon, hint: 'What a driver may approve per job, service-due warning' })
 
     const pricing: NavItem[] = []
@@ -169,6 +170,10 @@ export function useNavigation() {
   })
 
   const groups = computed<NavGroup[]>(() => {
+    // Outside partners (washing, wheel alignment) see only the cars sent to them
+    if (auth.hasRole('service-partner')) {
+      return [{ key: 'home', label: 'Home', icon: HomeIcon, items: [{ name: 'My cars', short: 'Cars', to: '/partner', icon: TruckIcon }] }]
+    }
     const isTechnician = auth.hasAnyRole(TECHNICIAN_ROLES)
     // Drivers work from My Trips only (the dashboard sends them there)
     const driverOnly = can('workshop.trips.drive') && !can('workshop.job-cards.view')
@@ -190,6 +195,7 @@ export function useNavigation() {
     const workshop: NavItem[] = []
     if (can('workshop.job-cards.view')) workshop.push({ name: 'Job Cards', short: 'Jobs', to: '/job-cards', icon: ClipboardDocumentListIcon })
     if (any('workshop.trips.view', 'workshop.trips.manage')) workshop.push({ name: 'Pickups & Drops', short: 'Pickups', to: '/trips/board', icon: MapIcon })
+    if (can('workshop.technician-time.view')) workshop.push({ name: 'Technician Time', short: 'Tech time', to: '/technician-time', icon: ClockIcon })
 
     const customers: NavItem[] = []
     if (can('workshop.customers.view')) customers.push({ name: 'Customers', short: 'Customers', to: '/customers', icon: UsersIcon })
@@ -242,7 +248,9 @@ export function useNavigation() {
     const all = groups.value.flatMap((g) => (g.key === 'settings' ? [] : g.items))
     const fieldStaff = auth.hasAnyRole([...TECHNICIAN_ROLES, 'driver', 'employee'])
     const marketing = auth.hasRole('marketing')
-    const order = fieldStaff
+    const order = auth.hasRole('service-partner')
+      ? ['/partner']
+      : fieldStaff
       ? ['/my-day', '/my-jobs', '/trips', '/attendance', '/job-cards']
       : marketing
         ? ['/crm/leads', '/crm/whatsapp', '/crm/bookings', '/crm/messages', '/my-day', '/attendance']

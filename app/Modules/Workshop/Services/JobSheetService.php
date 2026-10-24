@@ -13,6 +13,8 @@ use App\Modules\Workshop\Models\JobCardChecklistItem;
 use App\Modules\Workshop\Models\JobCardMedia;
 use App\Modules\Workshop\Models\JobCardIssue;
 use App\Modules\Workshop\Models\JobCardObservation;
+use App\Modules\Workshop\Models\JobOutsideWork;
+use App\Modules\Workshop\Models\ServicePartner;
 use App\Modules\Workshop\Models\SparePartRequest;
 use App\Modules\Workshop\Notifications\StaffAlert;
 use Illuminate\Database\Eloquent\Builder;
@@ -30,10 +32,10 @@ class JobSheetService
      * Job statuses in which each kind of sheet can be edited.
      */
     private const EDITABLE_STATUSES = [
-        'work' => ['intake_in_progress', 'work_in_progress', 'awaiting_parts', 'awaiting_approval', 'post_work_trial'],
-        // Final QC happens after the wash
+        'work' => ['intake_in_progress', 'work_in_progress', 'awaiting_parts', 'awaiting_approval'],
+        // Final QC after the technician submits (trial drive and wash are on the job sheet)
         ChecklistTemplate::KIND_PRE_DELIVERY => ['qc_pending'],
-        ChecklistTemplate::KIND_OBSERVATION_REPORT => ['intake_in_progress', 'work_in_progress', 'awaiting_parts', 'awaiting_approval', 'post_work_trial', 'wash_pending', 'qc_pending'],
+        ChecklistTemplate::KIND_OBSERVATION_REPORT => ['intake_in_progress', 'work_in_progress', 'awaiting_parts', 'awaiting_approval', 'qc_pending'],
     ];
 
     /** Remark on workshop-only activities of a home-service job */
@@ -51,6 +53,7 @@ class JobSheetService
         'general_repair',
         'ac_service',
         'body_shop',
+        ChecklistTemplate::KIND_POST_SERVICE,
     ];
 
     /**
@@ -58,8 +61,9 @@ class JobSheetService
      */
     public function matchingTemplates(JobCard $jobCard): Collection
     {
-        return ChecklistTemplate::query()
+        $templates = ChecklistTemplate::query()
             ->where('is_active', true)
+            ->where('slug', '!=', ChecklistTemplate::POST_SERVICE_SLUG)
             ->where(function (Builder $q) use ($jobCard) {
                 $q->where('applies_to_all', true);
                 if ($jobCard->package_id) {
@@ -72,6 +76,21 @@ class JobSheetService
             ->with(['sections.items' => fn ($q) => $q->where('is_active', true)])
             ->orderBy('sort_order')
             ->get();
+
+        // Every job gets a trial drive and a wash: when its work sheets have no washing section
+        // (general repairs, AC, body shop), the standard "Trial Drive & Washing" sheet is added
+        $works = $templates->whereIn('sheet_kind', ChecklistTemplate::WORK_SHEET_KINDS);
+        $hasWash = $works->contains(fn (ChecklistTemplate $t) => $t->sections->contains('outside_kind', ServicePartner::KIND_WASHING));
+        if ($works->isNotEmpty() && !$hasWash) {
+            $standard = ChecklistTemplate::where('slug', ChecklistTemplate::POST_SERVICE_SLUG)->where('is_active', true)
+                ->with(['sections.items' => fn ($q) => $q->where('is_active', true)])
+                ->first();
+            if ($standard) {
+                $templates->push($standard);
+            }
+        }
+
+        return $templates;
     }
 
     /**
@@ -171,6 +190,7 @@ class JobSheetService
                         'status' => $skip ? JobCardChecklistItem::STATUS_NOT_APPLICABLE : JobCardChecklistItem::STATUS_PENDING,
                         'remarks' => $skip ? self::HOME_SKIP_REMARK : null,
                         'section_name' => $section->name,
+                        'outside_kind' => $section->outside_kind,
                         'item_name' => $item->item_name,
                         'input_type' => $item->input_type,
                         'media_requirement' => $item->media_requirement,
@@ -441,7 +461,7 @@ class JobSheetService
 
         $problems = $this->rules->sheetProblems($sheet, $sheet->completionRule());
         if (in_array($sheet->sheet_kind, self::WORK_SHEET_KINDS, true)) {
-            $problems = [...$problems, ...$this->issueRules->problems($sheet->jobCard)];
+            $problems = [...$problems, ...$this->issueRules->problems($sheet->jobCard), ...$this->outsideWorkProblems($sheet)];
         }
         $meta = null;
 
@@ -475,6 +495,24 @@ class JobSheetService
         }
 
         return $sheet;
+    }
+
+    /**
+     * The car must be back from the washing / wheel-alignment partner before the job is submitted.
+     */
+    protected function outsideWorkProblems(JobCardChecklist $sheet): array
+    {
+        return JobOutsideWork::with('partner:id,name')
+            ->where('job_card_id', $sheet->job_card_id)
+            ->whereIn('status', JobOutsideWork::OPEN)
+            ->get()
+            ->map(fn (JobOutsideWork $w) => [
+                'item_id' => null,
+                'item_name' => $w->kindLabel(),
+                'section_name' => $w->kindLabel(),
+                'code' => 'outside_work_open',
+                'message' => "The car is not back from {$w->partner?->name} yet: tap \"Car is back\" when it is.",
+            ])->values()->all();
     }
 
     public function reopen(JobCardChecklist $sheet, User $user, string $notes): JobCardChecklist

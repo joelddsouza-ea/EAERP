@@ -82,7 +82,7 @@ function back() {
 
       <!-- Right -->
       <div class="flex items-center gap-1 sm:gap-3 shrink-0">
-        <GlobalSearch />
+        <GlobalSearch v-if="!authStore.hasRole('service-partner')" />
         <NotificationBell />
 
         <Menu as="div" class="relative">

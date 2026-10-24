@@ -161,7 +161,13 @@ class JobCardWorkflowTest extends TestCase
         $sheets = JobCardChecklist::where('job_card_id', $job->id)->withCount('items')->get()->keyBy('sheet_kind');
 
         $this->assertSame('intake_pending', $job->status);
-        $this->assertSame(18, $sheets['service_activities']->items_count);
+        // 18 from the paper sheet + the trial drive added before washing (owner, 2026-10-24)
+        $this->assertSame(19, $sheets['service_activities']->items_count);
+        $order = $sheets['service_activities']->items()->orderBy('sort_order')->pluck('section_name')->unique()->values()->all();
+        $this->assertSame(['Final Checks', 'Washing & Cleaning'], array_slice($order, -2));
+        $this->assertSame('washing', $sheets['service_activities']->items()->where('section_name', 'Washing & Cleaning')->value('outside_kind'));
+        // The plan sheet has its own wash: no extra trial & washing sheet
+        $this->assertArrayNotHasKey('post_service', $sheets);
         // Three questions apply only to 360 and ELITE
         $this->assertSame(17, $sheets['pre_delivery']->items_count);
         $this->assertArrayNotHasKey('observation_report', $sheets);
@@ -303,7 +309,7 @@ class JobCardWorkflowTest extends TestCase
         $this->get(substr($url, 0, -4) . 'abcd')->assertForbidden();
     }
 
-    public function test_submitting_the_job_sheet_moves_the_car_to_the_trial_drive(): void
+    public function test_submitting_the_job_sheet_moves_the_car_to_the_final_qc(): void
     {
         $job = $this->jobInProgress();
         $sheet = $this->workSheet($job);
@@ -314,9 +320,11 @@ class JobCardWorkflowTest extends TestCase
         $this->completeWorkSheet($job);
         $this->assertSame('work_in_progress', $job->fresh()->status);
 
+        // The trial drive and the wash are on the job sheet: straight to the advisor's final QC
         $this->submitSheet($job, $sheet, $this->tech)->assertOk();
-        $this->assertSame('post_work_trial', $job->fresh()->status);
+        $this->assertSame('qc_pending', $job->fresh()->status);
         $this->assertSame('auto', $job->statusHistory()->latest('id')->first()->meta['via']);
+        $this->assertNotNull($job->fresh()->work_completed_at);
     }
 
     public function test_not_done_activity_blocks_submission_unless_a_manager_overrides(): void
@@ -339,9 +347,9 @@ class JobCardWorkflowTest extends TestCase
     {
         $job = $this->jobInProgress();
 
-        $this->moveTo($job, 'post_work_trial', $this->advisor, ['override' => true, 'notes' => 'x'])->assertForbidden();
-        $this->moveTo($job, 'post_work_trial', $this->owner, ['override' => true])->assertStatus(422);
-        $this->moveTo($job, 'post_work_trial', $this->owner, ['override' => true, 'notes' => 'Urgent customer'])->assertOk();
+        $this->moveTo($job, 'qc_pending', $this->advisor, ['override' => true, 'notes' => 'x'])->assertForbidden();
+        $this->moveTo($job, 'qc_pending', $this->owner, ['override' => true])->assertStatus(422);
+        $this->moveTo($job, 'qc_pending', $this->owner, ['override' => true, 'notes' => 'Urgent customer'])->assertOk();
 
         $history = $job->statusHistory()->latest('id')->first();
         $this->assertTrue($history->meta['override']);
@@ -355,29 +363,20 @@ class JobCardWorkflowTest extends TestCase
         // Nothing to approve: work goes on
         $this->assertSame('work_in_progress', $job->fresh()->status);
 
-        $this->completeWorkSheet($job);
-        $this->submitSheet($job, $this->workSheet($job), $this->tech)->assertOk();
-        $this->assertSame('post_work_trial', $job->fresh()->status);
-
-        // Post-service trial drive: issues found send it back to work by themselves (with the note)
-        $post = "/api/v1/workshop/job-cards/{$job->id}/post-service";
-        $this->as($this->advisor)->postJson("{$post}/trial", ['result' => 'issues'])->assertStatus(422);
-        $this->as($this->advisor)->postJson("{$post}/trial", ['result' => 'issues', 'notes' => 'Wiper nozzle misaligned'])->assertOk();
-        $this->assertSame('work_in_progress', $job->fresh()->status);
-        // Sent back: the system waits; people move it on when the rework is done
-        $this->as($this->tech)->getJson("/api/v1/workshop/job-cards/{$job->id}/transitions")->assertJsonPath('data.stage.sent_back', true);
-        $this->moveTo($job, 'post_work_trial', $this->tech)->assertOk();
-
-        // Trial OK → wash; washing done → final QC (each by itself)
-        $this->as($this->advisor)->postJson("{$post}/wash")->assertStatus(422);
-        $this->as($this->advisor)->postJson("{$post}/trial", ['result' => 'ok'])->assertOk();
-        $this->assertSame('wash_pending', $job->fresh()->status);
         $pre = JobCardChecklist::where('job_card_id', $job->id)->where('sheet_kind', 'pre_delivery')->firstOrFail();
         $first = $pre->items()->firstOrFail();
-        // QC only after the wash
+        // QC only after the technician submits (trial drive and wash are on the job sheet)
         $this->as($this->advisor)->patchJson($this->itemUrl($job, $first), ['value' => 'yes'])->assertStatus(422);
-        $this->as($this->advisor)->postJson("{$post}/wash")->assertOk();
+
+        $this->completeWorkSheet($job);
+        $this->submitSheet($job, $this->workSheet($job), $this->tech)->assertOk();
         $this->assertSame('qc_pending', $job->fresh()->status);
+
+        // QC failed: back to the technician with the note; the system waits for people to move it on
+        $this->moveTo($job, 'work_in_progress', $this->advisor)->assertStatus(422);
+        $this->moveTo($job, 'work_in_progress', $this->advisor, ['notes' => 'Wiper nozzle misaligned'])->assertOk();
+        $this->as($this->tech)->getJson("/api/v1/workshop/job-cards/{$job->id}/transitions")->assertJsonPath('data.stage.sent_back', true);
+        $this->moveTo($job, 'qc_pending', $this->tech)->assertOk();
 
         // Final QC (pre-delivery): technicians can't answer; every answer must match
         $this->as($this->tech)->patchJson($this->itemUrl($job, $first), ['value' => 'yes'])->assertForbidden();
@@ -419,8 +418,8 @@ class JobCardWorkflowTest extends TestCase
         $this->assertNotNull($job->time_out);
         $this->assertSame(2, $job->followUpCalls()->count());
         $this->assertSame(
-            ['intake_pending', 'intake_in_progress', 'work_in_progress', 'post_work_trial', 'work_in_progress', 'post_work_trial',
-             'wash_pending', 'qc_pending', 'ready_for_delivery', 'invoiced', 'gate_pass_generated', 'delivered'],
+            ['intake_pending', 'intake_in_progress', 'work_in_progress', 'qc_pending', 'work_in_progress', 'qc_pending',
+             'ready_for_delivery', 'invoiced', 'gate_pass_generated', 'delivered'],
             $job->statusHistory()->orderBy('id')->pluck('to_status')->all()
         );
     }

@@ -29,6 +29,9 @@ class CreateJobCardRequest extends FormRequest
             'service_type' => 'required|in:' . self::SERVICE_TYPES,
             // Drive-in, pickup & drop, or home service (the driver / home technician records odometer and fuel)
             'service_mode' => 'nullable|in:' . implode(',', JobCard::MODES),
+            'show_customer_timeline' => 'sometimes|boolean',
+            // Optional: wheel alignment & balancing by an outside partner (the advisor picks one)
+            'wheel_alignment_partner_id' => ['nullable', 'integer', Rule::exists('service_partners', 'id')->where('kind', 'wheel_alignment')->where('is_active', true)->whereNull('deleted_at')],
             'km_reading' => 'required_if:service_mode,drive_in|required_without:service_mode|nullable|integer|min:0',
             'fuel_level' => 'required_if:service_mode,drive_in|required_without:service_mode|nullable|in:empty,quarter,half,three_quarter,full',
             // Pickup / home visit booking

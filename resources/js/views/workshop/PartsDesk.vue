@@ -9,6 +9,7 @@ import { useRoute, useRouter, RouterLink } from 'vue-router'
 import { formatDistanceToNow } from 'date-fns'
 import { TrashIcon } from '@heroicons/vue/20/solid'
 import { partsApi } from '@/api/estimates.api'
+import { purchasesApi, type StockRow } from '@/api/purchases.api'
 import { usePermissions } from '@/composables/usePermissions'
 import { useAuthStore } from '@/stores/auth.store'
 import { useToast } from '@/composables/useToast'
@@ -201,9 +202,37 @@ watch(
   }
 )
 
+// Purchases & stock on: a part we keep in stock can be priced from it (no supplier, no GRN)
+const stockRows = ref<StockRow[]>([])
+async function loadStock() {
+  if (!grnMode.value || !can('purchases.stock.view')) return
+  try {
+    stockRows.value = (await purchasesApi.stock()).data.data.items.filter((i) => i.is_active && i.quantity > 0)
+  } catch {
+    stockRows.value = []
+  }
+}
+async function fromStock(r: SparePartRequest, event: Event) {
+  const select = event.target as HTMLSelectElement
+  const id = Number(select.value)
+  select.value = ''
+  if (!id) return
+  busy.value = true
+  try {
+    await partsApi.fromStock(r.id, id)
+    toast.success('Priced from stock', 'Sent to the advisor; it is issued to the job when the customer approves.')
+    await Promise.all([load(), loadStock()])
+  } catch (err) {
+    toast.apiError(err)
+  } finally {
+    busy.value = false
+  }
+}
+
 onMounted(() => {
   load()
   loadSuppliers()
+  loadStock()
 })
 </script>
 
@@ -296,6 +325,17 @@ onMounted(() => {
                 </button>
               </li>
             </ul>
+
+            <!-- In our stock: priced at the average cost, issued on approval -->
+            <div v-if="canQuote && stockRows.length && ['requested', 'quoted'].includes(r.status)" class="mt-2 flex items-center gap-2 text-sm">
+              <span class="text-gray-600">or</span>
+              <select class="rounded-lg border-gray-300 text-sm" value="" :disabled="busy" @change="fromStock(r, $event)">
+                <option value="">Take from stock…</option>
+                <option v-for="s in stockRows.filter((x) => x.quantity >= r.quantity)" :key="s.id" :value="s.id">
+                  {{ s.name }} · {{ s.quantity }} {{ s.unit }} in stock · ₹ {{ money(s.avg_cost) }}/{{ s.unit }}
+                </option>
+              </select>
+            </div>
 
             <!-- New quote -->
             <div v-if="canQuote" class="mt-2 grid grid-cols-12 gap-2 items-center">

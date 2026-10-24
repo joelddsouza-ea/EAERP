@@ -7,6 +7,7 @@ import { ref, onMounted } from 'vue'
 import { DocumentTextIcon, PlusIcon, TrashIcon } from '@heroicons/vue/24/outline'
 import api, { message, date, type Home } from '../api'
 import { toast } from '../ui'
+import MediaPicker from '@/components/media/MediaPicker.vue'
 
 interface Doc { id: number; type: string; type_label: string; title: string | null; number: string | null; expiry_date: string | null; expired: boolean; vehicle: string | null; mime: string | null; url: string }
 
@@ -113,7 +114,8 @@ async function remove(d: Doc) {
         </label>
       </div>
       <label class="block text-sm text-gray-700">Photo or PDF
-        <input type="file" accept="image/*,application/pdf" capture="environment" class="mt-1 block w-full text-sm" @change="file = ($event.target as HTMLInputElement).files?.[0] ?? null" />
+        <MediaPicker class="mt-1" size="sm" :kinds="['photo']" files @change="file = ($event.target as HTMLInputElement).files?.[0] ?? null" />
+        <span v-if="file" class="mt-1 block text-xs text-gray-500">{{ file.name }}</span>
       </label>
       <div class="flex gap-2">
         <button type="button" class="flex-1 rounded-xl py-2.5 text-sm font-medium ring-1 ring-gray-300" @click="adding = false">Cancel</button>

@@ -10,7 +10,8 @@ import {
 import { jobSheetsApi, type ItemUpdate } from '@/api/jobSheets.api'
 import { useToast } from '@/composables/useToast'
 import type { JobSheet, JobSheetItem, JobCardMedia, PanelFlags } from '@/api/types'
-import { acceptFor, mediaHint, prepareMedia } from './media'
+import { mediaHint, prepareMedia } from './media'
+import MediaPicker from '@/components/media/MediaPicker.vue'
 import MediaStrip from './MediaStrip.vue'
 import Modal from '@/components/ui/Modal.vue'
 
@@ -19,16 +20,22 @@ interface Props {
   jobCardId: number
   sheetId: number
   readonly?: boolean
+  /** Outside sections (washing): photos the partner sent on WhatsApp come from the gallery */
+  allowGallery?: boolean
 }
 
-const props = withDefaults(defineProps<Props>(), { readonly: false })
+const props = withDefaults(defineProps<Props>(), { readonly: false, allowGallery: false })
 const emit = defineEmits<{
   updated: [item: JobSheetItem]
   progress: [progress: JobSheet['progress']]
 }>()
 const toast = useToast()
 
-const fileInput = ref<HTMLInputElement | null>(null)
+// Camera first: one input per kind (Android Chrome shows the gallery for "image/*,video/*")
+const picker = ref<InstanceType<typeof MediaPicker> | null>(null)
+const pickerKinds = computed<('photo' | 'video')[]>(() =>
+  props.item.media_requirement === 'photo' ? ['photo'] : props.item.media_requirement === 'video' ? ['video'] : ['photo', 'video']
+)
 const saving = ref(false)
 const uploadPercent = ref<number | null>(null)
 const markDoneAfterUpload = ref(false)
@@ -173,7 +180,7 @@ function markDone() {
   // Required evidence missing: go straight to the camera, then mark done
   if (mediaShort.value) {
     markDoneAfterUpload.value = true
-    fileInput.value?.click()
+    picker.value?.open()
     return
   }
   save({ status: 'done' })
@@ -223,29 +230,35 @@ function togglePanel(key: keyof PanelFlags) {
 
 async function onFileChosen(event: Event) {
   const input = event.target as HTMLInputElement
-  const file = input.files?.[0]
+  // Several only from the gallery (outside sections)
+  const files = Array.from(input.files ?? [])
   input.value = ''
-  if (!file) {
+  if (!files.length) {
     markDoneAfterUpload.value = false
     return
   }
 
   try {
-    const prepared = await prepareMedia(file)
-    uploadPercent.value = 0
-    const response = await jobSheetsApi.uploadMedia(
-      props.jobCardId,
-      props.sheetId,
-      props.item.id,
-      prepared.file,
-      prepared.fileName,
-      { poster: prepared.poster, duration_seconds: prepared.durationSeconds },
-      (p) => (uploadPercent.value = p)
-    )
-    const media = [...props.item.media, response.data.data.media]
-    emit('updated', { ...props.item, media, media_shortfall: response.data.data.media_shortfall })
+    let item = props.item
+    let shortfall: string | null = null
+    for (const file of files) {
+      const prepared = await prepareMedia(file)
+      uploadPercent.value = 0
+      const response = await jobSheetsApi.uploadMedia(
+        props.jobCardId,
+        props.sheetId,
+        props.item.id,
+        prepared.file,
+        prepared.fileName,
+        { poster: prepared.poster, duration_seconds: prepared.durationSeconds },
+        (p) => (uploadPercent.value = p)
+      )
+      shortfall = response.data.data.media_shortfall
+      item = { ...item, media: [...item.media, response.data.data.media], media_shortfall: shortfall }
+      emit('updated', item)
+    }
 
-    if (markDoneAfterUpload.value && !response.data.data.media_shortfall) {
+    if (markDoneAfterUpload.value && !shortfall) {
       await save({ status: 'done' })
     }
   } catch (err: any) {
@@ -293,21 +306,14 @@ async function deleteMedia(media: JobCardMedia) {
 
       <!-- Camera -->
       <div v-if="!readonly && item.input_type !== 'yes_no'" class="shrink-0">
-        <input
-          ref="fileInput"
-          type="file"
-          class="hidden"
-          :accept="acceptFor(item.media_requirement)"
-          capture="environment"
-          @change="onFileChosen"
-        />
+        <MediaPicker ref="picker" variant="menu" :kinds="pickerKinds" :gallery="allowGallery" @change="onFileChosen" />
         <button
           type="button"
           class="h-11 w-11 rounded-lg border flex items-center justify-center"
           :class="mediaShort ? 'border-red-300 bg-white text-red-600' : 'border-gray-300 bg-white text-gray-600'"
           :disabled="uploadPercent !== null"
           aria-label="Add photo or video"
-          @click="fileInput?.click()"
+          @click="picker?.open()"
         >
           <span v-if="uploadPercent !== null" class="text-xs font-medium">{{ uploadPercent }}%</span>
           <CameraIcon v-else class="h-5 w-5" />

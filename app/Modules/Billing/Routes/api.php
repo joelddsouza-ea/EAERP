@@ -60,11 +60,18 @@ Route::prefix('v1/workshop/job-cards/{jobCard}/billing')
 
         Route::middleware('permission:billing.proforma.approve')->group(function () {
             Route::post('bills/{invoice}/approve', [JobBillingController::class, 'approve']);
+        });
+
+        // Tax invoice or close on the proforma, and refunds: back office, managers, owner (not advisors)
+        Route::middleware('permission:billing.invoices.finalize')->group(function () {
             Route::post('bills/{invoice}/convert', [JobBillingController::class, 'convert']);
             Route::post('bills/{invoice}/close', [JobBillingController::class, 'close']);
             // Paid beyond the bill: refund or keep as the customer's credit
             Route::post('settle-excess', [JobBillingController::class, 'settleExcess']);
         });
+
+        // The advisor has checked the job: back office is asked to make the bill
+        Route::post('request', [JobBillingController::class, 'requestBill'])->middleware('permission:workshop.job-cards.change-status');
 
         Route::post('gate-pass/override', [JobBillingController::class, 'overrideGatePass'])
             ->middleware('permission:workshop.job-cards.override-guards');

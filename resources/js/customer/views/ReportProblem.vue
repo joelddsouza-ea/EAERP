@@ -8,6 +8,10 @@ import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { ChevronLeftIcon, MapPinIcon, CameraIcon, XMarkIcon } from '@heroicons/vue/24/outline'
 import api, { message, type Home } from '../api'
 import { toast } from '../ui'
+import MediaPicker from '@/components/media/MediaPicker.vue'
+
+// Camera first (Android Chrome): photo / video / gallery as separate choices
+const picker = ref<InstanceType<typeof MediaPicker> | null>(null)
 
 const route = useRoute()
 const router = useRouter()
@@ -123,10 +127,10 @@ async function send() {
             <span v-else class="flex h-full items-center justify-center text-xs text-gray-600">{{ p.video ? 'Video' : 'File' }}</span>
             <button type="button" class="absolute right-0 top-0 rounded-bl bg-black/60 p-0.5 text-white" aria-label="Remove" @click="files.splice(i, 1)"><XMarkIcon class="h-4 w-4" /></button>
           </div>
-          <label v-if="files.length < MAX_MEDIA" class="flex h-16 w-16 cursor-pointer flex-col items-center justify-center rounded-lg bg-white text-xs text-gray-600 ring-1 ring-gray-300">
+          <button v-if="files.length < MAX_MEDIA" type="button" class="flex h-16 w-16 flex-col items-center justify-center rounded-lg bg-white text-xs text-gray-600 ring-1 ring-gray-300" @click="picker?.open()">
             <CameraIcon class="h-6 w-6" /> Add
-            <input type="file" accept="image/*,video/*" capture="environment" multiple class="hidden" @change="addFiles" />
-          </label>
+          </button>
+          <MediaPicker ref="picker" variant="menu" :kinds="['photo', 'video']" gallery @change="addFiles" />
         </div>
       </div>
 

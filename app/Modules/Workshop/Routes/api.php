@@ -22,10 +22,14 @@ use App\Modules\Workshop\Http\Controllers\JobCardAssignmentController;
 use App\Modules\Workshop\Http\Controllers\CarClassController;
 use App\Modules\Workshop\Http\Controllers\ObservationRemarkController;
 use App\Modules\Workshop\Http\Controllers\WorkflowStageController;
-use App\Modules\Workshop\Http\Controllers\PostServiceController;
 use App\Modules\Workshop\Http\Controllers\PurchasesController;
 use App\Modules\Workshop\Http\Controllers\StockController;
 use App\Modules\Workshop\Http\Controllers\TripController;
+use App\Modules\Workshop\Http\Controllers\OutsideWorkController;
+use App\Modules\Workshop\Http\Controllers\PartnerPortalController;
+use App\Modules\Workshop\Http\Controllers\ServicePartnerController;
+use App\Modules\Workshop\Http\Controllers\CustomerUpdateController;
+use App\Modules\Workshop\Http\Controllers\TechnicianTimeController;
 
 // job.lifecycle: after a change to a job card, the job moves on to the stage the facts allow
 Route::prefix('v1/workshop')->middleware(['auth:sanctum', 'branch.context', 'job.lifecycle'])->group(function () {
@@ -69,13 +73,44 @@ Route::prefix('v1/workshop')->middleware(['auth:sanctum', 'branch.context', 'job
 
     // Job Card Status & Assignments
     Route::get('job-cards/{jobCard}/transitions', [JobCardController::class, 'transitions']);
+
+    // Outside partners (washing, wheel alignment & balancing): send the car, photos, "Car is back"
+    Route::get('job-cards/{jobCard}/outside-works', [OutsideWorkController::class, 'index'])->middleware('permission:workshop.job-cards.view');
+    Route::middleware('permission:workshop.outside-work.send')->group(function () {
+        Route::post('job-cards/{jobCard}/outside-works', [OutsideWorkController::class, 'store']);
+        Route::post('job-cards/{jobCard}/outside-works/{work}/returned', [OutsideWorkController::class, 'returned']);
+        Route::post('job-cards/{jobCard}/outside-works/{work}/cancel', [OutsideWorkController::class, 'cancel']);
+        Route::post('job-cards/{jobCard}/outside-works/{work}/media', [OutsideWorkController::class, 'uploadMedia']);
+    });
+
+    // "Send update": staff finish a step, the advisor sends the ready WhatsApp to the customer
+    Route::post('job-cards/{jobCard}/customer-updates', [CustomerUpdateController::class, 'store'])->middleware('permission:workshop.customer-updates.request');
+    // Advisors send them; whoever approves the bill sends the bill message
+    Route::middleware('permission:workshop.customer-links.manage|billing.proforma.approve')->group(function () {
+        Route::get('customer-updates/{message}', [CustomerUpdateController::class, 'show']);
+        Route::post('customer-updates/{message}/sent', [CustomerUpdateController::class, 'sent']);
+        Route::post('customer-updates/{message}/skip', [CustomerUpdateController::class, 'skip']);
+    });
+    Route::get('customer-update-settings', [CustomerUpdateController::class, 'settings'])->middleware('permission:workshop.job-sheet-masters.view');
+    Route::put('customer-update-settings', [CustomerUpdateController::class, 'updateSettings'])->middleware('permission:workshop.job-sheet-masters.update');
+
+    // Workshop › Technician Time: working time per technician and job (owner, managers)
+    Route::middleware('permission:workshop.technician-time.view')->group(function () {
+        Route::get('reports/technician-time', [TechnicianTimeController::class, 'index']);
+        Route::get('reports/technician-time.csv', [TechnicianTimeController::class, 'csv']);
+        Route::get('job-cards/{jobCard}/working-time', [TechnicianTimeController::class, 'job']);
+    });
+
+    // Masters › Outside Service Partners
+    Route::get('service-partners', [ServicePartnerController::class, 'index'])->middleware('permission:workshop.partners.manage');
+    Route::get('service-partners/options', [ServicePartnerController::class, 'options'])->middleware('permission:workshop.outside-work.send|workshop.partners.manage');
+    Route::middleware('permission:workshop.partners.manage')->group(function () {
+        Route::post('service-partners', [ServicePartnerController::class, 'store']);
+        Route::put('service-partners/{partner}', [ServicePartnerController::class, 'update']);
+        Route::post('service-partners/{partner}/login', [ServicePartnerController::class, 'createLogin']);
+    });
     Route::patch('job-cards/{jobCard}/status', [JobCardController::class, 'updateStatus']);
 
-    // After the work: trial drive and washing, recorded by the advisor (the job then moves on by itself)
-    Route::middleware('permission:workshop.qc.update|workshop.job-cards.change-status')->group(function () {
-        Route::post('job-cards/{jobCard}/post-service/trial', [PostServiceController::class, 'trial']);
-        Route::post('job-cards/{jobCard}/post-service/wash', [PostServiceController::class, 'wash']);
-    });
     Route::post('job-cards/{jobCard}/assign-technician', [JobCardController::class, 'assignTechnician']);
     Route::post('job-cards/{jobCard}/assign-bay', [JobCardController::class, 'assignBay']);
 
@@ -283,6 +318,8 @@ Route::prefix('v1/workshop')->middleware(['auth:sanctum', 'branch.context', 'job
 
         Route::middleware('permission:workshop.spare-parts.update')->group(function () {
             Route::post('requests/{sparePartRequest}/quotes', [PartsDeskController::class, 'storeQuote']);
+            // The part is in our stock: priced at the average cost, issued when the customer approves
+            Route::post('requests/{sparePartRequest}/from-stock', [PartsDeskController::class, 'fromStock']);
             Route::delete('requests/{sparePartRequest}/quotes/{quote}', [PartsDeskController::class, 'destroyQuote']);
             Route::post('submit', [PartsDeskController::class, 'submit']);
             Route::post('requests/{sparePartRequest}/ordered', [PartsDeskController::class, 'markOrdered']);
@@ -408,6 +445,14 @@ Route::prefix('v1/workshop')->middleware(['auth:sanctum', 'branch.context', 'job
 Route::get('v1/workshop/purchases/media/{media}/stream', [PurchasesController::class, 'streamMedia'])
     ->middleware('signed')
     ->name('workshop.grn-media.stream');
+
+// The outside partner's login: the cars sent to them (no branch context: a partner may serve every branch)
+Route::prefix('v1/partner')->middleware(['auth:sanctum', 'permission:workshop.partner.portal'])->group(function () {
+    Route::get('works', [PartnerPortalController::class, 'index']);
+    Route::get('works/{work}', [PartnerPortalController::class, 'show']);
+    Route::post('works/{work}/media', [PartnerPortalController::class, 'uploadMedia']);
+    Route::post('works/{work}/done', [PartnerPortalController::class, 'done']);
+});
 
 // Job-sheet media files: authorised by a short-lived URL signature instead of the bearer token
 Route::get('v1/workshop/media/{media}/stream', [JobSheetController::class, 'stream'])

@@ -123,7 +123,7 @@ class IssueLineRules
         }
 
         if ($this->partsToVerify($issue)) {
-            return 'Check the new part against its GRN photo: Right part or Wrong part.';
+            return 'Check the new part that arrived: Right part or Wrong part.';
         }
 
         if ($this->partsArrived($issue) && $this->fittedMediaCount($issue) < self::minFittedMedia()) {

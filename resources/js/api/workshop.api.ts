@@ -147,15 +147,6 @@ export const jobCardsApi = {
     return apiClient.delete(`/workshop/job-cards/${id}`)
   },
 
-  /** After the work: trial drive OK / issues found, and washing done (the job then moves on by itself) */
-  postServiceTrial(id: number, result: 'ok' | 'issues', notes?: string) {
-    return apiClient.post(`/workshop/job-cards/${id}/post-service/trial`, { result, notes: notes || undefined })
-  },
-
-  washDone(id: number) {
-    return apiClient.post(`/workshop/job-cards/${id}/post-service/wash`)
-  },
-
   updateStatus(id: number, status: string, notes?: string, override = false) {
     return apiClient.patch<ApiResponse<JobCard>>(`/workshop/job-cards/${id}/status`, {
       status,

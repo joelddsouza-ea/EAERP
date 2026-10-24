@@ -9,6 +9,7 @@ use App\Modules\Workshop\Models\JobCardIssue;
 use App\Modules\Workshop\Models\JobCardEstimate;
 use App\Modules\Workshop\Models\SparePartQuote;
 use App\Modules\Workshop\Models\SparePartRequest;
+use App\Modules\Workshop\Models\StockItem;
 use App\Modules\Workshop\Models\Supplier;
 use App\Modules\Workshop\Services\EstimatePresenter;
 use App\Modules\Workshop\Services\LabourRateResolver;
@@ -231,6 +232,16 @@ class PartsDeskController extends ApiController
         return $this->created($this->parts->addQuote($sparePartRequest, $data, $request->user()), 'Quote added');
     }
 
+    public function fromStock(Request $request, SparePartRequest $sparePartRequest): JsonResponse
+    {
+        $data = $request->validate(['stock_item_id' => ['required', 'integer', Rule::exists('stock_items', 'id')]]);
+        $this->assertVisible($sparePartRequest);
+
+        $quote = $this->parts->quoteFromStock($sparePartRequest, StockItem::findOrFail($data['stock_item_id']), $request->user());
+
+        return $this->created($quote, 'Priced from stock and sent to the advisor');
+    }
+
     public function destroyQuote(SparePartRequest $sparePartRequest, SparePartQuote $quote): JsonResponse
     {
         $this->assertVisible($sparePartRequest);
@@ -349,7 +360,9 @@ class PartsDeskController extends ApiController
             'quotes' => $r->quotes->map(fn (SparePartQuote $q) => [
                 'id' => $q->id,
                 'supplier_id' => $q->supplier_id,
-                'supplier' => $q->supplier?->name,
+                // From our own stock: no supplier
+                'supplier' => $q->stock_item_id ? 'From stock' : $q->supplier?->name,
+                'stock_item_id' => $q->stock_item_id,
                 'unit_cost' => (float) $q->unit_cost,
                 'gst_mode' => $q->gst_mode,
                 'gst_rate' => (float) $q->gst_rate,

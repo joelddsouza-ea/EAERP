@@ -78,7 +78,8 @@ class PublicJobController extends ApiController
                 'plan' => $jobCard->package?->name,
                 'advisor' => $jobCard->serviceAdvisor?->name,
                 'advisor_phone' => $jobCard->serviceAdvisor?->phone,
-                'timeline' => $jobCard->statusHistory
+                // The advisor may switch the progress list off for this job
+                'timeline' => $jobCard->show_customer_timeline === false ? null : $jobCard->statusHistory
                     ->sortBy('id')
                     ->map(fn ($h) => [
                         'status' => $h->to_status,

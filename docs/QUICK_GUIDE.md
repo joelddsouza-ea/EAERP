@@ -127,23 +127,46 @@ have not come for months get reminders and appear as leads to call.
 ## 4. Job cards & the workshop (advisors, technicians, managers) — *Workshop › Job Cards*
 
 **Open a job card** — from a booking (*Car arrived*), or **Job Cards › New**: customer, car, service plan (or a
-repair type), engine oil, odometer and fuel, customer complaints one per line. Then assign the technician(s) and bay.
+repair type), engine oil, odometer and fuel, customer complaints one per line. Optional: tick **Wheel alignment &
+balancing** and choose the outside partner (they are told and upload photos/videos), and untick **Show the progress
+timeline** to hide the stage list from the customer (also on the job card's *Outside work* card). Then assign the
+technician(s) and bay.
 
-**The job moves on by itself** through its stages: intake → estimate & approval → work → parts → trial → wash →
-final QC → bill → gate pass → delivered. Each stage sends the customer its WhatsApp message (when set).
+**The job moves on by itself** through its stages: intake → estimate & approval → work (the trial drive and the
+wash are sections of the technician's job sheet) → parts → final QC → bill → gate pass → delivered. Each stage
+sends the customer its WhatsApp message (when set).
 
 **Advisor**
 - **Intake**: trial drive, photos / videos of the car.
 - **Estimate**: plan lines plus additional work and parts → send to the customer; they approve or decline
   each line on their link (declined items are kept as "Recommended but not approved").
 - Parts the technician needs: review and forward them to the parts coordinator.
-- After the work: record **Trial drive OK** and **Washing done**.
+- **Updates to send** (bell): when a technician or driver finishes a step they tap *Send update*; the message
+  is ready in your bell — read it and tap **Send on WhatsApp** (or *Skip*).
+- After the technician submits: **final QC** (pre-delivery checklist), then **Send to back office for bill** (see 7).
 
 **Technician** (*My Jobs*) — open the job sheet, mark each activity Done / N/A with the photos or videos it
 asks for, add **Additional Issues** with a photo of the faulty part, list parts needed, **Submit to SA for Parts**.
-Fit the new part only after it arrives (photo of the fitted part), then Done. Submit the sheet when finished.
+When a new part arrives, check it in person and tap **Right part** or **Wrong part** (the coordinator's GRN photo
+is not shown). Fit it (photo of the fitted part), then Done.
+- **Final Checks** (trial drive) come before **Washing & Cleaning**. After the trial drive tap **Send to washing**
+  and choose the washing partner. Add the photos/videos the washer sends on WhatsApp from the gallery (or the
+  washer uploads them from their own login), tap **Car is back**, finish the washing section and **submit** —
+  the job goes to the advisor's final QC.
+- After each section you can tap **Send update**: the advisor gets the WhatsApp ready to send to the customer.
+
+**Outside partners** (washing, wheel alignment & balancing) sign in with their mobile number and see only the cars
+sent to them: add photos/videos, tap **Done**. Set them up in *Settings › Outside Service Partners* (several per
+kind; *Create login*).
+
+**Photos and videos**: tap **Take photo** or **Record video** — the camera opens straight away (one shot per tap;
+tap again for more). **From gallery** appears only where it is allowed (washing, outside partners, customers).
 
 **Manager** — final QC spot-check (photo within 30 seconds), override when needed (always with a reason).
+**Technician Time** (*Workshop › Technician Time*, owner and managers): how long each technician worked on each job —
+time in work, less waiting for approval or parts and time at outside partners, counted in shift hours only (no
+weekly off, holidays, leave; break taken out). Every technician on a job gets its full time. CSV download; the
+job card's Summary shows the same for that job.
 
 **Connects to:** Parts, Billing (the bill is made from the estimate), CRM (delivery wins the lead, starts feedback).
 
@@ -153,7 +176,7 @@ Fit the new part only after it arrives (photo of the fitted part), then Done. Su
 
 - **Driver**: *My Trips* lists your pickups and drops. **Start** → navigate → **Arrived** → odometer, fuel and
   photos/videos (the pickup *is* the intake) → **Collected**. For a drop you need the gate pass and the
-  handover photos.
+  handover photos. After a step tap **Send update**: the advisor sends the customer the WhatsApp.
 - **Home technician**: the visit has its own job sheet; close the visit with the photos asked for.
 - **Advisor** books trips on the job card or from a CRM booking; the board shows today's trips.
 
@@ -166,8 +189,11 @@ Fit the new part only after it arrives (photo of the fitted part), then Done. Su
 - **Parts Desk**: parts requested by advisors → get supplier prices → after the customer approves, order them →
   mark them received (or receive them on a GRN, below). Technician and advisor get a bell.
 - *If Purchases & stock is on:* **GRN** for every supplier bill — photo of each part, GST bill or not, credit or
-  cash. The technician confirms right / wrong part. **Stock** for oil and consumables; **plan kits** are issued to
-  jobs. **Suppliers** shows what we owe and records payments.
+  cash. The technician checks the part in person and confirms right / wrong part (the GRN photo is for the records). **Stock** for oil and consumables; **plan kits** are issued to
+  jobs **by themselves when the technician submits** (final QC) — whatever is short in stock is shown on the job card
+  and the coordinator gets a bell; issue it with *Issue item* once received. A part we keep in stock: on the Parts
+  Desk choose **Take from stock…** instead of supplier prices — priced at the average cost (plus the usual margin on
+  the estimate), issued to the job when the customer approves, billed without a GRN. **Suppliers** shows what we owe and records payments.
 
 **Connects to:** Job cards, Billing (bill waits for parts on a GRN), Accounts (purchases and supplier dues).
 
@@ -178,8 +204,11 @@ Fit the new part only after it arrives (photo of the fitted part), then Done. Su
 1. Take **advances** any time (job card › Billing › Record payment). A payment can be split: cash + UPI + card.
    **Collected by staff**: the customer paid an employee's own UPI / cash — choose the employee; they hold it
    until handed over.
-2. After final QC: **Make bill** (proforma) → check lines → **Approve** → the customer pays the balance.
-3. **Convert to tax invoice** (or close a paid proforma).
+2. After final QC the advisor taps **Send to back office for bill** (back office gets a bell and the card *Bills to
+   make*). **Make proforma from estimate** → recheck each line (**edit**: quantity, cost, selling price, HSN; the
+   margin is shown) → **Approve & send to customer** → send the ready bill message on WhatsApp → the customer pays.
+   The advisor can do all of this too, and record payments.
+3. **Convert to tax invoice** or close a paid proforma — back office, managers and the owner only (also refunds).
 4. Paid in full → the **gate pass** is issued by itself → **Vehicle out** delivers the job.
 - Paid too much? **Refund** it or keep it as **customer credit** (usable on a later job).
 - A gate pass before full payment needs the owner / manager and a reason.
@@ -298,7 +327,8 @@ monthly budget, body-shop price guide, and what it was asked.
 1. **Ad / call / referral** → **Lead** (CRM) → called, prices sent → **Booking**.
 2. **Booking** → car arrives (or driver picks it up) → **Job card** filled in from the booking.
 3. **Estimate** → customer approves on WhatsApp → **Parts** ordered / received (GRN) → technician works.
-4. Trial, wash, final QC → **Bill** → **Payments** (maybe collected by staff) → **Gate pass** → **Vehicle out**.
+4. Trial drive and wash (outside partner) on the job sheet → final QC → advisor sends for billing → **Bill** →
+   **Payments** (maybe collected by staff) → **Gate pass** → **Vehicle out**.
 5. **Accounts** record the sale, GST, payments and parts cost by themselves.
 6. **CRM** marks the lead won with the bill amount → thank-you + rating + referral link → next service reminder.
 7. **Payroll** counts attendance, overtime and incentives (including converted leads) at month end.

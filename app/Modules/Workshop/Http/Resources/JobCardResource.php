@@ -17,6 +17,7 @@ class JobCardResource extends JsonResource
             'cancel_reason' => $this->cancel_reason,
             'service_type' => $this->service_type,
             'service_mode' => $this->service_mode ?? 'drive_in',
+            'show_customer_timeline' => $this->show_customer_timeline ?? true,
             'priority' => $this->priority,
             'customer_id' => $this->customer_id,
             'vehicle_id' => $this->vehicle_id,

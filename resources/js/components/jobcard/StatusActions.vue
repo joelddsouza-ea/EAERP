@@ -3,11 +3,11 @@ import { ref, computed, watch } from 'vue'
 import { ExclamationTriangleIcon, ArrowPathIcon } from '@heroicons/vue/20/solid'
 import { jobCardsApi } from '@/api/workshop.api'
 import { useToast } from '@/composables/useToast'
-import { usePermissions } from '@/composables/usePermissions'
 import type { GuardFailureInfo, StatusTransitionOption, StatusTransitions } from '@/api/types'
 import Button from '@/components/ui/Button.vue'
 import Modal from '@/components/ui/Modal.vue'
 import Textarea from '@/components/ui/Textarea.vue'
+import SendUpdateButton from '@/components/jobcard/SendUpdateButton.vue'
 
 /**
  * Next step for a job. Most stages move by themselves (Job stages master); people
@@ -23,7 +23,6 @@ interface Props {
 const props = defineProps<Props>()
 const emit = defineEmits<{ changed: [] }>()
 const toast = useToast()
-const { can } = usePermissions()
 
 const options = ref<StatusTransitionOption[]>([])
 const stage = ref<StatusTransitions['stage'] | null>(null)
@@ -53,30 +52,10 @@ const blocked = computed(() => events.value.filter((o) => !o.allowed && o.status
 const needsModal = (o: StatusTransitionOption) => o.requires_notes || !o.allowed || o.status === 'cancelled'
 
 const EVENT_LABELS: Record<string, string> = {
+  'post_work_trial>work_in_progress': 'Send back to work',
   'wash_pending>work_in_progress': 'Send back to work',
   'qc_pending>work_in_progress': 'QC failed — back to work',
-  'qc_pending>wash_pending': 'QC failed — wash again',
-  'ready_for_delivery>wash_pending': 'Send back to wash',
-}
-
-// ---- after the work: the advisor records the trial drive and the wash; the job moves on by itself
-const canRecord = computed(() => can('workshop.qc.update') || can('workshop.job-cards.change-status'))
-const recording = ref(false)
-const trialIssuesOpen = ref(false)
-const trialNotes = ref('')
-
-async function record(call: () => Promise<unknown>, message: string) {
-  recording.value = true
-  try {
-    await call()
-    toast.success(message)
-    trialIssuesOpen.value = false
-    emit('changed')
-  } catch (err) {
-    toast.apiError(err)
-  } finally {
-    recording.value = false
-  }
+  'ready_for_delivery>work_in_progress': 'Send back to work',
 }
 
 function buttonLabel(o: StatusTransitionOption) {
@@ -174,18 +153,8 @@ defineExpose({ reload: fetchTransitions })
       <p v-if="stage.waiting_for && !stage.sent_back" class="mt-1 text-blue-800">Waiting for: {{ stage.waiting_for }}</p>
     </div>
 
-    <!-- After the work: record the trial drive and the wash -->
-    <div v-if="canRecord && status === 'post_work_trial' && !stage?.sent_back" class="flex flex-wrap items-center gap-2">
-      <span class="text-sm font-medium text-gray-700">Post-service trial drive:</span>
-      <Button size="sm" :loading="recording" @click="record(() => jobCardsApi.postServiceTrial(jobCardId, 'ok'), 'Trial drive OK — off to wash')">
-        Trial drive OK
-      </Button>
-      <Button size="sm" variant="secondary" @click="trialNotes = ''; trialIssuesOpen = true">Issues found</Button>
-    </div>
-    <div v-if="canRecord && status === 'wash_pending'" class="flex flex-wrap items-center gap-2">
-      <Button size="sm" :loading="recording" @click="record(() => jobCardsApi.washDone(jobCardId), 'Washing done — final QC next')">
-        Washing done
-      </Button>
+    <div v-if="!terminal && !['intake_pending'].includes(status)" class="flex justify-end">
+      <SendUpdateButton :key="status" :job-card-id="jobCardId" kind="stage" label="Send update to customer" />
     </div>
     <p v-if="status === 'qc_pending'" class="text-sm text-gray-700">
       Fill and submit the <b>pre-delivery QC checklist</b> (Job sheets section below): the car becomes Ready for Delivery and billing can start.
@@ -225,21 +194,6 @@ defineExpose({ reload: fetchTransitions })
         </Button>
       </div>
     </div>
-
-    <Modal :open="trialIssuesOpen" title="Trial drive: issues found" @close="trialIssuesOpen = false">
-      <p class="text-sm text-gray-600 mb-3">The job goes back to the technician with your note.</p>
-      <Textarea v-model="trialNotes" label="What did the trial drive find?" required :rows="3" />
-      <template #footer>
-        <Button variant="secondary" @click="trialIssuesOpen = false">Cancel</Button>
-        <Button
-          :loading="recording"
-          :disabled="!trialNotes.trim()"
-          @click="record(() => jobCardsApi.postServiceTrial(jobCardId, 'issues', trialNotes), 'Sent back to work')"
-        >
-          Send back to work
-        </Button>
-      </template>
-    </Modal>
 
     <Modal :open="!!selected && needsModal(selected)" :title="modalTitle" @close="selected = null">
       <div class="space-y-4">

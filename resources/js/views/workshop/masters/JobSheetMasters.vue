@@ -17,6 +17,7 @@ import { usePendingChanges } from '@/composables/usePendingChanges'
 import apiClient from '@/api/client'
 import type { ObservationRemark, WorkflowStageRow } from '@/api/types'
 import { workflowStagesApi } from '@/api/billing.api'
+import { customerUpdatesApi } from '@/api/outsideWork.api'
 
 const { can } = usePermissions()
 const toast = useToast()
@@ -56,6 +57,7 @@ const KIND_LABELS: Record<SheetKind, string> = {
   body_shop: 'Body shop',
   observation_report: 'Observation report',
   pre_delivery: 'Pre-delivery',
+  post_service: 'Trial drive & washing (jobs without a wash)',
 }
 
 const MEDIA_OPTIONS: { value: MediaRequirement; label: string }[] = [
@@ -134,6 +136,30 @@ function setSectionMedia(section: ChecklistMasterSection, event: Event) {
   for (const item of section.items) {
     if (item.media_requirement !== value) updateItem(section, item, { media_requirement: value })
   }
+}
+
+/** Washing etc. done by an outside partner: the job sheet offers "Send to washing" for it */
+function setOutside(section: ChecklistMasterSection, event: Event) {
+  const value = (event.target as HTMLSelectElement).value || null
+  section.outside_kind = value as ChecklistMasterSection['outside_kind']
+  pending.queue(`section:${section.id}:outside`, `${section.name}: ${value ? 'done outside' : 'done in the workshop'}`, () =>
+    jobSheetMastersApi.updateSection(section.template_id, section.id, { outside_kind: value })
+  )
+}
+
+// "Send update" messages: technicians / drivers finish a step, the advisor sends these
+const updateTexts = ref<{ section_message: string; stage_message: string } | null>(null)
+async function loadUpdateTexts() {
+  try {
+    updateTexts.value = (await customerUpdatesApi.settings()).data.data
+  } catch {
+    updateTexts.value = null
+  }
+}
+function queueUpdateText(key: 'section_message' | 'stage_message', label: string) {
+  if (!updateTexts.value) return
+  const value = updateTexts.value[key]
+  pending.queue(`updates:${key}`, label, () => customerUpdatesApi.saveSettings({ [key]: value }))
 }
 
 function move(section: ChecklistMasterSection, index: number, delta: number) {
@@ -279,6 +305,8 @@ const plans = ref<{ id: number; name: string }[]>([])
 const editingPlans = ref(false)
 const planSelection = ref<number[]>([])
 
+// The technician's sheets (washing can be marked as done by an outside partner)
+const WORK_KINDS: string[] = ['service_activities', 'post_service', 'general_repair', 'ac_service', 'body_shop']
 const linksToPlans = computed(() => ['service_activities', 'observation_report'].includes(selected.value?.sheet_kind ?? ''))
 
 function startPlanEdit() {
@@ -342,6 +370,7 @@ onMounted(async () => {
   loadIntakeRequirements()
   loadRemarks()
   loadStages()
+  loadUpdateTexts()
   try {
     plans.value = (await masterDataApi.servicePackages()).data.data
   } catch {
@@ -505,6 +534,14 @@ onMounted(async () => {
             <template #header>
               <div class="flex flex-wrap items-center justify-between gap-2">
                 <h3 class="text-base font-semibold">{{ section.name }}</h3>
+                <!-- Washing by an outside partner: "Send to washing" on the job sheet, gallery uploads allowed -->
+                <label v-if="canEdit && WORK_KINDS.includes(selected.sheet_kind)" class="flex items-center gap-2 text-xs text-gray-600">
+                  <span>Done</span>
+                  <select class="input py-1 text-xs w-44" :value="section.outside_kind ?? ''" @change="setOutside(section, $event)">
+                    <option value="">in the workshop</option>
+                    <option value="washing">outside: washing partner</option>
+                  </select>
+                </label>
                 <!-- Photo / video for every activity of the section at once (each row can still differ) -->
                 <label v-if="canEdit && section.items[0]?.input_type !== 'yes_no'" class="flex items-center gap-2 text-xs text-gray-600">
                   <span>Set all to</span>
@@ -713,6 +750,26 @@ onMounted(async () => {
 
     <!-- Job stages: what moves a job on by itself, and the WhatsApp message on each stage -->
     <template v-if="tab === 'stages'">
+    <Card v-if="updateTexts" class="mb-4">
+      <template #header>
+        <h3 class="text-base font-semibold">"Send update" messages</h3>
+        <p class="text-xs text-gray-500">
+          A technician who finishes a job-sheet section, or a driver after a trip step, taps "Send update": the advisor gets this
+          message ready in the bell and sends it on WhatsApp. Placeholders: :name :car :job :section :stage :link.
+          The stage update uses the stage's own message below when it has one.
+        </p>
+      </template>
+      <div class="grid gap-3 text-sm sm:grid-cols-2">
+        <label class="block">
+          <span class="text-gray-600">After a job-sheet section</span>
+          <textarea v-model="updateTexts.section_message" rows="3" class="input mt-1" :disabled="!canEdit" @input="queueUpdateText('section_message', 'Section update message')" />
+        </label>
+        <label class="block">
+          <span class="text-gray-600">After a stage / trip step (when the stage has no message)</span>
+          <textarea v-model="updateTexts.stage_message" rows="3" class="input mt-1" :disabled="!canEdit" @input="queueUpdateText('stage_message', 'Stage update message')" />
+        </label>
+      </div>
+    </Card>
     <Card v-if="stages.length" :padding="false">
       <template #header>
         <h3 class="text-base font-semibold">Job stages &amp; customer messages</h3>

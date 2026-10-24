@@ -18,6 +18,8 @@ import Spinner from '@/components/ui/Spinner.vue'
 import ActivityRow from '@/components/jobsheet/ActivityRow.vue'
 import IssuesPanel from '@/components/jobsheet/IssuesPanel.vue'
 import ObservationsPanel from '@/components/jobsheet/ObservationsPanel.vue'
+import SectionActions from '@/components/jobsheet/SectionActions.vue'
+import { outsideWorkApi, type OutsideWorkState } from '@/api/outsideWork.api'
 
 const route = useRoute()
 const router = useRouter()
@@ -30,11 +32,23 @@ const jobCardId = Number(route.params.id)
 
 // Job statuses in which each kind of sheet can be edited (mirrors JobSheetService)
 const EDITABLE: Record<string, string[]> = {
-  work: ['intake_in_progress', 'work_in_progress', 'awaiting_parts', 'awaiting_approval', 'post_work_trial'],
-  // Final QC happens after the wash
+  work: ['intake_in_progress', 'work_in_progress', 'awaiting_parts', 'awaiting_approval'],
+  // Final QC after the technician submits (trial drive and wash are on the job sheet)
   pre_delivery: ['qc_pending'],
-  observation_report: ['intake_in_progress', 'work_in_progress', 'awaiting_parts', 'awaiting_approval', 'post_work_trial', 'wash_pending', 'qc_pending'],
+  observation_report: ['intake_in_progress', 'work_in_progress', 'awaiting_parts', 'awaiting_approval', 'qc_pending'],
 }
+
+// Outside partners (washing): the works on this job and the partners to choose from
+const outside = ref<OutsideWorkState>({ works: [], partners: {}, kinds: { washing: 'Washing', wheel_alignment: 'Wheel alignment & balancing' } })
+async function loadOutside() {
+  try {
+    outside.value = (await outsideWorkApi.list(jobCardId)).data.data
+  } catch {
+    // only needed for outside sections
+  }
+}
+/** Every section before this one is finished (the trial drive comes before washing) */
+const previousDone = (sections: { resolved?: boolean }[], index: number) => sections.slice(0, index).every((s) => s.resolved)
 
 const loading = ref(true)
 const jobCard = ref<JobCard | null>(null)
@@ -179,7 +193,7 @@ function sectionProgress(items: JobSheetItem[]) {
 async function load() {
   loading.value = true
   try {
-    const [jc, sh] = await Promise.all([jobCardsApi.get(jobCardId), jobSheetsApi.list(jobCardId)])
+    const [jc, sh] = await Promise.all([jobCardsApi.get(jobCardId), jobSheetsApi.list(jobCardId), loadOutside()])
     jobCard.value = jc.data.data
     sheets.value = sh.data.data
 
@@ -212,6 +226,7 @@ function onItemUpdated(sheet: JobSheet, updated: JobSheetItem) {
     if (index >= 0) {
       const before = section.items[index]
       section.items[index] = updated
+      section.resolved = section.items.every((i) => i.status !== 'pending')
       if (before.needs_attention !== updated.needs_attention || before.remarks !== updated.remarks) {
         observationsRefresh.value++
       }
@@ -365,7 +380,7 @@ onMounted(load)
             Record the customer's issues and the work done on the <button type="button" class="text-primary-600 underline" @click="activeTab = 'issues'">Additional Issues</button> tab.
           </p>
 
-          <section v-for="section in activeSheet.sections" :key="section.name">
+          <section v-for="(section, sectionIndex) in activeSheet.sections" :key="section.name">
             <button
               type="button"
               class="w-full flex items-center justify-between py-2"
@@ -379,6 +394,18 @@ onMounted(load)
               </span>
             </button>
             <div v-show="!collapsed[section.name]" class="space-y-2">
+              <SectionActions
+                :job-card-id="jobCardId"
+                :sheet-id="activeSheet.id"
+                :section="section"
+                :previous-done="previousDone(activeSheet.sections, sectionIndex)"
+                :works="outside.works"
+                :partners="(section.outside_kind && outside.partners[section.outside_kind]) || []"
+                :kind-label="section.outside_kind ? outside.kinds[section.outside_kind] : ''"
+                :can-work="!readonly"
+                :can-update="isAssignedTechnician && !jobClosed && isTechnicianSheet(activeSheet)"
+                @changed="loadOutside"
+              />
               <ActivityRow
                 v-for="item in section.items"
                 :key="item.id"
@@ -386,6 +413,7 @@ onMounted(load)
                 :job-card-id="jobCardId"
                 :sheet-id="activeSheet.id"
                 :readonly="readonly"
+                :allow-gallery="!!section.outside_kind"
                 @updated="onItemUpdated(activeSheet, $event)"
                 @progress="activeSheet.progress = $event"
               />

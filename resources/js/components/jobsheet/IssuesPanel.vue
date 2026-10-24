@@ -20,6 +20,7 @@ import Modal from '@/components/ui/Modal.vue'
 import VoiceInput from '@/components/ui/VoiceInput.vue'
 import MediaStrip from './MediaStrip.vue'
 import { prepareMedia } from './media'
+import MediaPicker from '@/components/media/MediaPicker.vue'
 
 interface Props {
   jobCardId: number
@@ -340,14 +341,14 @@ defineExpose({ reload: load })
               >
                 <TrashIcon class="h-4 w-4" />
               </button>
-              <!-- Received on a GRN: compare with the coordinator's photos, then accept or report it -->
+              <!-- Received on a GRN: the technician checks the part in person, then accepts or reports it -->
               <div v-if="part.grn" class="w-full rounded-lg border p-2" :class="part.grn.verification === 'pending' ? 'border-amber-300 bg-amber-50' : 'border-gray-200 bg-gray-50'">
                 <p class="text-xs text-gray-700">
                   Arrived: <b>{{ part.grn.description }}</b>
                   <template v-if="part.grn.brand || part.grn.part_number"> · {{ [part.grn.brand, part.grn.part_number].filter(Boolean).join(' ') }}</template>
                   · qty {{ part.grn.quantity }}
                 </p>
-                <div v-if="part.grn.photos.length" class="mt-1 flex flex-wrap gap-1.5">
+                <div v-if="part.grn.photos.length && !isTechnician" class="mt-1 flex flex-wrap gap-1.5">
                   <a v-for="ph in part.grn.photos" :key="ph.id" :href="ph.url" target="_blank" class="block h-14 w-14 overflow-hidden rounded ring-1 ring-gray-200">
                     <img :src="ph.thumbnail_url" class="h-full w-full object-cover" alt="Part as received" />
                   </a>
@@ -366,10 +367,8 @@ defineExpose({ reload: load })
             <form v-if="partForms[line.id]" class="mt-2 grid grid-cols-6 gap-2" @submit.prevent="addPart(line)">
               <!-- No photo of the faulty part yet: take it with the part -->
               <div v-if="!line.can_list_parts" class="col-span-6 flex flex-wrap items-center gap-2">
-                <label class="inline-flex min-h-10 cursor-pointer items-center gap-1 rounded-lg border border-primary-400 bg-primary-50 px-3 text-xs font-medium text-primary-700">
-                  <CameraIcon class="h-4 w-4" /> Photo / video of the faulty part
-                  <input type="file" accept="image/*,video/*" capture="environment" multiple class="hidden" @change="(e) => choosePartEvidence(line, e)" />
-                </label>
+                <span class="inline-flex items-center gap-1 text-xs font-medium text-primary-700"><CameraIcon class="h-4 w-4" /> Faulty part:</span>
+                <MediaPicker size="sm" :kinds="['photo', 'video']" @change="(e) => choosePartEvidence(line, e)" />
                 <span class="text-xs" :class="partForms[line.id]!.files.length ? 'text-green-700' : 'text-amber-700'">
                   {{ partForms[line.id]!.files.length ? `${partForms[line.id]!.files.length} added` : 'Required first' }}
                 </span>
@@ -398,23 +397,18 @@ defineExpose({ reload: load })
         <!-- Technician actions -->
         <div v-if="isTechnician" class="mt-3 flex flex-wrap items-center gap-2">
           <template v-if="line.status !== 'deferred'">
-            <label
-              class="inline-flex min-h-10 cursor-pointer items-center gap-1 rounded-lg border px-3 text-xs font-medium"
-              :class="line.can_list_parts ? 'border-gray-300 bg-white text-gray-700' : 'border-primary-400 bg-primary-50 text-primary-700'"
-            >
-              <CameraIcon class="h-4 w-4" /> Faulty part photo / video
-              <input type="file" accept="image/*,video/*" capture="environment" multiple class="hidden" @change="(e) => upload(line, e, null)" />
-            </label>
+            <span class="inline-flex items-center gap-1 text-xs font-medium" :class="line.can_list_parts ? 'text-gray-700' : 'text-primary-700'">
+              <CameraIcon class="h-4 w-4" /> Faulty part:
+            </span>
+            <MediaPicker size="sm" :kinds="['photo', 'video']" @change="(e) => upload(line, e, null)" />
             <Badge v-if="line.parts_awaited && !line.parts_arrived" size="sm" variant="info">Waiting for the new part</Badge>
             <Badge v-if="line.parts_to_verify" size="sm" variant="warning">Check the new part</Badge>
-            <label
-              v-if="line.parts_arrived"
-              class="inline-flex min-h-10 cursor-pointer items-center gap-1 rounded-lg border px-3 text-xs font-medium"
-              :class="fittedMedia(line).length ? 'border-green-300 bg-white text-green-700' : 'border-primary-400 bg-primary-50 text-primary-700'"
-            >
-              <WrenchScrewdriverIcon class="h-4 w-4" /> New part photo / video
-              <input type="file" accept="image/*,video/*" capture="environment" multiple class="hidden" @change="(e) => upload(line, e, 'fitted_part')" />
-            </label>
+            <template v-if="line.parts_arrived">
+              <span class="inline-flex items-center gap-1 text-xs font-medium" :class="fittedMedia(line).length ? 'text-green-700' : 'text-primary-700'">
+                <WrenchScrewdriverIcon class="h-4 w-4" /> New part fitted:
+              </span>
+              <MediaPicker size="sm" :kinds="['photo', 'video']" @change="(e) => upload(line, e, 'fitted_part')" />
+            </template>
             <span v-if="uploading[line.id] != null" class="text-xs text-gray-500">Uploading… {{ uploading[line.id] }}%</span>
           </template>
 
@@ -455,10 +449,8 @@ defineExpose({ reload: load })
         <VoiceInput @text="(t: string) => (newLine = newLine ? `${newLine} ${t}` : t)" />
       </div>
       <div v-if="isTechnician" class="flex flex-wrap items-center gap-2">
-        <label class="inline-flex min-h-10 cursor-pointer items-center gap-1 rounded-lg border border-primary-400 bg-primary-50 px-3 text-xs font-medium text-primary-700">
-          <CameraIcon class="h-4 w-4" /> Photo / video of the faulty part
-          <input type="file" accept="image/*,video/*" capture="environment" multiple class="hidden" @change="chooseEvidence" />
-        </label>
+        <span class="inline-flex items-center gap-1 text-xs font-medium text-primary-700"><CameraIcon class="h-4 w-4" /> Faulty part:</span>
+        <MediaPicker size="sm" :kinds="['photo', 'video']" @change="chooseEvidence" />
         <span class="text-xs" :class="newLineFiles.length ? 'text-green-700' : 'text-amber-700'">
           {{ newLineFiles.length ? `${newLineFiles.length} added` : 'Required' }}
         </span>

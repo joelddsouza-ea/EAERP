@@ -13,6 +13,7 @@ return [
     'has_issues_tab' => true,
     'has_observations' => true,
     'sort_order' => '10',
+    'outside_sections' => ['Washing & Cleaning' => 'washing'],
     'sections' => [
         'Engine Compartment' => [
             ['Drain old engine oil completely', '***'],
@@ -37,6 +38,9 @@ return [
         ],
         'Exterior & Tyres' => [
             ['Check & inflate all tyre pressures', 'Direct'],
+        ],
+        // The trial drive comes before washing (owner, 2026-10-24)
+        'Final Checks' => [
             ['Trial drive - engine performance', 'Direct'],
         ],
         'Washing & Cleaning' => [

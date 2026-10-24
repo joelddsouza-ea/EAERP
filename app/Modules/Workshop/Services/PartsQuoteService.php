@@ -11,8 +11,12 @@ use App\Modules\Workshop\Models\JobCardIssue;
 use App\Modules\Workshop\Models\JobCardEstimateLine as Line;
 use App\Modules\Workshop\Models\SparePartQuote;
 use App\Modules\Workshop\Models\SparePartRequest;
+use App\Modules\Workshop\Models\StockBalance;
+use App\Modules\Workshop\Models\StockItem;
+use App\Modules\Workshop\Models\StockMovement;
 use App\Modules\Workshop\Models\Supplier;
 use App\Modules\Workshop\Notifications\StaffAlert;
+use App\Modules\Workshop\Support\Purchases;
 use App\Core\Support\WorkshopSettings;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -259,6 +263,79 @@ class PartsQuoteService
         ])->load('supplier');
     }
 
+    /**
+     * The part is in our own stock (purchases module): a "quote" with the stock item and no
+     * supplier, at the average cost, chosen and sent to the advisor at once. When the customer
+     * approves it, it is issued to the job from stock (no purchase, no GRN).
+     */
+    public function quoteFromStock(SparePartRequest $request, StockItem $item, User $user): SparePartQuote
+    {
+        if (!Purchases::enabled()) {
+            throw new EstimateException('Switch on Purchases & stock to use parts from stock.');
+        }
+        if (!in_array($request->status, SparePartRequest::QUOTABLE, true)) {
+            throw new EstimateException('This part has already gone to the customer; quotes can no longer change.');
+        }
+        $jobCard = JobCard::withoutGlobalScopes()->findOrFail($request->job_card_id);
+        $balance = StockBalance::where('branch_id', $jobCard->branch_id)->where('stock_item_id', $item->id)->first();
+        if (!$item->is_active || !$balance || (float) $balance->quantity < (float) $request->quantity) {
+            throw new EstimateException("Not enough {$item->name} in stock for this part.");
+        }
+        $cost = round((float) $balance->avg_cost, 2);
+
+        $quote = DB::transaction(function () use ($request, $item, $cost, $user) {
+            $quote = $request->quotes()->create([
+                'supplier_id' => null,
+                'stock_item_id' => $item->id,
+                'unit_cost' => $cost,
+                'gst_mode' => 'incl',
+                'gst_rate' => (float) ($item->gst_rate ?? 18),
+                'landed_unit_cost' => $cost,
+                'availability' => 'In stock',
+                'created_by' => $user->id,
+            ]);
+            $request->update(['selected_quote_id' => $quote->id, 'status' => SparePartRequest::QUOTED, 'quoted_by' => $user->id, 'quoted_at' => now()]);
+
+            return $quote;
+        });
+
+        $recipients = $this->advisorsAndManagers($jobCard, [$request->forwarded_by]);
+        Notification::send($recipients, StaffAlert::partsQuoted($jobCard, [$request->part_name]));
+
+        return $quote->load('stockItem');
+    }
+
+    /**
+     * Approved parts priced from stock go to the job straight from stock; short stock leaves them
+     * to be bought (the coordinator is told).
+     *
+     * @param Collection<int, SparePartRequest> $requests
+     * @return string[] names that could not be issued
+     */
+    protected function issueFromStock(JobCard $jobCard, Collection $requests, ?User $user): array
+    {
+        $issued = collect();
+        $short = [];
+        $by = $user ?? User::find($jobCard->service_advisor_id);
+        foreach ($requests as $request) {
+            $item = $request->selectedQuote?->stockItem;
+            if (!$item || !$by) {
+                continue;
+            }
+            try {
+                app(StockService::class)->take($jobCard->branch_id, $item, (float) $request->quantity, StockMovement::ISSUE, $by, $jobCard->id, "Part for {$request->part_name}");
+                $issued->push($request);
+            } catch (EstimateException) {
+                $short[] = $request->part_name;
+            }
+        }
+        if ($issued->isNotEmpty() && $by) {
+            $this->partsArrived($issued, $by);
+        }
+
+        return $short;
+    }
+
     public function removeQuote(SparePartRequest $request, SparePartQuote $quote): void
     {
         if (!in_array($request->status, SparePartRequest::QUOTABLE, true)) {
@@ -388,7 +465,8 @@ class PartsQuoteService
             return;
         }
 
-        $requests = SparePartRequest::whereIn('id', $lines->pluck('spare_part_request_id'))->get()->keyBy('id');
+        $requests = SparePartRequest::with('selectedQuote.stockItem')->whereIn('id', $lines->pluck('spare_part_request_id'))->get()->keyBy('id');
+        $fromStock = [];
 
         foreach ($lines as $line) {
             $request = $requests->get($line->spare_part_request_id);
@@ -415,6 +493,17 @@ class PartsQuoteService
                 'approved_by' => $status === SparePartRequest::APPROVED ? $line->decided_by : null,
                 'approved_at' => $status === SparePartRequest::APPROVED ? now() : null,
             ]);
+            if ($status === SparePartRequest::APPROVED && $request->selectedQuote?->stock_item_id) {
+                $fromStock[] = $request;
+            }
+        }
+
+        // Priced from our own stock: issued to the job now, nothing to buy (unless stock ran out)
+        if ($fromStock) {
+            $short = $this->issueFromStock($jobCard, collect($fromStock), null);
+            $stockNames = array_map(fn (SparePartRequest $r) => $r->part_name, $fromStock);
+            // Issued from stock: nothing to buy; parts stock ran short of still go to the coordinator
+            $newlyApproved = array_values(array_filter($newlyApproved, fn ($n) => !in_array($n, $stockNames, true) || in_array($n, $short, true)));
         }
 
         if ($newlyApproved) {

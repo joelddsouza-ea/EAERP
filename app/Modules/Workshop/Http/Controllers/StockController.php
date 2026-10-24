@@ -214,6 +214,7 @@ class StockController extends ApiController
     {
         return [
             'kit_issued_at' => $jobCard->kit_issued_at?->toIso8601String(),
+            'kit_shortfall' => $jobCard->kit_shortfall ?? [],
             'suggested_kit' => $this->stock->suggestedKit($jobCard),
             'issued' => $this->stock->issuedToJob($jobCard),
             'items' => StockItem::active()->orderBy('name')->get(['id', 'name', 'unit', 'category']),

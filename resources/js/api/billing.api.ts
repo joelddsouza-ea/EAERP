@@ -142,8 +142,14 @@ export const jobBillingApi = {
     return apiClient.post<ApiResponse<JobBillingSummary>>(`${jb(jobCardId)}/bills/${billId}/items`, data)
   },
 
-  setHsn(jobCardId: number, billId: number, itemId: number, hsn_code: string) {
-    return apiClient.patch<ApiResponse<JobBillingSummary>>(`${jb(jobCardId)}/bills/${billId}/items/${itemId}`, { hsn_code })
+  /** Recheck a line: quantity, selling price, cost, HSN/SAC */
+  updateItem(jobCardId: number, billId: number, itemId: number, data: { hsn_code?: string; quantity?: number; unit_price?: number; unit_cost?: number | null }) {
+    return apiClient.patch<ApiResponse<JobBillingSummary>>(`${jb(jobCardId)}/bills/${billId}/items/${itemId}`, data)
+  },
+
+  /** The advisor has checked the job: back office is asked to make the bill */
+  requestBill(jobCardId: number) {
+    return apiClient.post<ApiResponse<JobBillingSummary>>(`${jb(jobCardId)}/request`)
   },
 
   removeItem(jobCardId: number, billId: number, itemId: number) {

@@ -13,6 +13,7 @@ return [
     'has_issues_tab' => true,
     'has_observations' => true,
     'sort_order' => '10',
+    'outside_sections' => ['Washing & Cleaning' => 'washing'],
     'sections' => [
         'Engine Compartment' => [
             ['Top up engine oil (max 1 liter)', '***'],
@@ -36,6 +37,12 @@ return [
         ],
         'Exterior & Tyres' => [
             ['Check & inflate all tyre pressures', 'Direct'],
+        ],
+        // The trial drive comes before washing (owner, 2026-10-24); its own code keeps the other codes
+        'Final Checks' => [
+            ['Trial drive - engine performance', 'Direct', 'code' => 'ea-refresh.t01'],
+        ],
+        'Washing & Cleaning' => [
             ['Body Wash', 'Direct'],
         ],
     ],

@@ -28,6 +28,7 @@ import Modal from '@/components/ui/Modal.vue'
 import VoiceInput from '@/components/ui/VoiceInput.vue'
 import MediaStrip from '@/components/jobsheet/MediaStrip.vue'
 import { prepareMedia } from '@/components/jobsheet/media'
+import SendUpdateButton from '@/components/jobcard/SendUpdateButton.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -258,6 +259,11 @@ onMounted(load)
             <MapIcon class="h-5 w-5" /> Navigate
           </a>
         </div>
+
+        <!-- After a step: the advisor gets the customer's WhatsApp update ready to send -->
+        <div v-if="canDrive && trip.job && status !== 'scheduled'" class="mt-3 flex justify-end">
+          <SendUpdateButton :key="`${trip.job.status}-${status}`" :job-card-id="trip.job.id" kind="stage" :label="`Send update: ${trip.job.status_label}`" />
+        </div>
       </Card>
 
       <p v-if="!canDrive" class="mb-4 text-sm text-gray-500">View only: this trip is given to {{ trip.assignee?.name ?? 'nobody yet' }}.</p>
@@ -434,7 +440,7 @@ onMounted(load)
         <p class="text-sm text-red-700">Cancelled<span v-if="trip.cancel_reason">: {{ trip.cancel_reason }}</span></p>
       </Card>
 
-      <input ref="photoInput" type="file" accept="image/*" capture="environment" multiple class="hidden" @change="onFiles" />
+      <input ref="photoInput" type="file" accept="image/*" capture="environment" class="hidden" @change="onFiles" />
       <input ref="videoInput" type="file" accept="video/*" capture="environment" class="hidden" @change="onFiles" />
       <input ref="sideInput" type="file" accept="image/*" capture="environment" class="hidden" @change="onFiles" />
 

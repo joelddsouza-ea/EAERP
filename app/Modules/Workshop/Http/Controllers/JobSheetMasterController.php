@@ -94,6 +94,8 @@ class JobSheetMasterController extends ApiController
         $section->update($request->validate([
             'name' => 'sometimes|required|string|max:255',
             'sort_order' => 'sometimes|integer|min:0',
+            // Done by an outside partner (the job sheet offers "Send to washing")
+            'outside_kind' => 'sometimes|nullable|string|in:washing,wheel_alignment',
         ]));
 
         return $this->success($section, 'Section updated');

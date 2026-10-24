@@ -41,6 +41,8 @@ class Role extends BaseModel
     public const DRIVER = 'driver';
     // Staff with no other role: attendance, leave and payslips only
     public const EMPLOYEE = 'employee';
+    // Outside washing / wheel-alignment partner: sees only the cars sent to them
+    public const SERVICE_PARTNER = 'service-partner';
 
     /**
      * Users relationship.

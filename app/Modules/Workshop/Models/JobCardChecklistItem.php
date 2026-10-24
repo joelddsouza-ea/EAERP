@@ -29,6 +29,8 @@ class JobCardChecklistItem extends Model
         'status',
         'needs_attention',
         'section_name',
+        // Copied from the master section: done by an outside partner (washing)
+        'outside_kind',
         'item_name',
         'input_type',
         'media_requirement',

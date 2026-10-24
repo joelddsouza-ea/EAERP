@@ -41,6 +41,11 @@ class JobCard extends BranchScopedModel
         'work_started_at',
         'work_completed_at',
         'qc_completed_at',
+        // Off: the customer's page shows no "Progress" list (advisor's choice per job)
+        'show_customer_timeline',
+        // The advisor sent the checked job to back office for the bill
+        'billing_requested_at',
+        'billing_requested_by',
         'time_out',
         'estimated_amount',
         'package_price',
@@ -74,8 +79,12 @@ class JobCard extends BranchScopedModel
         'time_in' => 'datetime',
         'work_started_at' => 'datetime',
         'kit_issued_at' => 'datetime',
+        // What the automatic plan kit couldn't issue (short in stock)
+        'kit_shortfall' => 'array',
         'work_completed_at' => 'datetime',
         'qc_completed_at' => 'datetime',
+        'billing_requested_at' => 'datetime',
+        'show_customer_timeline' => 'boolean',
         'time_out' => 'datetime',
         'intake_trial_at' => 'datetime',
         'post_trial_at' => 'datetime',
@@ -139,6 +148,11 @@ class JobCard extends BranchScopedModel
     public function bay()
     {
         return $this->belongsTo(Bay::class);
+    }
+
+    public function billingRequestedBy()
+    {
+        return $this->belongsTo(User::class, 'billing_requested_by');
     }
 
     /**

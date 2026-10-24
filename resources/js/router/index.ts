@@ -89,11 +89,26 @@ const routes: RouteRecordRaw[] = [
         name: 'dashboard',
         component: Dashboard,
         meta: { title: 'Dashboard' },
-        // Drivers work from My Trips
+        // Drivers work from My Trips; outside partners from their cars
         beforeEnter: () => {
           const auth = useAuthStore()
+          if (auth.hasRole('service-partner')) return { name: 'partner-works' }
           return auth.hasPermission('workshop.trips.drive') && !auth.hasPermission('workshop.job-cards.view') ? { name: 'my-trips' } : true
         },
+      },
+
+      // Outside partner's login (washing, wheel alignment & balancing)
+      {
+        path: 'partner',
+        name: 'partner-works',
+        component: () => import('@/views/partner/PartnerWorks.vue'),
+        meta: { title: 'My cars', permission: 'workshop.partner.portal' },
+      },
+      {
+        path: 'partner/works/:id(\\d+)',
+        name: 'partner-work',
+        component: () => import('@/views/partner/PartnerWork.vue'),
+        meta: { title: 'Car', permission: 'workshop.partner.portal' },
       },
 
       // Workshop routes
@@ -280,6 +295,18 @@ const routes: RouteRecordRaw[] = [
         name: 'trip-detail',
         component: TripDetail,
         meta: { title: 'Trip', permissions: ['workshop.trips.drive', 'workshop.trips.manage'] },
+      },
+      {
+        path: 'technician-time',
+        name: 'technician-time',
+        component: () => import('@/views/workshop/TechnicianTime.vue'),
+        meta: { title: 'Technician Time', permission: 'workshop.technician-time.view' },
+      },
+      {
+        path: 'service-partners',
+        name: 'service-partners',
+        component: () => import('@/views/workshop/masters/ServicePartners.vue'),
+        meta: { title: 'Outside Service Partners', permission: 'workshop.partners.manage' },
       },
       {
         path: 'fleet-settings',

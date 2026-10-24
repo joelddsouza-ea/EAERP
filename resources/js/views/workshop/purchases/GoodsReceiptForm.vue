@@ -13,6 +13,10 @@ import { useToast } from '@/composables/useToast'
 import Card from '@/components/ui/Card.vue'
 import Button from '@/components/ui/Button.vue'
 import Spinner from '@/components/ui/Spinner.vue'
+import MediaPicker from '@/components/media/MediaPicker.vue'
+
+// Camera first (Android Chrome): photo / video / gallery as separate choices
+const billPicker = ref<InstanceType<typeof MediaPicker> | null>(null)
 
 const route = useRoute()
 const router = useRouter()
@@ -327,11 +331,11 @@ watch(billType, (t) => {
                   <XMarkIcon class="h-4 w-4" />
                 </button>
               </div>
-              <label class="flex h-20 w-20 cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-gray-300 text-xs text-gray-500">
+              <button type="button" class="flex h-20 w-20 flex-col items-center justify-center rounded-lg border-2 border-dashed border-gray-300 text-xs text-gray-500" @click="billPicker?.open()">
                 <CameraIcon class="h-6 w-6" />
                 Bill
-                <input type="file" accept="image/*,application/pdf" capture="environment" class="hidden" multiple @change="addPhotos(billPhotos, $event)" />
-              </label>
+              </button>
+              <MediaPicker ref="billPicker" variant="menu" :kinds="['photo']" files @change="addPhotos(billPhotos, $event)" />
             </div>
           </div>
         </div>

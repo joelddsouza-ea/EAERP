@@ -200,6 +200,8 @@ export interface JobCard {
   service_type: ServiceType | null
   /** How the car reaches the workshop: drive-in, pickup & drop, or home service */
   service_mode?: 'drive_in' | 'pickup_drop' | 'home'
+  /** Off: the customer's page shows no progress list (advisor's choice per job) */
+  show_customer_timeline?: boolean
   status: JobCardStatus
   priority: 'low' | 'normal' | 'high' | 'urgent'
   package_id?: number | null
@@ -278,6 +280,8 @@ export type SheetKind =
   | 'body_shop'
   | 'observation_report'
   | 'pre_delivery'
+  // Trial drive & washing for jobs whose sheets have neither
+  | 'post_service'
 
 export type MediaRequirement = 'none' | 'photo' | 'video' | 'photo_or_video' | 'photo_and_video'
 export type JobSheetItemStatus = 'pending' | 'done' | 'not_applicable' | 'not_done'
@@ -353,7 +357,8 @@ export interface JobSheet {
   progress: { total: number; resolved: number; needs_media: number; not_done: number; needs_attention: number } | null
   submittable: boolean
   problems: SheetProblem[]
-  sections: { name: string; items: JobSheetItem[] }[]
+  /** outside_kind: the section is done by an outside partner (washing); resolved: nothing pending */
+  sections: { name: string; outside_kind?: 'washing' | 'wheel_alignment' | null; resolved?: boolean; items: JobSheetItem[] }[]
   started_at: string | null
   completed_at: string | null
   completed_by?: { id: number; name: string } | null
@@ -506,6 +511,8 @@ export interface BillLine {
   description: string
   quantity: number
   unit_price: number
+  /** Internal: cost per unit (from the parts quote), for the recheck before billing */
+  unit_cost: number | null
   discount: number
   taxable_amount: number
   tax_rate: number
@@ -592,7 +599,11 @@ export interface JobBillingSummary {
   proforma_from: string | null
   methods: string[]
   gst_rates: number[]
-  can: { manage: boolean; approve: boolean; pay: boolean; settle: boolean; override_gate_pass: boolean; vehicle_out: boolean } | null
+  /** The advisor sent the checked job to back office for the bill */
+  billing_requested: { at: string; by: string | null } | null
+  /** The bill's WhatsApp to the customer, ready to send after approval */
+  bill_message: { id: number; body: string; share_url: string | null } | null
+  can: { manage: boolean; approve: boolean; pay: boolean; settle: boolean; finalize: boolean; request: boolean; override_gate_pass: boolean; vehicle_out: boolean } | null
 }
 
 export interface StatusHistoryEntry {
@@ -632,6 +643,8 @@ export interface ChecklistMasterSection {
   template_id: number
   name: string
   sort_order: number
+  /** Done by an outside partner (washing): the job sheet offers "Send to washing" */
+  outside_kind?: 'washing' | 'wheel_alignment' | null
   items: ChecklistMasterItem[]
 }
 
@@ -1136,6 +1149,10 @@ export interface StaffNotification {
   job_card_id: number | null
   read: boolean
   created_at: string
+  /** customer_update: the ready WhatsApp message the advisor sends from the bell */
+  message_id?: number
+  message?: string
+  share_url?: string | null
 }
 
 // ---- Create / Edit Job Card choices

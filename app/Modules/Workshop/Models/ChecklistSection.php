@@ -10,6 +10,8 @@ class ChecklistSection extends Model
         'template_id',
         'name',
         'sort_order',
+        // null | washing | wheel_alignment: done by an outside partner (the sheet offers "Send to washing")
+        'outside_kind',
     ];
 
     /**

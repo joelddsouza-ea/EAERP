@@ -2,6 +2,7 @@
 
 namespace App\Modules\Billing\Services;
 
+use App\Core\Models\Role;
 use App\Core\Models\User;
 use App\Modules\Billing\Models\GatePass;
 use App\Modules\Billing\Models\Invoice;
@@ -11,19 +12,23 @@ use App\Modules\Billing\Models\Payment;
 use App\Modules\Billing\Models\PaymentPart;
 use App\Modules\Hr\Services\StaffMoneyService;
 use App\Modules\Workshop\Enums\JobCardStatus;
+use App\Modules\Workshop\Models\CustomerMessage;
 use App\Modules\Workshop\Models\JobCard;
 use App\Modules\Workshop\Models\JobCardEstimate;
 use App\Modules\Workshop\Models\JobCardEstimateLine as Line;
 use App\Modules\Workshop\Models\JobTrip;
 use App\Modules\Workshop\Models\ServicePackage;
+use App\Modules\Workshop\Models\SparePartRequest;
 use App\Modules\Workshop\Models\Vehicle;
 use App\Modules\Workshop\Models\GoodsReceipt;
 use App\Modules\Workshop\Models\GoodsReceiptLine;
 use App\Modules\Workshop\Support\Purchases;
+use App\Modules\Workshop\Notifications\StaffAlert;
 use App\Modules\Workshop\Services\CustomerMessageService;
 use App\Modules\Workshop\Services\JobLifecycleService;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Notification;
 
 /**
  * A job's money, from first advance to the car leaving:
@@ -114,20 +119,41 @@ class BillingService
             'payments' => $payments->map(fn (Payment $p) => $this->presentPayment($p))->values(),
             'gate_pass' => $gatePass ? $this->presentGatePass($gatePass) : null,
             'proforma_from' => $bill ? null : $this->proformaBlocker($jobCard),
+            // The advisor sent the checked job to back office for the bill
+            'billing_requested' => $jobCard->billing_requested_at ? [
+                'at' => $jobCard->billing_requested_at->toIso8601String(),
+                'by' => $jobCard->loadMissing('billingRequestedBy:id,name')->billingRequestedBy?->name,
+            ] : null,
             'methods' => Payment::METHODS,
             'credit_method' => Payment::METHOD_CREDIT,
             // Customer money held by staff is tracked by Attendance & payroll
             'staff_method' => \App\Core\Support\Modules::hr() ? PaymentPart::STAFF_COLLECTED : null,
             'gst_rates' => self::GST_RATES,
+            // The bill message waiting to go to the customer (after "Approve & send to customer")
+            'bill_message' => $user && $user->hasAnyPermission(['workshop.customer-links.manage', 'billing.proforma.approve'])
+                ? $this->pendingBillMessage($jobCard)
+                : null,
             'can' => $user ? [
                 'manage' => $user->hasPermission('billing.proforma.manage'),
                 'approve' => $user->hasPermission('billing.proforma.approve'),
                 'pay' => $user->hasPermission('billing.payments.create'),
-                'settle' => $user->hasPermission('billing.proforma.approve'),
+                'settle' => $user->hasPermission('billing.invoices.finalize'),
+                'finalize' => $user->hasPermission('billing.invoices.finalize'),
+                'request' => $user->hasPermission('workshop.job-cards.change-status'),
                 'override_gate_pass' => $user->hasPermission('workshop.job-cards.override-guards'),
                 'vehicle_out' => $user->hasAnyPermission(['workshop.job-cards.change-status', 'billing.payments.create']),
             ] : null,
         ];
+    }
+
+    protected function pendingBillMessage(JobCard $jobCard): ?array
+    {
+        $message = CustomerMessage::where('job_card_id', $jobCard->id)
+            ->where('template', 'stage:' . JobCardStatus::Invoiced->value)
+            ->where('status', CustomerMessage::PREPARED)
+            ->latest('id')->first();
+
+        return $message ? $this->messages->present($message) : null;
     }
 
     // ---------------------------------------------------------------- payments
@@ -368,8 +394,13 @@ class BillingService
         }
 
         $received = $this->grnNumbers($estimate->job_card_id);
+        // Parts priced from our own stock were issued to the job when approved: no GRN for them
+        $fromStock = SparePartRequest::where('job_card_id', $estimate->job_card_id)
+            ->where('status', SparePartRequest::RECEIVED)
+            ->whereHas('selectedQuote', fn ($q) => $q->whereNotNull('stock_item_id'))
+            ->pluck('estimate_line_key')->filter()->flip();
 
-        return $lines->reject(fn (Line $l) => isset($received[$l->line_key]))->pluck('description')->values()->all();
+        return $lines->reject(fn (Line $l) => isset($received[$l->line_key]) || isset($fromStock[$l->line_key]))->pluck('description')->values()->all();
     }
 
     /**
@@ -484,7 +515,13 @@ class BillingService
         ]);
     }
 
-    public function updateItemHsn(Invoice $bill, InvoiceItem $item, string $hsn): void
+    /**
+     * Recheck a line before the bill goes to the customer: quantity, selling price
+     * (as the line is priced: GST-inclusive for estimate lines), cost, HSN/SAC.
+     *
+     * @param array{hsn_code?: string, quantity?: float|int|string, unit_price?: float|int|string, unit_cost?: float|int|string|null} $data
+     */
+    public function updateItem(Invoice $bill, InvoiceItem $item, array $data): void
     {
         $this->assertEditable($bill);
 
@@ -492,7 +529,37 @@ class BillingService
             throw new BillingException('That line is not on this bill.', [], 404);
         }
 
-        $item->update(['hsn_code' => $hsn]);
+        $item->fill(array_intersect_key($data, array_flip(['hsn_code', 'quantity', 'unit_price', 'unit_cost'])));
+        // The line's share of a plan / estimate discount can't be more than the line
+        $gross = round((float) $item->quantity * (float) $item->unit_price, 2);
+        if ((float) $item->discount > $gross) {
+            $item->discount = $gross;
+        }
+
+        DB::transaction(function () use ($bill, $item) {
+            $item->save();
+            $this->refreshPayments($bill);
+        });
+    }
+
+    /**
+     * The advisor has cross-checked the finished job: back office is asked to make the bill.
+     * The advisor may also make it straight away (billing.proforma.manage).
+     */
+    public function requestBill(JobCard $jobCard, User $user): void
+    {
+        if ($jobCard->status !== JobCardStatus::ReadyForDelivery->value) {
+            throw new BillingException('Send the job for billing after the final QC (Ready for delivery).');
+        }
+        if ($this->currentBill($jobCard)) {
+            throw new BillingException('The final bill has already been made.');
+        }
+
+        $jobCard->update(['billing_requested_at' => now(), 'billing_requested_by' => $user->id]);
+
+        $staff = User::active()->withRole(Role::BACKOFFICE)->forBranch($jobCard->branch_id)
+            ->where('users.id', '!=', $user->id)->get();
+        Notification::send($staff, StaffAlert::billRequested($jobCard, $user->name));
     }
 
     public function removeItem(Invoice $bill, InvoiceItem $item): void
@@ -578,7 +645,7 @@ class BillingService
             foreach ($proforma->items as $item) {
                 $invoice->items()->create($item->only([
                     'estimate_line_key', 'section', 'type', 'hsn_code', 'description', 'quantity', 'unit', 'unit_price',
-                    'discount', 'tax_rate', 'gst_inclusive', 'gst_applicable', 'sort_order',
+                    'unit_cost', 'discount', 'tax_rate', 'gst_inclusive', 'gst_applicable', 'sort_order',
                 ]));
             }
 
@@ -759,6 +826,7 @@ class BillingService
                 'description' => $i->description,
                 'quantity' => (float) $i->quantity,
                 'unit_price' => (float) $i->unit_price,
+                'unit_cost' => $i->unit_cost !== null ? (float) $i->unit_cost : null,
                 'discount' => (float) $i->discount,
                 'taxable_amount' => (float) $i->taxable_amount,
                 'tax_rate' => (float) $i->tax_rate,
@@ -907,6 +975,8 @@ class BillingService
 
             $bill->items()->create([
                 'estimate_line_key' => $line->line_key,
+                // Internal: the part's cost from the parts quote, for the recheck before billing
+                'unit_cost' => $line->unit_cost,
                 'section' => $section,
                 'type' => str_starts_with($hsn, '99') ? 'labor' : 'part',
                 'hsn_code' => $hsn,
