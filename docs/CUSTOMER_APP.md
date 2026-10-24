@@ -37,8 +37,8 @@ A cab owner is a customer marked **Cab fleet** (customer page › *Fleet* card).
 | **Fleet owner** (the customer's own number / links) | Everything a customer gets, plus **Fleet dashboard** (each cab at the workshop with its stage, approvals waiting and money due, or on the road with km, next service and open problems; spend this month / year per cab), **Drivers** (add with mobile number and cabs, switch off, sign out of all phones) and **Problem reports**. Approves any amount. |
 | **Driver** (own mobile number, or the job link sent to them) | Only the cabs linked to them: jobs, approve / decline extra work, pay by UPI, book, cab documents, **Report a problem** (kind, details, photos / videos, km, location for a breakdown), **Log km**. No wallet, no adding cars, no drivers. |
 
-- **Approval limit**: a driver approves extra work up to a total per job (GST incl.) — the default in *Settings ›
-  App Address & Customer App › Fleet cabs*, or the fleet's own on its *Fleet* card. Lines above it stay pending:
+- **Approval limit**: a driver approves extra work up to a total per job (GST incl.) — the default in *Masters ›
+  Fleet Cabs*, or the fleet's own on its *Fleet* card. Lines above it stay pending:
   the owner gets an app note plus a WhatsApp message (template `fleet_owner_approval`, in *Messages to send*) and
   the advisor a bell. Declining frees that line's share of the limit. Lines the owner (or the advisor for them)
   decided are locked for drivers. The limit is checked on the server for the driver's own link (`customer_links.fleet_driver_id`),

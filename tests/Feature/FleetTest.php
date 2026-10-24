@@ -275,6 +275,42 @@ class FleetTest extends TestCase
         $this->staff($this->advisor)->putJson("/api/v1/fleet/customers/{$this->fleet->id}", ['fleet_driver_limit' => null])->assertOk()->assertJsonPath('data.limit', 2000);
     }
 
+    public function test_fleet_is_a_customer_type_at_intake(): void
+    {
+        // The fleet made in setUp as corporate + is_fleet is stored as type fleet
+        $this->assertSame('fleet', $this->fleet->fresh()->customer_type);
+
+        $id = $this->staff($this->advisor)->postJson('/api/v1/workshop/customers', [
+            'name' => 'Anil More', 'phone' => '9820055511', 'customer_type' => 'fleet', 'company_name' => 'More Travels',
+        ])->assertCreated()->json('data.id');
+        $this->assertTrue(Customer::findOrFail($id)->is_fleet);
+        $this->staff($this->advisor)->getJson("/api/v1/fleet/customers/{$id}")->assertOk()->assertJsonPath('data.is_fleet', true);
+
+        // Type changed away from Fleet: no longer a fleet, its drivers are signed out
+        $this->staff($this->advisor)->putJson("/api/v1/workshop/customers/{$this->fleet->id}", ['name' => 'Sunil Patil', 'customer_type' => 'individual'])->assertOk();
+        $this->assertFalse($this->fleet->fresh()->is_fleet);
+
+        // Ticking "Cab fleet" on the customer page makes the type Fleet; unticking it goes back (company name → corporate)
+        $this->staff($this->advisor)->putJson("/api/v1/fleet/customers/{$this->fleet->id}", ['is_fleet' => true])->assertOk();
+        $this->assertSame('fleet', $this->fleet->fresh()->customer_type);
+        $this->staff($this->advisor)->putJson("/api/v1/fleet/customers/{$this->fleet->id}", ['is_fleet' => false])->assertOk();
+        $this->assertSame('corporate', $this->fleet->fresh()->customer_type);
+    }
+
+    public function test_driver_approval_amount_is_a_master(): void
+    {
+        $manager = User::where('email', 'manager@expressautocare.in')->firstOrFail();
+
+        // Advisors see it (the intake form shows it) but cannot change it
+        $this->staff($this->advisor)->getJson('/api/v1/fleet/settings')->assertOk()->assertJsonPath('data.driver_limit', 2000);
+        $this->staff($this->advisor)->putJson('/api/v1/fleet/settings', ['driver_limit' => 9000])->assertForbidden();
+
+        $this->staff($manager)->putJson('/api/v1/fleet/settings', ['driver_limit' => 3500, 'service_due_km_warning' => 800])
+            ->assertOk()->assertJsonPath('data.driver_limit', 3500)->assertJsonPath('data.service_due_km_warning', 800);
+        $this->staff($this->advisor)->getJson("/api/v1/fleet/customers/{$this->fleet->id}")->assertOk()->assertJsonPath('data.limit', 3500);
+        $this->staff($manager)->putJson('/api/v1/fleet/settings', ['driver_limit' => -1])->assertStatus(422);
+    }
+
     public function test_drivers_link_signs_in_the_driver(): void
     {
         $job = $this->newJob($this->cab1, $this->ramesh->id);

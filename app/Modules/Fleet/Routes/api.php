@@ -43,6 +43,10 @@ Route::prefix('v1/fleet')->middleware(['auth:sanctum', 'branch.context', 'module
         Route::post('vehicles/{vehicle}/odometer', [Staff::class, 'logOdometer']);
     });
 
+    // Masters › Fleet Cabs (also read by the customer intake form)
+    Route::get('settings', [Staff::class, 'settings'])->middleware('permission:workshop.fleet.settings|workshop.customers.view');
+    Route::put('settings', [Staff::class, 'updateSettings'])->middleware('permission:workshop.fleet.settings');
+
     Route::middleware('permission:workshop.fleet.reports')->group(function () {
         Route::get('reports', [Staff::class, 'reports']);
         Route::post('reports/{report}/book', [Staff::class, 'book']);

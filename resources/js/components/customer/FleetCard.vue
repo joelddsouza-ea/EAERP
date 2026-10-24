@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
  * On the customer's page: is this customer a fleet (cab owner), how much a driver may approve
- * per job (blank = the default in Settings › App address & customer app), the drivers and the
+ * per job (blank = the default in Masters › Fleet Cabs), the drivers and the
  * cabs they drive, and the problems they reported.
  */
 import { ref, computed, onMounted } from 'vue'

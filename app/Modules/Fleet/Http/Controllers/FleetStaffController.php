@@ -40,6 +40,34 @@ class FleetStaffController extends ApiController
         }
     }
 
+    // ------------------------------------------------------------------ Masters › Fleet Cabs
+
+    public function settings(): JsonResponse
+    {
+        return $this->success($this->settingsData());
+    }
+
+    public function updateSettings(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'driver_limit' => 'sometimes|required|numeric|min:0|max:1000000',
+            'service_due_km_warning' => 'sometimes|required|integer|min:0|max:10000',
+        ]);
+        foreach ($data as $key => $value) {
+            WorkshopSettings::set("fleet.{$key}", $value + 0);
+        }
+
+        return $this->success($this->settingsData(), 'Settings saved');
+    }
+
+    private function settingsData(): array
+    {
+        return [
+            'driver_limit' => (float) WorkshopSettings::get('fleet.driver_limit'),
+            'service_due_km_warning' => (int) WorkshopSettings::get('fleet.service_due_km_warning'),
+        ];
+    }
+
     // ------------------------------------------------------------------ customer page › Fleet
 
     public function show(Customer $customer): JsonResponse
@@ -53,11 +81,8 @@ class FleetStaffController extends ApiController
             'is_fleet' => 'sometimes|boolean',
             'fleet_driver_limit' => 'nullable|numeric|min:0|max:1000000',
         ]);
+        // Not a fleet any more: FleetServiceProvider signs its drivers out
         $customer->update($data);
-        // Not a fleet any more: its drivers can't sign in
-        if (!$customer->is_fleet) {
-            FleetDriver::where('customer_id', $customer->id)->get()->each(fn (FleetDriver $d) => $this->drivers->signOut($d));
-        }
 
         return $this->success($this->state($customer->fresh()), 'Saved');
     }

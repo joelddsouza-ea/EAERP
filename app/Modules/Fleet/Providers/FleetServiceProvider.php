@@ -4,9 +4,12 @@ namespace App\Modules\Fleet\Providers;
 
 use App\Core\Support\Modules;
 use App\Modules\Fleet\Console\FleetDaily;
+use App\Modules\Fleet\Models\FleetDriver;
+use App\Modules\Fleet\Services\FleetDriverService;
 use App\Modules\Fleet\Services\FleetNotifications;
 use App\Modules\Fleet\Services\FleetReportService;
 use App\Modules\Fleet\Services\OdometerService;
+use App\Modules\Workshop\Models\Customer;
 use App\Modules\Workshop\Models\JobCard;
 use App\Modules\Workshop\Models\JobCardStatusHistory;
 use Illuminate\Support\Facades\DB;
@@ -41,6 +44,14 @@ class FleetServiceProvider extends ServiceProvider
                     app(FleetReportService::class)->jobCardOpened($job);
                 }
             }));
+        });
+
+        // No longer a fleet (type changed at the customer form or "Cab fleet" unticked): its drivers can't sign in
+        Customer::updated(function (Customer $customer) {
+            if ($customer->wasChanged('is_fleet') && !$customer->is_fleet) {
+                $drivers = app(FleetDriverService::class);
+                FleetDriver::where('customer_id', $customer->id)->get()->each(fn (FleetDriver $d) => $drivers->signOut($d));
+            }
         });
 
         // The cab is ready: the driver who brought it in gets a WhatsApp message (share link)

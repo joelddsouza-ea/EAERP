@@ -121,6 +121,12 @@ const routes: RouteRecordRaw[] = [
         component: CustomerForm,
         meta: { title: 'Edit Customer', permission: 'workshop.customers.update' },
       },
+      {
+        path: 'customers/:id(\\d+)/fleet-setup',
+        name: 'fleet-setup',
+        component: () => import('@/views/workshop/FleetSetup.vue'),
+        meta: { feature: 'fleet', title: 'Fleet setup', permission: 'workshop.customers.update' },
+      },
 
       {
         path: 'vehicles',
@@ -274,6 +280,12 @@ const routes: RouteRecordRaw[] = [
         name: 'trip-detail',
         component: TripDetail,
         meta: { title: 'Trip', permissions: ['workshop.trips.drive', 'workshop.trips.manage'] },
+      },
+      {
+        path: 'fleet-settings',
+        name: 'fleet-settings',
+        component: () => import('@/views/workshop/masters/FleetSettings.vue'),
+        meta: { feature: 'fleet', title: 'Fleet Cabs', permission: 'workshop.fleet.settings' },
       },
       {
         path: 'trip-settings',

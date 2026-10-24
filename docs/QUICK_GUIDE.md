@@ -268,12 +268,14 @@ monthly budget, body-shop price guide, and what it was asked.
 
 ## 12. Fleet cabs & drivers (advisors, managers, owner) — *Customers* and *Customers › Fleet Reports*
 
-- **Make a cab owner a fleet**: open the customer › *Fleet* card › tick **Cab fleet**. Add the cabs as vehicles,
-  then **Add driver** (name, mobile, the cabs they drive). The fleet owner can also add drivers in the app.
+- **New fleet**: *Customers › Add Customer*, Customer Type **Fleet (cab owner)** with the owner's name and phone.
+  Saving opens **Fleet setup**: add the cabs one after another (make and model stay filled in), then **Add driver**
+  (name, mobile, the cabs they drive), then *Finish*. The fleet owner can also add drivers in the app.
+- **Existing customer**: open the customer › *Fleet* card › tick **Cab fleet** (their type becomes Fleet).
 - **Drivers sign in** to the customer app with their own mobile number (code read out from the fleet's page, or
   sent by WhatsApp), or with the link they get. They see only their cabs; no wallet, no adding cars.
 - **Driver's approval limit**: a driver can approve extra work up to a total per job — the default is in
-  *Settings › App address & customer app › Fleet cabs*; a fleet can have its own on its *Fleet* card. Anything
+  *Masters › Fleet Cabs*; a fleet can have its own on its *Fleet* card. Anything
   above it waits for the fleet owner: they get an app note and a WhatsApp message in *Messages to send*, and the
   advisor gets a bell. A driver can decline; they can't change what the owner decided.
 - **Job card**: for a fleet cab choose the **Driver who brought the cab**. That driver hears about stages in the

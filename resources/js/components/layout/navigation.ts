@@ -102,6 +102,7 @@ export function useNavigation() {
     }
     if (can('workshop.bays.view')) workshop.push({ name: 'Bays', to: '/bays', icon: HomeModernIcon })
     if (can('workshop.trips.settings')) workshop.push({ name: 'Pickup, Drop & Home Service', to: '/trip-settings', icon: TruckIcon, hint: 'Charges, policy, photos' })
+    if (on('fleet') && can('workshop.fleet.settings')) workshop.push({ name: 'Fleet Cabs', to: '/fleet-settings', icon: TruckIcon, hint: 'What a driver may approve per job, service-due warning' })
 
     const pricing: NavItem[] = []
     if (can('workshop.pricing-masters.view')) {

@@ -110,7 +110,7 @@ export interface Customer {
   state: string | null
   pincode: string | null
   gstin: string | null
-  customer_type: 'individual' | 'corporate'
+  customer_type: 'individual' | 'corporate' | 'fleet'
   /** Where the customer came from (CRM) */
   source?: string | null
   company_name: string | null

@@ -20,8 +20,6 @@ class AppSettingsController extends ApiController
         'customer_app.support_phone' => ['nullable', 'string', 'max:20'],
         'customer_app.otp_minutes' => ['integer', 'min:3', 'max:30'],
         'customer_app.push_enabled' => ['boolean'],
-        'fleet.driver_limit' => ['numeric', 'min:0', 'max:1000000'],
-        'fleet.service_due_km_warning' => ['integer', 'min:0', 'max:10000'],
     ];
 
     /**

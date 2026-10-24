@@ -42,6 +42,32 @@ class Customer extends BaseModel
         'fleet_driver_limit' => 'decimal:2',
     ];
 
+    public const TYPES = ['individual' => 'Individual', 'corporate' => 'Corporate', 'fleet' => 'Fleet'];
+
+    /**
+     * Customer type 'fleet' and is_fleet move together: picking Fleet at intake makes a fleet,
+     * and ticking / unticking "Cab fleet" on the customer page changes the type.
+     */
+    protected static function booted(): void
+    {
+        static::saving(function (Customer $customer) {
+            if (!$customer->exists) {
+                if ($customer->is_fleet || $customer->customer_type === 'fleet') {
+                    $customer->customer_type = 'fleet';
+                    $customer->is_fleet = true;
+                }
+            } elseif ($customer->isDirty('customer_type')) {
+                $customer->is_fleet = $customer->customer_type === 'fleet';
+            } elseif ($customer->isDirty('is_fleet')) {
+                if ($customer->is_fleet) {
+                    $customer->customer_type = 'fleet';
+                } elseif ($customer->customer_type === 'fleet') {
+                    $customer->customer_type = $customer->company_name ? 'corporate' : 'individual';
+                }
+            }
+        });
+    }
+
     /**
      * Vehicles owned by this customer.
      */
@@ -83,11 +109,11 @@ class Customer extends BaseModel
     }
 
     /**
-     * Get display name (name + company for corporate).
+     * Get display name (name + company for corporate and fleet).
      */
     public function getDisplayNameAttribute(): string
     {
-        if ($this->customer_type === 'corporate' && $this->company_name) {
+        if (in_array($this->customer_type, ['corporate', 'fleet'], true) && $this->company_name) {
             return "{$this->name} ({$this->company_name})";
         }
         return $this->name;

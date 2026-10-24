@@ -81,8 +81,8 @@ onMounted(() => {
         <div>
           <h1 class="text-2xl font-bold text-gray-900">{{ customer.name }}</h1>
           <div class="flex items-center gap-2 mt-1">
-            <Badge :variant="customer.customer_type === 'corporate' ? 'purple' : 'default'">
-              {{ customer.customer_type === 'corporate' ? 'Corporate' : 'Individual' }}
+            <Badge :variant="customer.customer_type === 'fleet' ? 'info' : customer.customer_type === 'corporate' ? 'purple' : 'default'">
+              {{ customer.customer_type === 'fleet' ? 'Fleet' : customer.customer_type === 'corporate' ? 'Corporate' : 'Individual' }}
             </Badge>
             <span v-if="customer.company_name" class="text-gray-500">
               {{ customer.company_name }}

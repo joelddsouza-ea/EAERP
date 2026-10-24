@@ -1,7 +1,9 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { customersApi } from '@/api/workshop.api'
+import { fleetApi } from '@/api/fleet.api'
+import { useAuthStore } from '@/stores/auth.store'
 import { useToast } from '@/composables/useToast'
 import Card from '@/components/ui/Card.vue'
 import Button from '@/components/ui/Button.vue'
@@ -13,6 +15,7 @@ import Spinner from '@/components/ui/Spinner.vue'
 const route = useRoute()
 const router = useRouter()
 const toast = useToast()
+const auth = useAuthStore()
 
 const customerId = computed(() => route.params.id ? Number(route.params.id) : null)
 const isEditing = computed(() => !!customerId.value)
@@ -34,7 +37,7 @@ const form = ref({
   state: '',
   pincode: '',
   gstin: '',
-  customer_type: 'individual' as 'individual' | 'corporate',
+  customer_type: 'individual' as 'individual' | 'corporate' | 'fleet',
   source: '' as string,
   company_name: '',
   notes: '',
@@ -49,10 +52,24 @@ const sourceOptions = [
   { value: 'other', label: 'Other' },
 ]
 
-const customerTypeOptions = [
+// Fleet (cab owners) only while the Fleet module is on; a fleet being edited keeps its type
+const customerTypeOptions = computed(() => [
   { value: 'individual', label: 'Individual' },
   { value: 'corporate', label: 'Corporate' },
-]
+  ...(auth.hasFeature('fleet') || form.value.customer_type === 'fleet' ? [{ value: 'fleet', label: 'Fleet (cab owner)' }] : []),
+])
+
+// Fleet intake: what a driver may approve per job comes from Masters › Fleet Cabs
+const fleetLimit = ref<number | null>(null)
+watch(() => form.value.customer_type, async (type) => {
+  if (type !== 'fleet' || fleetLimit.value !== null) return
+  try {
+    fleetLimit.value = (await fleetApi.settings()).data.data.driver_limit
+  } catch {
+    // Fleet module off: no limit to show
+  }
+})
+const rupees = (n: number) => '₹ ' + Math.round(n).toLocaleString('en-IN')
 
 async function fetchCustomer() {
   if (!customerId.value) return
@@ -112,6 +129,12 @@ async function handleSubmit() {
       toast.success('Customer Updated', 'Customer details have been updated.')
     } else {
       const response = await customersApi.create(form.value)
+      if (form.value.customer_type === 'fleet') {
+        // Fleet intake goes on: cabs, then drivers
+        toast.success('Fleet Created', 'Now add the cabs and their drivers.')
+        router.push(`/customers/${response.data.data.id}/fleet-setup`)
+        return
+      }
       toast.success('Customer Created', 'Now add the customer\'s vehicle.')
       created.value = { id: response.data.data.id, name: response.data.data.name }
       return
@@ -179,6 +202,26 @@ onMounted(fetchCustomer)
             :error="errors.company_name"
             required
           />
+
+          <Input
+            v-if="form.customer_type === 'fleet'"
+            v-model="form.company_name"
+            label="Fleet / Company Name"
+            :error="errors.company_name"
+            hint="e.g. Patil Cabs. Leave blank for a cab owner without a company."
+          />
+
+          <div v-if="form.customer_type === 'fleet'" class="md:col-span-2 rounded-lg bg-blue-50 p-3 text-sm text-blue-900">
+            <p class="font-medium">Fleet intake</p>
+            <p class="mt-1">
+              Enter the fleet owner's details here (Full Name and Phone are the owner's). After saving you add the cabs, then the drivers
+              and which cabs each one drives. Drivers sign in to the customer app with their own mobile number.
+            </p>
+            <p v-if="fleetLimit !== null" class="mt-1">
+              A driver may approve up to <strong>{{ rupees(fleetLimit) }}</strong> of extra work per job; above it the owner is asked
+              (Masters › Fleet Cabs).
+            </p>
+          </div>
 
           <Input
             v-model="form.phone"

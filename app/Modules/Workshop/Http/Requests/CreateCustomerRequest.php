@@ -23,7 +23,7 @@ class CreateCustomerRequest extends FormRequest
             'state' => 'nullable|string|max:100',
             'pincode' => 'nullable|string|max:10',
             'gstin' => 'nullable|string|max:20',
-            'customer_type' => 'nullable|in:individual,corporate',
+            'customer_type' => 'nullable|in:individual,corporate,fleet',
             'source' => 'nullable|in:walk_in,referral,online,lead,corporate,other',
             'company_name' => 'nullable|string|max:255',
             'notes' => 'nullable|string',

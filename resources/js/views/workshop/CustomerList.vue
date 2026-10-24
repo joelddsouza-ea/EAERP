@@ -9,6 +9,7 @@ import { useToast } from '@/composables/useToast'
 import type { Customer } from '@/api/types'
 import Button from '@/components/ui/Button.vue'
 import DataTable from '@/components/ui/DataTable.vue'
+import Badge from '@/components/ui/Badge.vue'
 import SearchInput from '@/components/ui/SearchInput.vue'
 import type { Column } from '@/components/ui/DataTable.vue'
 
@@ -110,7 +111,8 @@ watch(() => pagination.currentPage.value, fetchCustomers)
       </template>
 
       <template #cell-customer_type="{ value }">
-        <span class="capitalize">{{ value }}</span>
+        <Badge v-if="value === 'fleet'" variant="info">Fleet</Badge>
+        <span v-else class="capitalize">{{ value }}</span>
       </template>
 
       <template #empty>

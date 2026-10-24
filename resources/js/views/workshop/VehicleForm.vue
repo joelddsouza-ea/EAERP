@@ -23,6 +23,8 @@ const created = ref<{ id: number; customer_id: number; registration_no: string }
 const preselectedCustomerId = computed(() =>
   route.query.customer_id ? Number(route.query.customer_id) : null
 )
+// Opened from a fleet's intake (Customers › Fleet setup): add cabs one after another
+const fleetSetup = computed(() => route.query.then === 'fleet-setup' && !!preselectedCustomerId.value)
 
 const loading = ref(false)
 const saving = ref(false)
@@ -46,6 +48,16 @@ const form = ref({
   insurance_expiry: '',
   notes: '',
 })
+
+/** Fleet intake: next cab, keeping make / model / fuel (fleets often run one model) */
+function addAnotherCab() {
+  created.value = null
+  errors.value = {}
+  Object.assign(form.value, {
+    registration_no: '', year: null, color: '', vin: '', engine_no: '', chassis_no: '',
+    insurance_policy_no: '', insurance_expiry: '', notes: '',
+  })
+}
 
 // Make / model / category lookups
 const makes = ref<VehicleMake[]>([])
@@ -421,8 +433,13 @@ watch(customerSearch, (value) => {
         <template #footer>
           <div v-if="created" class="flex flex-wrap items-center gap-3">
             <p class="text-sm text-green-700 mr-auto">{{ created.registration_no }} has been saved.</p>
-            <Button type="button" variant="secondary" @click="router.push('/vehicles')">Done</Button>
+            <template v-if="fleetSetup">
+              <Button type="button" variant="secondary" @click="addAnotherCab">Add another cab</Button>
+              <Button type="button" @click="router.push(`/customers/${created.customer_id}/fleet-setup`)">Back to fleet setup</Button>
+            </template>
+            <Button v-if="!fleetSetup" type="button" variant="secondary" @click="router.push('/vehicles')">Done</Button>
             <Button
+              v-if="!fleetSetup"
               type="button"
               @click="router.push(`/job-cards/create?customer_id=${created.customer_id}&vehicle_id=${created.id}`)"
             >

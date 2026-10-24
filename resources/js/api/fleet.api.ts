@@ -51,6 +51,12 @@ export interface FleetState {
   reports: FleetReport[]
 }
 
+/** Masters › Fleet Cabs */
+export interface FleetSettings {
+  driver_limit: number
+  service_due_km_warning: number
+}
+
 export interface DriverInput {
   name?: string
   phone?: string
@@ -60,6 +66,8 @@ export interface DriverInput {
 }
 
 export const fleetApi = {
+  settings: () => apiClient.get<ApiResponse<FleetSettings>>('/fleet/settings'),
+  saveSettings: (data: Partial<FleetSettings>) => apiClient.put<ApiResponse<FleetSettings>>('/fleet/settings', data),
   show: (customerId: number) => apiClient.get<ApiResponse<FleetState>>(`/fleet/customers/${customerId}`),
   update: (customerId: number, data: { is_fleet?: boolean; fleet_driver_limit?: number | null }) =>
     apiClient.put<ApiResponse<FleetState>>(`/fleet/customers/${customerId}`, data),
