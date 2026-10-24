@@ -27,7 +27,9 @@ class RoleController extends ApiController
             )
             ->orderBy('name');
 
-        $roles = $query->paginate($request->per_page ?? 15);
+        // Through the resource: the dashboard blocks include the defaults
+        $roles = $query->paginate($request->per_page ?? 15)
+            ->through(fn (Role $role) => (new RoleResource($role))->resolve($request));
 
         return $this->paginated($roles);
     }
@@ -121,9 +123,13 @@ class RoleController extends ApiController
     public function syncPermissions(Request $request, Role $role): JsonResponse
     {
         $request->validate([
-            'permissions' => 'required|array',
+            'permissions' => 'present|array',
             'permissions.*' => 'string|exists:permissions,slug',
         ]);
+        // The owner always has everything (so nobody can lock themselves out)
+        if ($role->slug === Role::OWNER) {
+            return $this->error('The owner role always has every permission.', 422);
+        }
 
         $role->syncPermissions($request->permissions);
 
@@ -131,6 +137,25 @@ class RoleController extends ApiController
             new RoleResource($role->fresh()->load('permissions')),
             'Permissions updated successfully'
         );
+    }
+
+    /**
+     * Roles & Access › Dashboard: the blocks this role sees.
+     */
+    public function updateDashboard(Request $request, Role $role): JsonResponse
+    {
+        $data = $request->validate([
+            'blocks' => 'present|array',
+            'blocks.*' => 'string|in:' . implode(',', array_keys(Role::DASHBOARD_BLOCKS)),
+        ]);
+        $role->update(['dashboard_blocks' => array_values(array_unique($data['blocks']))]);
+
+        return $this->success(new RoleResource($role->fresh()), 'Dashboard saved');
+    }
+
+    public function dashboardBlocks(): JsonResponse
+    {
+        return $this->success(Role::DASHBOARD_BLOCKS);
     }
 
     /**

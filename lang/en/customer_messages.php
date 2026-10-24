@@ -14,7 +14,7 @@ return [
 
     'approval_reminder' => "Hello :name, :count item(s) on the estimate for your car :car are still waiting for your approval.\nPlease approve or decline here: :link",
 
-    'decision_recorded' => "Hello :name, as discussed with :advisor, we have recorded the following on the estimate for your car :car (Job :job):\n:lines\nYou can review or change these here: :link",
+    'decision_recorded' => "Hello :name, as discussed with :advisor, we have recorded the following on the estimate for your car :car (Job :job):\n:lines\nEstimate total now: Rs :total\nYou can review it here: :link",
 
     'media_shared' => "Hello :name, new photos/videos of your car :car have been added (Job :job).\nView them here: :link",
 
@@ -54,4 +54,5 @@ return [
     'decision_line' => '- :description (Rs :amount): :decision',
     'decision_approved' => 'Approved',
     'decision_declined' => 'Recommended but not approved by customer',
+    'decision_changed' => '(was: :from)',
 ];

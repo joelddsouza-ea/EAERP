@@ -17,6 +17,8 @@ class JobCardIssue extends Model
     public const SOURCE_TECHNICIAN = 'technician';
     /** An activity flagged ⚠ on the technician's job sheet */
     public const SOURCE_ACTIVITY = 'activity';
+    /** What the advisor noticed on the intake trial drive */
+    public const SOURCE_TRIAL = 'trial';
 
     protected $fillable = [
         'job_card_id',

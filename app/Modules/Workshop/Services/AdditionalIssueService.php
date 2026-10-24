@@ -191,20 +191,21 @@ class AdditionalIssueService
         $owner = $issue->source === JobCardIssue::SOURCE_TECHNICIAN;
         if ($owner !== $this->isTechnician($jobCard, $user)) {
             throw new JobSheetException(
-                $owner ? 'Only the technician removes his own findings.' : 'Customer complaints are removed by the advisor.',
+                $owner ? 'Only the technician removes his own findings.' : 'Customer complaints and trial-drive notes are removed by the advisor.',
                 [],
                 403
             );
         }
 
-        $hasWork = $issue->media()->exists()
-            || $issue->partRequests()->whereNotIn('status', [SparePartRequest::DRAFT, SparePartRequest::CANCELLED])->exists();
-        if ($hasWork) {
-            throw new JobSheetException('This line has photos or parts on it: defer it instead of removing it.');
+        // Photos don't stop it (e.g. the technician reported what the customer had already said);
+        // parts already sent for pricing or ordered do
+        if ($issue->partRequests()->whereNotIn('status', [SparePartRequest::DRAFT, SparePartRequest::CANCELLED])->exists()) {
+            throw new JobSheetException('This line has parts sent to the advisor or ordered: defer it instead of removing it.');
         }
 
         DB::transaction(function () use ($issue) {
             $issue->partRequests()->where('status', SparePartRequest::DRAFT)->delete();
+            $issue->media()->delete();
             $issue->delete();
         });
     }

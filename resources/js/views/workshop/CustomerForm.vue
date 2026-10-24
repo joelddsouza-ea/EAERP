@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { customersApi } from '@/api/workshop.api'
 import { fleetApi } from '@/api/fleet.api'
 import { useAuthStore } from '@/stores/auth.store'
+import { isMobile, cleanMobile, MOBILE_ERROR } from '@/utils/phone'
 import { useToast } from '@/composables/useToast'
 import Card from '@/components/ui/Card.vue'
 import Button from '@/components/ui/Button.vue'
@@ -110,6 +111,11 @@ async function handleSubmit() {
   }
   if (!form.value.phone.trim()) {
     errors.value.phone = 'Phone is required'
+  } else if (!isMobile(form.value.phone)) {
+    errors.value.phone = MOBILE_ERROR
+  }
+  if (form.value.alt_phone.trim() && !isMobile(form.value.alt_phone)) {
+    errors.value.alt_phone = MOBILE_ERROR
   }
   if (form.value.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.value.email)) {
     errors.value.email = 'Invalid email format'
@@ -224,18 +230,25 @@ onMounted(fetchCustomer)
           </div>
 
           <Input
-            v-model="form.phone"
-            label="Phone"
+            :model-value="form.phone"
+            label="Mobile number"
             type="tel"
+            inputmode="numeric"
+            maxlength="10"
+            placeholder="10 digits"
             :error="errors.phone"
             required
+            @update:model-value="(v: string | number) => (form.phone = cleanMobile(String(v)).slice(0, 10))"
           />
 
           <Input
-            v-model="form.alt_phone"
-            label="Alternate Phone"
+            :model-value="form.alt_phone"
+            label="Alternate mobile"
             type="tel"
+            inputmode="numeric"
+            maxlength="10"
             :error="errors.alt_phone"
+            @update:model-value="(v: string | number) => (form.alt_phone = cleanMobile(String(v)).slice(0, 10))"
           />
 
           <Input

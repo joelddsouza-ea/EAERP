@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { PlusIcon } from '@heroicons/vue/20/solid'
 import { jobCardsApi } from '@/api/workshop.api'
@@ -29,6 +29,8 @@ const jobCards = ref<JobCard[]>([])
 const search = ref('')
 // Links such as /job-cards?status=ready_for_delivery (My Day) open filtered
 const statusFilter = ref<string>((route.query.status as string) || '')
+// Back office queues from My Day / Dashboard: sent for the bill, or drafts to approve
+const billingQueue = computed(() => (route.query.billing as string) || '')
 
 const columns: Column<JobCard>[] = [
   { key: 'job_number', label: 'Job Card #' },
@@ -55,6 +57,7 @@ async function fetchJobCards() {
     const response = await jobCardsApi.list({
       search: search.value || undefined,
       status: statusFilter.value as JobCardStatus || undefined,
+      billing: billingQueue.value || undefined,
       page: pagination.currentPage.value,
       per_page: pagination.perPage.value,
     })
@@ -91,14 +94,21 @@ onMounted(fetchJobCards)
 
 watch(() => pagination.currentPage.value, fetchJobCards)
 watch(() => branchStore.currentBranchId, fetchJobCards)
+watch(billingQueue, fetchJobCards)
 </script>
 
 <template>
   <div>
     <div class="flex flex-wrap items-center justify-between gap-3 mb-4 sm:mb-6">
       <div>
-        <h1 class="text-2xl font-bold text-gray-900">Job Cards</h1>
-        <p class="text-gray-500 mt-1">Manage workshop job cards</p>
+        <h1 class="text-2xl font-bold text-gray-900">{{ billingQueue === 'requested' ? 'Bills to make' : billingQueue === 'draft' ? 'Bills to approve' : 'Job Cards' }}</h1>
+        <p class="text-gray-500 mt-1">
+          <template v-if="billingQueue">
+            {{ billingQueue === 'requested' ? 'Sent by advisors for the final bill.' : 'Draft final bills not yet approved.' }}
+            <RouterLink to="/job-cards" class="text-primary-700 underline">All job cards</RouterLink>
+          </template>
+          <template v-else>Manage workshop job cards</template>
+        </p>
       </div>
       <Button v-if="can('workshop.job-cards.create')" @click="router.push('/job-cards/create')">
         <PlusIcon class="h-5 w-5 mr-1" />

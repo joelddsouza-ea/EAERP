@@ -37,6 +37,21 @@ class ChecklistItem extends Model
         return (bool) preg_match(self::WORKSHOP_ONLY_PATTERN, $name);
     }
 
+    /** Petrol / CNG engines only: N/A and locked on a diesel or electric car */
+    public static function looksPetrolOnly(string $name): bool
+    {
+        return (bool) preg_match('/spark plug/i', $name);
+    }
+
+    /** "If applicable / if required / if needed": shown in another colour */
+    public static function looksConditional(string $name): bool
+    {
+        return (bool) preg_match('/\bif (applicable|required|needed)\b/i', $name);
+    }
+
+    /** Fuel types a petrol-only point doesn't apply to */
+    public const NO_SPARK_PLUG_FUELS = ['diesel', 'electric'];
+
     protected $fillable = [
         'section_id',
         'code',
@@ -50,6 +65,10 @@ class ChecklistItem extends Model
         'min_media_count',
         'na_allowed',
         'workshop_only',
+        // Spark plugs etc.: N/A and locked on diesel / electric cars
+        'petrol_only',
+        // "If applicable / required / needed": another colour on the job sheet
+        'conditional',
         'expected_answer',
         'applies_to_package_ids',
         'source_marker',
@@ -65,6 +84,8 @@ class ChecklistItem extends Model
         'requires_photo' => 'boolean',
         'na_allowed' => 'boolean',
         'workshop_only' => 'boolean',
+        'petrol_only' => 'boolean',
+        'conditional' => 'boolean',
         'is_active' => 'boolean',
         'min_media_count' => 'integer',
         'rules_customized_at' => 'datetime',

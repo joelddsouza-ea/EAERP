@@ -37,7 +37,13 @@ async function load() {
 
 onMounted(load)
 
-async function saveFleet(data: { is_fleet?: boolean; fleet_driver_limit?: number | null }) {
+function toggleOwnerCab(id: number) {
+  if (!state.value) return
+  const ids = state.value.owner_cab_ids.includes(id) ? state.value.owner_cab_ids.filter((x) => x !== id) : [...state.value.owner_cab_ids, id]
+  saveFleet({ owner_cab_ids: ids })
+}
+
+async function saveFleet(data: { is_fleet?: boolean; fleet_driver_limit?: number | null; owner_cab_ids?: number[] }) {
   busy.value = true
   try {
     const res = await fleetApi.update(props.customerId, data)
@@ -109,6 +115,18 @@ const rupees = (n: number) => '₹ ' + Math.round(n).toLocaleString('en-IN')
         </div>
         <Button v-if="canEdit" size="sm" variant="secondary" :loading="busy" @click="saveFleet({ fleet_driver_limit: limit === '' ? null : Number(limit) })">Save limit</Button>
         <p class="text-sm text-gray-500">Now {{ rupees(state.limit) }} per job{{ state.fleet_driver_limit === null ? ' (default)' : '' }}. Above it, the fleet owner is asked to approve.</p>
+      </div>
+
+      <!-- The owner drives some cabs himself: one login, no driver limit, messages to him -->
+      <div v-if="state.cabs.length" class="mt-5">
+        <h4 class="font-semibold text-gray-900">Cabs the owner drives</h4>
+        <p class="text-xs text-gray-500">{{ state.owner_name }} drives these himself; the other cabs have drivers.</p>
+        <div class="mt-2 flex flex-wrap gap-2 text-sm">
+          <label v-for="c in state.cabs" :key="c.id" class="flex items-center gap-2 rounded-lg bg-gray-50 px-3 py-2">
+            <input type="checkbox" class="rounded text-primary-600" :checked="state.owner_cab_ids.includes(c.id)" :disabled="!canEdit || busy" @change="toggleOwnerCab(c.id)" />
+            {{ c.registration_no }}
+          </label>
+        </div>
       </div>
 
       <div class="mt-5 flex items-center justify-between">

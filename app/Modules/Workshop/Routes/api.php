@@ -452,6 +452,9 @@ Route::prefix('v1/partner')->middleware(['auth:sanctum', 'permission:workshop.pa
     Route::get('works/{work}', [PartnerPortalController::class, 'show']);
     Route::post('works/{work}/media', [PartnerPortalController::class, 'uploadMedia']);
     Route::post('works/{work}/done', [PartnerPortalController::class, 'done']);
+    // The washing points of the job (photos / videos as the masters ask)
+    Route::post('works/{work}/items/{item}/media', [PartnerPortalController::class, 'uploadItemMedia']);
+    Route::patch('works/{work}/items/{item}', [PartnerPortalController::class, 'updateItem']);
 });
 
 // Job-sheet media files: authorised by a short-lived URL signature instead of the bearer token

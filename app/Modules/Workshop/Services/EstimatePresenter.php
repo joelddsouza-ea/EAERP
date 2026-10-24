@@ -101,6 +101,9 @@ class EstimatePresenter
             'description' => $line->description,
             'quantity' => (float) $line->quantity,
             'rate' => (float) $line->rate,
+            // false: the rate is before GST (tax_rate % added on top)
+            'gst_inclusive' => $line->gst_inclusive !== false,
+            'tax_rate' => (float) ($line->tax_rate ?? 18),
             'amount' => (float) $line->amount,
             'approval_status' => $line->approval_status,
             'approval_label' => match ($line->approval_status) {

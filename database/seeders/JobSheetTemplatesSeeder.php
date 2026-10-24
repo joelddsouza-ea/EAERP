@@ -120,6 +120,8 @@ class JobSheetTemplatesSeeder extends Seeder
                     'is_required' => $required,
                     'expected_answer' => $row['expect'] ?? null,
                     'workshop_only' => ChecklistItem::looksWorkshopOnly($name),
+                    'petrol_only' => ChecklistItem::looksPetrolOnly($name),
+                    'conditional' => ChecklistItem::looksConditional($name),
                 ];
 
                 $item = ChecklistItem::where('code', $code)->first();

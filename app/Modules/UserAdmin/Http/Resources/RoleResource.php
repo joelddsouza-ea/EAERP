@@ -20,6 +20,7 @@ class RoleResource extends JsonResource
             'slug' => $this->slug,
             'description' => $this->description,
             'is_system' => $this->is_system,
+            'dashboard_blocks' => $this->resource->dashboardBlocks(),
             'users_count' => $this->whenCounted('users'),
             'permissions_count' => $this->whenCounted('permissions'),
             'permissions' => $this->whenLoaded('permissions', fn() =>

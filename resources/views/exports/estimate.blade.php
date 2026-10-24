@@ -94,7 +94,7 @@
                         @if($line['approval_status'] !== 'approved')<br><span class="tag">{{ $line['approval_label'] }}</span>@endif
                     </td>
                     <td class="num">{{ rtrim(rtrim(number_format($line['quantity'], 2), '0'), '.') }}</td>
-                    <td class="num">{{ number_format($line['rate'], 2) }}</td>
+                    <td class="num">{{ number_format($line['rate'], 2) }}@if(($line['gst_inclusive'] ?? true) === false)<br><small>+ GST {{ (float) $line['tax_rate'] }}%</small>@endif</td>
                     <td class="num">{{ number_format($line['amount'], 2) }}</td>
                 </tr>
             @endforeach

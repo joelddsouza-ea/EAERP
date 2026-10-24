@@ -198,9 +198,16 @@ function problemMedia(line: JobCardIssue) {
 
 const SOURCE_LABEL: Record<JobCardIssue['source'], string> = {
   customer: 'Customer complaint',
+  trial: 'Trial-drive observation',
   technician: 'Found by technician',
   activity: 'Flagged on a service activity',
 }
+
+// Two sections: what the customer / trial drive reported, and what the technician found
+const groups = computed(() => [
+  { key: 'customer', title: 'Customer complaints & trial-drive observations', lines: lines.value.filter((l) => l.source === 'customer' || l.source === 'trial') },
+  { key: 'technician', title: 'Found by the technician during the service', lines: lines.value.filter((l) => l.source === 'technician' || l.source === 'activity') },
+])
 
 function fittedMedia(line: JobCardIssue) {
   return (line.media ?? []).filter((m) => m.tag === 'fitted_part')
@@ -282,9 +289,11 @@ defineExpose({ reload: load })
 
     <p v-if="!loading && !lines.length" class="text-sm text-gray-500">No additional issues.</p>
 
+    <template v-for="group in groups" :key="group.key">
+    <h3 v-if="group.lines.length" class="mt-4 mb-2 text-sm font-semibold uppercase tracking-wide text-gray-700 first:mt-0">{{ group.title }}</h3>
     <ol class="space-y-3">
       <li
-        v-for="(line, index) in lines"
+        v-for="(line, index) in group.lines"
         :key="line.id"
         class="rounded-xl border bg-white p-3"
         :class="line.status === 'resolved' ? 'border-green-200 bg-green-50/40' : line.status === 'deferred' ? 'border-amber-200 bg-amber-50/40' : 'border-gray-200'"
@@ -300,7 +309,7 @@ defineExpose({ reload: load })
             <p v-if="line.status === 'deferred' && line.resolution_notes" class="mt-1 text-xs text-amber-800">{{ line.resolution_notes }}</p>
           </div>
           <button
-            v-if="!line.media?.length && ((isTechnician && line.source === 'technician') || (canAddComplaint && line.source === 'customer'))"
+            v-if="(isTechnician && line.source === 'technician') || (canAddComplaint && (line.source === 'customer' || line.source === 'trial'))"
             type="button"
             class="p-2 text-gray-400 hover:text-red-600 shrink-0"
             aria-label="Remove line"
@@ -438,6 +447,7 @@ defineExpose({ reload: load })
         </div>
       </li>
     </ol>
+    </template>
 
     <form v-if="isTechnician || canAddComplaint" class="rounded-xl border border-dashed border-gray-300 p-3 space-y-2" @submit.prevent="addLine">
       <div class="flex gap-2">

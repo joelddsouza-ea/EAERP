@@ -3,6 +3,7 @@
 namespace App\Modules\Crm\Http\Controllers;
 
 use App\Core\Http\Controllers\Api\ApiController;
+use App\Core\Rules\IndianMobile;
 use App\Core\Models\User;
 use App\Modules\Crm\Models\Lead;
 use App\Modules\Crm\Models\LeadActivity;
@@ -71,7 +72,7 @@ class LeadController extends ApiController
             'sources' => LeadSource::where('is_active', true)->orderBy('sort_order')->get(['id', 'name', 'slug']),
             'lost_reasons' => LostReason::where('is_active', true)->orderBy('sort_order')->get(['id', 'name', 'nurture']),
             'plans' => ServicePackage::where('is_active', true)->orderBy('sort_order')->get(['id', 'name', 'home_service_available']),
-            'categories' => VehicleCategory::orderBy('id')->get(['id', 'name']),
+            'categories' => VehicleCategory::where('is_active', true)->orderBy('sort_order')->get(['id', 'name']),
             'oil_types' => \App\Modules\Workshop\Models\OilType::orderBy('id')->get(['id', 'name']),
             'interests' => Lead::INTERESTS,
             'statuses' => Lead::STATUSES,
@@ -234,10 +235,17 @@ class LeadController extends ApiController
 
     protected function rules(bool $create = true): array
     {
+        // Typed by staff: 10-digit mobile numbers (web / import leads go through LeadService::capture)
+        foreach (['phone', 'alt_phone'] as $field) {
+            if (request()->has($field)) {
+                request()->merge([$field => IndianMobile::clean(request()->input($field))]);
+            }
+        }
+
         return [
             'name' => 'nullable|string|max:150',
-            'phone' => ($create ? 'required' : 'sometimes') . '|string|max:30',
-            'alt_phone' => 'nullable|string|max:30',
+            'phone' => [$create ? 'required' : 'sometimes', 'string', new IndianMobile()],
+            'alt_phone' => ['nullable', 'string', new IndianMobile()],
             'email' => 'nullable|email|max:150',
             'city' => 'nullable|string|max:80',
             'car_text' => 'nullable|string|max:120',

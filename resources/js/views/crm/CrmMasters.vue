@@ -129,9 +129,10 @@ function addSlot(weekday: number) {
   const last = day[day.length - 1]
   slots.value.push({ branch_id: slotBranch.value, weekday, start_time: last?.end_time ?? '09:30', end_time: '11:00', capacity: last?.capacity ?? 3, is_active: true })
 }
+// Every other day gets Monday's slots (the branch's weekly off stays closed by itself)
 function copyMonday() {
   const mon = slots.value.filter((s) => s.weekday === 1)
-  slots.value = [...mon, ...[2, 3, 4, 5, 6].flatMap((d) => mon.map((s) => ({ ...s, id: undefined, weekday: d })))]
+  slots.value = [...mon, ...[0, 2, 3, 4, 5, 6].flatMap((d) => mon.map((s) => ({ ...s, id: undefined, weekday: d })))]
 }
 async function saveSlots() {
   await run(() => crmApi.saveSlots(slotBranch.value, slots.value), 'Booking slots saved')
@@ -289,7 +290,7 @@ async function saveSettings() {
             <option :value="null">All branches (default)</option>
             <option v-for="b in auth.branches" :key="b.id" :value="b.id">{{ b.name }} (own slots)</option>
           </select>
-          <Button v-if="canEdit" size="sm" variant="ghost" @click="copyMonday">Copy Monday to Tue–Sat</Button>
+          <Button v-if="canEdit" size="sm" variant="ghost" @click="copyMonday">Copy Monday to every other day</Button>
           <Button v-if="canEdit" size="sm" class="ml-auto" :loading="busy" @click="saveSlots">Save slots</Button>
         </div>
         <p class="mb-3 text-xs text-gray-500">A branch with its own slots uses them; others use the default. No slots on the branch's weekly off or holidays.</p>

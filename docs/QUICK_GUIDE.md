@@ -143,12 +143,25 @@ sends the customer its WhatsApp message (when set).
 - Parts the technician needs: review and forward them to the parts coordinator.
 - **Updates to send** (bell): when a technician or driver finishes a step they tap *Send update*; the message
   is ready in your bell — read it and tap **Send on WhatsApp** (or *Skip*).
-- After the technician submits: **final QC** (pre-delivery checklist), then **Send to back office for bill** (see 7).
+- After the technician submits: tap the red **Send to back office for bill** straight away (back office starts the bill
+  while you do the **final QC** / pre-delivery checklist). The customer gets the bill only once the car is ready.
+- **Pickup jobs**: the driver's photos and videos are the intake — don't take them again; do the **trial drive** at the
+  workshop and record it to complete the intake. On a New Job Card for pickup & drop, choose the **driver** there.
+- **Estimate**: each part / labour line can be priced **including GST** or **excluding GST** (choose the GST rate);
+  excluded lines get GST added for the customer. After a call you can still change a customer's decision with
+  **Record customer decision** up to the bill being approved: the coordinator is told (buy / cancel / return) and the
+  customer gets a message showing what changed and the new total.
+- **Mobile numbers** are 10 digits; car numbers are saved in capitals.
 
 **Technician** (*My Jobs*) — open the job sheet, mark each activity Done / N/A with the photos or videos it
 asks for, add **Additional Issues** with a photo of the faulty part, list parts needed, **Submit to SA for Parts**.
 When a new part arrives, check it in person and tap **Right part** or **Wrong part** (the coordinator's GRN photo
 is not shown). Fit it (photo of the fitted part), then Done.
+- **Diesel / electric cars**: spark-plug points are N/A and can't be changed. Points marked **If applicable** (violet)
+  are done only when they apply.
+- **Additional Issues** has two parts: *Customer complaints & trial-drive observations* and *Found by the technician*.
+  Remove your own line if it repeats a customer complaint. A service point flagged ⚠ and finished on its Additional
+  Issues line shows as **Done via Additional Issues** — no more photos needed there.
 - **Final Checks** (trial drive) come before **Washing & Cleaning**. After the trial drive tap **Send to washing**
   and choose the washing partner. Add the photos/videos the washer sends on WhatsApp from the gallery (or the
   washer uploads them from their own login), tap **Car is back**, finish the washing section and **submit** —
@@ -156,7 +169,8 @@ is not shown). Fit it (photo of the fitted part), then Done.
 - After each section you can tap **Send update**: the advisor gets the WhatsApp ready to send to the customer.
 
 **Outside partners** (washing, wheel alignment & balancing) sign in with their mobile number and see only the cars
-sent to them: add photos/videos, tap **Done**. Set them up in *Settings › Outside Service Partners* (several per
+sent to them. The washer fills the same washing points as the technician's sheet (Vacuum, Dashboard wipe / polish, Body
+wash…) with the photos / videos the masters ask for (camera or gallery), then taps **Done**. Set them up in *Settings › Outside Service Partners* (several per
 kind; *Create login*).
 
 **Photos and videos**: tap **Take photo** or **Record video** — the camera opens straight away (one shot per tap;
@@ -204,8 +218,8 @@ job card's Summary shows the same for that job.
 1. Take **advances** any time (job card › Billing › Record payment). A payment can be split: cash + UPI + card.
    **Collected by staff**: the customer paid an employee's own UPI / cash — choose the employee; they hold it
    until handed over.
-2. After final QC the advisor taps **Send to back office for bill** (back office gets a bell and the card *Bills to
-   make*). **Make proforma from estimate** → recheck each line (**edit**: quantity, cost, selling price, HSN; the
+2. When the technician submits (final QC) the advisor taps the red **Send to back office for bill**. Back office gets a
+   bell, a red banner on the job card and the cards *Bills to make* / *Bills to approve* (Dashboard and My Day). **Make proforma from estimate** → recheck each line (**edit**: quantity, cost, selling price, HSN; the
    margin is shown) → **Approve & send to customer** → send the ready bill message on WhatsApp → the customer pays.
    The advisor can do all of this too, and record payments.
 3. **Convert to tax invoice** or close a paid proforma — back office, managers and the owner only (also refunds).
@@ -253,6 +267,11 @@ payroll (staff-held money).
 ---
 
 ## 10. Settings (owner, managers) — *Settings*
+
+**Roles & Access** — tick what each role may do (by module) and, on the *Dashboard* tab, which dashboard blocks it sees
+(money figures for the owner, managers and back office only, by default). The owner role always has everything.
+**Fleet**: on a fleet customer's page tick the **cabs the owner drives** himself (one login, no driver limit).
+**Weekly off** (Branches) also closes that day in the booking calendar; the other days use Monday's booking slots.
 
 All masters on one page, grouped and searchable: job sheets & stages, plans & prices, CRM (journeys —
 which creative goes when —, creatives, lead sources & webhook links, campaigns & ad spend, booking slots,

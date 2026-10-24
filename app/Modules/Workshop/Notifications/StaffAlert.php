@@ -65,12 +65,26 @@ class StaffAlert extends Notification
         );
     }
 
-    public static function partsToProcure(JobCard $jobCard, array $partNames): self
+    /**
+     * The customer no longer wants these parts (an advisor changed the decision after a call).
+     */
+    public static function partsNoLongerWanted(JobCard $jobCard, array $partNames, ?string $note = null): self
+    {
+        return new self(
+            'parts_not_wanted',
+            "Parts no longer wanted — {$jobCard->job_number}",
+            'Not needed now: ' . implode(', ', $partNames) . '.' . ($note ? " Advisor: {$note}" : ''),
+            '/parts-desk?tab=procure',
+            $jobCard->id,
+        );
+    }
+
+    public static function partsToProcure(JobCard $jobCard, array $partNames, ?string $note = null): self
     {
         return new self(
             'parts_to_procure',
             "Customer approved parts — {$jobCard->job_number}",
-            'Procure: ' . implode(', ', $partNames),
+            'Procure: ' . implode(', ', $partNames) . ($note ? ". Advisor: {$note}" : ''),
             '/parts-desk?tab=procure',
             $jobCard->id,
         );

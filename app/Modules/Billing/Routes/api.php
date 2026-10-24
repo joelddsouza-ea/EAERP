@@ -25,14 +25,14 @@ Route::prefix('v1/billing')->middleware(['auth:sanctum', 'branch.context'])->gro
     Route::post('invoices/{invoice}/payments', [PaymentController::class, 'recordPayment']);
     Route::get('payments/{payment}/receipt', [PaymentController::class, 'downloadReceipt']);
 
-    // Reports
-    Route::get('reports/daily-collection', [ReportController::class, 'dailyCollection']);
-    Route::get('reports/outstanding', [ReportController::class, 'outstanding']);
-    Route::get('reports/invoice-register', [ReportController::class, 'invoiceRegister']);
-    Route::get('reports/payment-summary', [ReportController::class, 'paymentSummary']);
-
-    // Dashboard
-    Route::get('dashboard', [ReportController::class, 'dashboard']);
+    // Reports and the dashboard's money figures: only for people who may see them
+    Route::middleware('permission:billing.reports.view|billing.invoices.view|billing.payments.view')->group(function () {
+        Route::get('reports/daily-collection', [ReportController::class, 'dailyCollection']);
+        Route::get('reports/outstanding', [ReportController::class, 'outstanding']);
+        Route::get('reports/invoice-register', [ReportController::class, 'invoiceRegister']);
+        Route::get('reports/payment-summary', [ReportController::class, 'paymentSummary']);
+        Route::get('dashboard', [ReportController::class, 'dashboard']);
+    });
 });
 
 // A job's Billing & Delivery: payments, proforma → tax invoice / close, gate pass, vehicle out.

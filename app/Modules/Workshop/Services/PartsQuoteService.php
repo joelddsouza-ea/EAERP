@@ -432,9 +432,10 @@ class PartsQuoteService
      * Mirror the customer's decisions on part lines onto their requests, and tell
      * the coordinators which parts are newly approved for procurement.
      */
-    public function syncFromEstimate(JobCard $jobCard, JobCardEstimate $estimate): void
+    public function syncFromEstimate(JobCard $jobCard, JobCardEstimate $estimate, ?string $advisorNote = null, array $changedKeys = []): void
     {
         $newlyApproved = [];
+        $noLongerWanted = [];
 
         // Parts the advisor typed straight onto the estimate (not priced through the Parts Desk):
         // once approved they still have to be procured, so they go to the coordinator's list
@@ -470,9 +471,18 @@ class PartsQuoteService
 
         foreach ($lines as $line) {
             $request = $requests->get($line->spare_part_request_id);
-            // Ordered / received parts are past the decision stage
+            // Ordered / received parts are past the decision stage — but the coordinator must hear if the
+            // customer no longer wants them (cancel the order / return the part)
+            if ($request && in_array($request->status, [SparePartRequest::ORDERED, SparePartRequest::RECEIVED], true)
+                && $line->approval_status === Line::DECLINED && in_array($line->line_key, $changedKeys, true)) {
+                $noLongerWanted[] = $request->part_name . ($request->status === SparePartRequest::ORDERED ? ' (ordered: cancel)' : ' (received: return or keep in stock)');
+                continue;
+            }
             if (!$request || !in_array($request->status, [SparePartRequest::QUOTED, SparePartRequest::APPROVED, SparePartRequest::DECLINED], true)) {
                 continue;
+            }
+            if ($request->status === SparePartRequest::APPROVED && $line->approval_status === Line::DECLINED) {
+                $noLongerWanted[] = $request->part_name;
             }
 
             $status = match ($line->approval_status) {
@@ -507,7 +517,10 @@ class PartsQuoteService
         }
 
         if ($newlyApproved) {
-            $this->notifyCoordinators($jobCard, StaffAlert::partsToProcure($jobCard, $newlyApproved));
+            $this->notifyCoordinators($jobCard, StaffAlert::partsToProcure($jobCard, $newlyApproved, $advisorNote));
+        }
+        if ($noLongerWanted) {
+            $this->notifyCoordinators($jobCard, StaffAlert::partsNoLongerWanted($jobCard, $noLongerWanted, $advisorNote));
         }
     }
 

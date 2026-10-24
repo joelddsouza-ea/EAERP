@@ -48,6 +48,10 @@ class JobCardChecklistItem extends Model
         'completed_at',
         'qc_evidence_required',
         'qc_marked_at',
+        // Not for this car (spark plugs on a diesel): N/A, can't be changed
+        'locked',
+        // "If applicable / required / needed": another colour
+        'conditional',
     ];
 
     protected $casts = [
@@ -60,6 +64,8 @@ class JobCardChecklistItem extends Model
         'completed_at' => 'datetime',
         'qc_evidence_required' => 'boolean',
         'qc_marked_at' => 'datetime',
+        'locked' => 'boolean',
+        'conditional' => 'boolean',
     ];
 
     public function jobCardChecklist()

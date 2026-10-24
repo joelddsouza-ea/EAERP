@@ -63,6 +63,8 @@ class EstimateController extends ApiController
             'draft' => $draft ? $this->presenter->present($draft) : null,
             'current' => $sent ? $this->presenter->present($sent) : null,
             'decisions_open' => $this->decisions->decisionsOpen($jobCard),
+            // The advisor can still record a changed decision after a call (until the bill is approved)
+            'advisor_decisions_open' => $this->decisions->advisorDecisionsOpen($jobCard),
         ]);
     }
 
@@ -112,6 +114,9 @@ class EstimateController extends ApiController
     {
         $data = $request->validate([
             'kind' => ['required', Rule::in([Line::KIND_PLAN_EXTRA, ...Line::ADDITIONAL_KINDS])],
+            // Priced including GST (default) or before GST, with the rate
+            'gst_inclusive' => 'sometimes|boolean',
+            'tax_rate' => 'sometimes|numeric|in:0,5,12,18,28',
             'description' => 'required|string|max:255',
             'quantity' => 'sometimes|numeric|min:0',
             'rate' => 'required|numeric',
@@ -131,6 +136,8 @@ class EstimateController extends ApiController
     {
         $data = $request->validate([
             'kind' => ['sometimes', Rule::in(Line::ADDITIONAL_KINDS)],
+            'gst_inclusive' => 'sometimes|boolean',
+            'tax_rate' => 'sometimes|numeric|in:0,5,12,18,28',
             'description' => 'sometimes|required|string|max:255',
             'quantity' => 'sometimes|numeric|min:0',
             'rate' => 'sometimes|numeric',

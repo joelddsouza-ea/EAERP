@@ -80,7 +80,13 @@ class FleetStaffController extends ApiController
         $data = $request->validate([
             'is_fleet' => 'sometimes|boolean',
             'fleet_driver_limit' => 'nullable|numeric|min:0|max:1000000',
+            // Cabs the owner drives himself
+            'owner_cab_ids' => 'sometimes|array|max:200',
+            'owner_cab_ids.*' => 'integer',
         ]);
+        if (isset($data['owner_cab_ids'])) {
+            $data['owner_cab_ids'] = Vehicle::where('customer_id', $customer->id)->whereIn('id', $data['owner_cab_ids'])->pluck('id')->values()->all();
+        }
         // Not a fleet any more: FleetServiceProvider signs its drivers out
         $customer->update($data);
 
@@ -115,14 +121,15 @@ class FleetStaffController extends ApiController
     public function driversForJob(Request $request, Customer $customer): JsonResponse
     {
         if (!$customer->is_fleet) {
-            return $this->success([]);
+            return $this->success(['drivers' => [], 'owner_drives' => false, 'owner_name' => $customer->name]);
         }
         $vehicleId = $request->integer('vehicle_id') ?: null;
         $rows = FleetDriver::with('vehicles:id')->where('customer_id', $customer->id)->where('is_active', true)->orderBy('name')->get()
             ->map(fn (FleetDriver $d) => ['id' => $d->id, 'name' => $d->name, 'phone' => $d->phone, 'drives_this_cab' => $vehicleId && $d->vehicles->contains('id', $vehicleId)])
             ->sortByDesc('drives_this_cab')->values();
 
-        return $this->success($rows);
+        // The owner drives this cab: the job card records no driver (the owner gets the messages)
+        return $this->success(['drivers' => $rows, 'owner_drives' => $customer->ownerDrives($vehicleId), 'owner_name' => $customer->name]);
     }
 
     protected function driverInput(Request $request, bool $update = false): array
@@ -148,6 +155,8 @@ class FleetStaffController extends ApiController
             'fleet_driver_limit' => $customer->fleet_driver_limit !== null ? (float) $customer->fleet_driver_limit : null,
             'default_limit' => (float) WorkshopSettings::get('fleet.driver_limit'),
             'limit' => app(FleetApprovalService::class)->limitFor($customer),
+            'owner_name' => $customer->name,
+            'owner_cab_ids' => array_map('intval', $customer->owner_cab_ids ?? []),
             'drivers' => $customer->is_fleet ? $this->drivers->list($customer) : [],
             'cabs' => Vehicle::where('customer_id', $customer->id)->where('is_active', true)->orderBy('registration_no')->get(['id', 'registration_no'])
                 ->map(fn (Vehicle $v) => ['id' => $v->id, 'registration_no' => $v->registration_no, 'km' => OdometerReading::latestFor($v->id)?->km])->values(),

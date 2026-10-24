@@ -53,7 +53,7 @@ export const usersApi = {
 // Roles
 export const rolesApi = {
   list() {
-    return apiClient.get<ApiResponse<Role[]>>('/user-admin/roles')
+    return apiClient.get<ApiResponse<Role[]>>('/user-admin/roles', { params: { per_page: 100 } })
   },
 
   get(id: number) {
@@ -76,6 +76,19 @@ export const rolesApi = {
     return apiClient.get<ApiResponse<{ role: Pick<Role, 'id' | 'name' | 'slug'>; permissions: string[] }>>(
       `/user-admin/roles/${id}/permissions`
     )
+  },
+
+  /** Replace the role's permissions (the owner role always has all) */
+  syncPermissions(id: number, permissions: string[]) {
+    return apiClient.post<ApiResponse<Role>>(`/user-admin/roles/${id}/permissions`, { permissions })
+  },
+
+  /** Roles & Access › Dashboard */
+  dashboardBlocks() {
+    return apiClient.get<ApiResponse<Record<string, string>>>('/user-admin/dashboard-blocks')
+  },
+  updateDashboard(id: number, blocks: string[]) {
+    return apiClient.put<ApiResponse<Role>>(`/user-admin/roles/${id}/dashboard`, { blocks })
   },
 }
 

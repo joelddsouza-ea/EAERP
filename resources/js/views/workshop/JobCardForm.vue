@@ -63,17 +63,22 @@ async function loadAlignmentPartners() {
 // ---- Fleet cabs: which of the fleet's drivers brought it in (they get the job in their app)
 const auth = useAuthStore()
 const fleetDrivers = ref<{ id: number; name: string; phone: string; drives_this_cab: boolean }[]>([])
+/** The fleet owner drives this cab himself: his name (no driver is recorded) */
+const ownerDrives = ref<string | null>(null)
 const fleetDriverOptions = computed(() =>
   fleetDrivers.value.map((d) => ({ value: d.id, label: `${d.name} · ${d.phone}${d.drives_this_cab ? '' : ' (other cab)'}` })),
 )
 async function loadFleetDrivers() {
   const customer = selectedCustomer.value
+  ownerDrives.value = null
   if (!customer?.is_fleet || !auth.hasFeature('fleet') || !form.value.vehicle_id) {
     fleetDrivers.value = []
     return
   }
   try {
-    fleetDrivers.value = (await fleetApi.driversForJob(customer.id, form.value.vehicle_id)).data.data
+    const res = (await fleetApi.driversForJob(customer.id, form.value.vehicle_id)).data.data
+    fleetDrivers.value = res.drivers
+    ownerDrives.value = res.owner_drives ? res.owner_name : null
     const own = fleetDrivers.value.filter((d) => d.drives_this_cab)
     if (!form.value.fleet_driver_id && !isEditing.value && own.length === 1) form.value.fleet_driver_id = own[0].id
   } catch {
@@ -124,12 +129,18 @@ async function loadTripData(customerId: number) {
   } catch {
     savedAddresses.value = []
   }
-  if (!people.value.length && can('workshop.trips.manage')) {
-    try {
-      people.value = (await tripsApi.board()).data.data.people
-    } catch {
-      people.value = []
-    }
+  await loadPeople()
+}
+
+// Drivers (pickup & drop) / technicians (home visit) the advisor can assign while creating the job
+const peopleLoaded = ref(false)
+async function loadPeople() {
+  if (peopleLoaded.value || !can('workshop.trips.manage')) return
+  try {
+    people.value = (await tripsApi.board()).data.data.people
+    peopleLoaded.value = true
+  } catch {
+    people.value = []
   }
 }
 
@@ -492,6 +503,7 @@ onMounted(async () => {
 
 // A plan not offered at home can't stay chosen for a home-service job
 watch(mode, (m) => {
+  if (m !== 'drive_in') loadPeople()
   if (m === 'home' && selectedPlan.value && selectedPlan.value.home_service_available === false) {
     form.value.service_choice = ''
     form.value.oil_type_id = null
@@ -595,8 +607,9 @@ watch(
             label="Driver who brought the cab"
             :options="fleetDriverOptions"
             :error="errors.fleet_driver_id"
-            placeholder="Not recorded"
+            :placeholder="ownerDrives ? `The owner (${ownerDrives})` : 'Not recorded'"
           />
+          <p v-else-if="ownerDrives" class="text-sm text-gray-600">The owner ({{ ownerDrives }}) drives this cab: messages go to him.</p>
 
           <div v-if="form.customer_id && customerVehicles.length === 0" class="text-sm text-amber-600">
             No vehicles found for this customer.
@@ -657,12 +670,16 @@ watch(
               <Input v-model="trip.slot_to" label="To" type="time" :error="errors['trip.slot_to']" />
             </div>
             <Select
-              v-if="tripPeople.length"
+              v-if="can('workshop.trips.manage')"
               v-model="trip.assigned_to"
               :label="mode === 'home' ? 'Technician (becomes the lead)' : 'Driver'"
               placeholder="Assign later"
               :options="tripPeople"
             />
+            <p v-if="can('workshop.trips.manage') && peopleLoaded && !tripPeople.length" class="-mt-2 text-xs text-amber-700">
+              No {{ mode === 'home' ? 'technician' : 'driver' }} set up for this branch yet: add a user with the
+              {{ mode === 'home' ? 'Technician' : 'Driver' }} role and this branch (Settings › Users).
+            </p>
             <div class="space-y-1 text-sm">
               <label class="flex items-center gap-2">
                 <input v-model="trip.charge" type="checkbox" class="rounded border-gray-300" />

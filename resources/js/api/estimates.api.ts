@@ -49,6 +49,9 @@ export interface EstimateLineInput {
   labour_service_id?: number | null
   /** Parts priced from a supplier quote: a new margin reprices the line */
   margin_pct?: number | null
+  /** Rate includes GST (default) or is before GST with tax_rate % added */
+  gst_inclusive?: boolean
+  tax_rate?: number
 }
 
 export interface Decision {

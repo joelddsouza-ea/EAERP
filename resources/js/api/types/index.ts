@@ -34,6 +34,8 @@ export interface User {
   permissions: string[]
   /** Optional modules switched on for the organisation */
   features?: { purchases?: boolean; accounts?: boolean; crm?: boolean; hr?: boolean; customer_app?: boolean; fleet?: boolean }
+  /** Roles & Access › Dashboard: the blocks this user sees */
+  dashboard_blocks?: string[]
   is_active: boolean
   created_at: string
   updated_at: string
@@ -47,6 +49,8 @@ export interface Role {
   is_system?: boolean
   users_count?: number
   permissions_count?: number
+  /** Roles & Access › Dashboard: the blocks this role sees */
+  dashboard_blocks?: string[]
 }
 
 // User as returned by the user-admin endpoints (auth/me returns role slugs instead)
@@ -226,6 +230,8 @@ export interface JobCard {
   work_started_at: string | null
   work_completed_at: string | null
   qc_completed_at: string | null
+  /** The advisor sent the job to back office for the bill */
+  billing_requested_at?: string | null
   time_out: string | null
   items: JobCardItem[]
   status_changed_at?: string | null
@@ -309,6 +315,12 @@ export interface PanelFlags {
 }
 
 export interface JobSheetItem {
+  /** Not for this car (spark plugs on a diesel): read-only N/A */
+  locked?: boolean
+  /** "If applicable / required / needed": shown in another colour */
+  conditional?: boolean
+  /** Flagged and handled on its Additional Issues line: counts as done */
+  handled_by_line?: boolean
   /** Pre-delivery QC spot check: shown only after the point is marked */
   qc_evidence?: { required: boolean; marked_at: string; deadline: string; satisfied: boolean } | null
   id: number
@@ -396,7 +408,7 @@ export interface ObservationRemark {
 export interface JobCardIssue {
   id: number
   job_card_id: number
-  source: 'customer' | 'technician' | 'activity'
+  source: 'customer' | 'technician' | 'activity' | 'trial'
   description: string
   priority: 'critical' | 'high' | 'normal'
   status: 'open' | 'in_progress' | 'resolved' | 'deferred'
@@ -629,6 +641,10 @@ export interface ChecklistMasterItem {
   na_allowed: boolean
   /** Not done on a home-service visit */
   workshop_only: boolean
+  /** Spark plugs etc.: N/A and locked on diesel / electric cars */
+  petrol_only?: boolean
+  /** "If applicable / required / needed": another colour */
+  conditional?: boolean
   is_required: boolean
   is_active: boolean
   expected_answer: 'yes' | 'no' | null
@@ -754,11 +770,21 @@ export interface DashboardStats {
   jobs_by_status: Record<JobCardStatus, number>
   recent_job_cards: JobCard[]
   recent_payments: Payment[]
+  /** Back office: jobs sent for the bill / draft bills (billing.proforma.manage) */
+  bills_to_make?: number
+  bills_to_approve?: number
 }
 
 // Filter types
+export interface BillQueues {
+  bills_to_make?: number
+  bills_to_approve?: number
+}
+
 export interface JobCardFilters {
   status?: JobCardStatus | JobCardStatus[]
+  /** Back office queues: sent for the bill / draft bills to approve */
+  billing?: string
   service_type?: ServiceType
   technician_id?: number
   service_advisor_id?: number
@@ -804,6 +830,9 @@ export interface EstimateLine {
   description: string
   quantity: number
   rate: number
+  /** false: the rate is before GST (tax_rate % added on top) */
+  gst_inclusive?: boolean
+  tax_rate?: number
   amount: number
   approval_status: ApprovalStatus
   approval_label: string
@@ -885,6 +914,8 @@ export interface EstimateOverview {
   draft: Estimate | null
   current: Estimate | null
   decisions_open: boolean
+  /** The advisor can still change decisions after a call (until the bill is approved) */
+  advisor_decisions_open?: boolean
 }
 
 export interface CustomerMessage {

@@ -99,6 +99,8 @@ class JobCardResource extends JsonResource
             'work_started_at' => $this->work_started_at?->toIso8601String(),
             'work_completed_at' => $this->work_completed_at?->toIso8601String(),
             'qc_completed_at' => $this->qc_completed_at?->toIso8601String(),
+            // The advisor sent the job to back office for the bill
+            'billing_requested_at' => $this->billing_requested_at?->toIso8601String(),
             'time_out' => $this->time_out?->toIso8601String(),
 
             // Pricing

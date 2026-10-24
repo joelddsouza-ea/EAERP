@@ -2,6 +2,7 @@
 
 namespace App\Modules\UserAdmin\Http\Requests;
 
+use App\Core\Rules\IndianMobile;
 use Illuminate\Foundation\Http\FormRequest;
 
 class CreateUserRequest extends FormRequest
@@ -23,7 +24,7 @@ class CreateUserRequest extends FormRequest
             'name' => 'required|string|max:255',
             // Staff without an email sign in with their phone number
             'email' => 'required_without:phone|nullable|email|unique:users,email',
-            'phone' => 'required_without:email|nullable|string|max:20|unique:users,phone',
+            'phone' => ['required_without:email', 'nullable', 'string', new IndianMobile(), 'unique:users,phone'],
             'password' => 'required|string|min:8|confirmed',
             'roles' => 'required|array|min:1',
             'roles.*' => 'string|exists:roles,slug',
@@ -42,5 +43,17 @@ class CreateUserRequest extends FormRequest
         return [
             'primary_branch_id.in_array' => 'Primary branch must be one of the assigned branches.',
         ];
+    }
+
+    /**
+     * Mobile numbers are kept as 10 digits (+91 / 0 / spaces removed).
+     */
+    protected function prepareForValidation(): void
+    {
+        foreach (['phone'] as $field) {
+            if ($this->has($field)) {
+                $this->merge([$field => IndianMobile::clean($this->input($field))]);
+            }
+        }
     }
 }

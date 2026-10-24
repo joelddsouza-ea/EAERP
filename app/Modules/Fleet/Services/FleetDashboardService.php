@@ -53,7 +53,7 @@ class FleetDashboardService
 
         $warnKm = (int) WorkshopSettings::get('fleet.service_due_km_warning');
         $retention = app(RetentionService::class);
-        $cabs = $vehicles->map(function (Vehicle $v) use ($openJobs, $reports, $spend, $warnKm, $retention) {
+        $cabs = $vehicles->map(function (Vehicle $v) use ($openJobs, $reports, $spend, $warnKm, $retention, $fleet) {
             $job = $openJobs->get($v->id);
             $card = $job ? $this->portal->jobCard($job) : null;
             $km = OdometerReading::latestFor($v->id);
@@ -63,7 +63,8 @@ class FleetDashboardService
                 'id' => $v->id,
                 'registration_no' => $v->registration_no,
                 'car' => $this->portal->carName($v),
-                'drivers' => $v->drivers->map(fn ($d) => ['id' => $d->id, 'name' => $d->name, 'phone' => $d->phone])->values(),
+                'drivers' => collect($fleet->ownerDrives($v->id) ? [['id' => null, 'name' => $fleet->name . ' (owner)', 'phone' => $fleet->phone]] : [])
+                    ->concat($v->drivers->map(fn ($d) => ['id' => $d->id, 'name' => $d->name, 'phone' => $d->phone]))->values(),
                 'state' => $job ? 'workshop' : 'on_road',
                 'job' => $card ? $card + ['driver' => $job->fleetDriver?->name] : null,
                 'km' => $km?->km,

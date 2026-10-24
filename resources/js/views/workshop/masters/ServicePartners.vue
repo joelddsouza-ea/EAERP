@@ -127,7 +127,7 @@ onMounted(load)
             <option v-for="(label, kind) in kinds" :key="kind" :value="kind">{{ label }}</option>
           </select>
         </label>
-        <Input v-model="form.phone" label="Mobile number" type="tel" hint="WhatsApp messages about cars sent to them go to this number." />
+        <Input v-model="form.phone" label="Mobile number" type="tel" inputmode="numeric" maxlength="10" hint="WhatsApp messages about cars sent to them go to this number." />
         <Input v-model="form.notes" label="Notes" />
         <label v-if="editing !== 'new'" class="flex items-center gap-2 text-sm">
           <input v-model="form.is_active" type="checkbox" class="rounded text-primary-600" /> Active (switching off also blocks their login)
@@ -141,7 +141,7 @@ onMounted(load)
 
     <Modal :open="!!loginFor" :title="`Login for ${loginFor?.name ?? ''}`" @close="loginFor = null">
       <form class="space-y-3" @submit.prevent="createLogin">
-        <Input v-model="login.phone" label="Mobile number (they sign in with it)" type="tel" required />
+        <Input v-model="login.phone" label="Mobile number (they sign in with it)" type="tel" inputmode="numeric" maxlength="10" required />
         <Input v-model="login.password" label="Password (at least 8 characters)" type="text" required />
         <p class="text-xs text-gray-500">Tell the partner the number and password. They see only the cars sent to them, never the customer or prices.</p>
         <div class="flex justify-end gap-2 pt-2">

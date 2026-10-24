@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { isMobile, MOBILE_ERROR } from '@/utils/phone'
 import { ref, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { usersApi, rolesApi, branchesApi } from '@/api/admin.api'
@@ -103,6 +104,8 @@ async function handleSubmit() {
   // Staff sign in with their phone number; an email is optional when there is a phone
   if (!form.value.email.trim() && !form.value.phone.trim()) {
     errors.value.phone = 'Phone (for the app login) or email is required'
+  } else if (form.value.phone.trim() && !isMobile(form.value.phone)) {
+    errors.value.phone = MOBILE_ERROR
   }
   if (!isEditing.value && !form.value.password) {
     errors.value.password = 'Password is required'

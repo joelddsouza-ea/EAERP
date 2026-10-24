@@ -8,6 +8,7 @@ use App\Modules\Workshop\Enums\JobCardStatus;
 use App\Modules\Workshop\Http\Controllers\Concerns\ValidatesMediaUpload;
 use App\Modules\Workshop\Http\Resources\JobCardMediaResource;
 use App\Modules\Workshop\Models\JobCard;
+use App\Modules\Workshop\Models\JobCardIssue;
 use App\Modules\Workshop\Models\JobCardMedia;
 use App\Modules\Workshop\Services\IssueLineRules;
 use App\Modules\Workshop\Services\JobSheetService;
@@ -55,6 +56,18 @@ class IntakeController extends ApiController
             'intake_trial_by' => $request->user()->id,
             'intake_trial_at' => now(),
         ]);
+
+        // What the trial drive found goes on the technician's Additional Issues (one line, kept in step)
+        $notes = $data['status'] === 'done' ? trim((string) ($data['notes'] ?? '')) : '';
+        $line = JobCardIssue::where('job_card_id', $jobCard->id)->where('source', JobCardIssue::SOURCE_TRIAL)->first();
+        if ($notes !== '') {
+            $line
+                ? $line->update(['description' => $notes])
+                : JobCardIssue::create(['job_card_id' => $jobCard->id, 'source' => JobCardIssue::SOURCE_TRIAL, 'description' => $notes,
+                    'priority' => 'normal', 'status' => 'open', 'reported_by' => $request->user()->id]);
+        } elseif ($line && $line->status === 'open' && !$line->media()->exists()) {
+            $line->delete();
+        }
 
         return $this->success($this->present($jobCard->fresh()), 'Trial drive recorded');
     }

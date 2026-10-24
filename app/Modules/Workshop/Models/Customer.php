@@ -30,6 +30,8 @@ class Customer extends BaseModel
         // Phase 10: cab fleets (drivers sign in to the app; limit null = Settings › Fleet default)
         'is_fleet',
         'fleet_driver_limit',
+        // Fleet cabs the owner drives himself (no driver limit, one login)
+        'owner_cab_ids',
     ];
 
     public const SOURCES = ['walk_in' => 'Walk-in', 'referral' => 'Referral', 'online' => 'Online / Google', 'lead' => 'Lead (marketing)', 'corporate' => 'Corporate', 'other' => 'Other'];
@@ -40,7 +42,16 @@ class Customer extends BaseModel
         'birthday' => 'date',
         'is_fleet' => 'boolean',
         'fleet_driver_limit' => 'decimal:2',
+        'owner_cab_ids' => 'array',
     ];
+
+    /**
+     * The owner drives this cab himself.
+     */
+    public function ownerDrives(?int $vehicleId): bool
+    {
+        return $vehicleId !== null && in_array($vehicleId, array_map('intval', $this->owner_cab_ids ?? []), true);
+    }
 
     public const TYPES = ['individual' => 'Individual', 'corporate' => 'Corporate', 'fleet' => 'Fleet'];
 

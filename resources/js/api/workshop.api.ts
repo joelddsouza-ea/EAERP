@@ -237,6 +237,8 @@ export const baysApi = {
 interface WorkshopDashboardStats {
   jobs_in_progress: number
   by_status: Record<JobCardStatus, number>
+  bills_to_make?: number
+  bills_to_approve?: number
 }
 
 interface BillingDashboardStats {
@@ -246,26 +248,38 @@ interface BillingDashboardStats {
 }
 
 export const dashboardApi = {
-  // No single owner-dashboard endpoint exists; combine workshop and billing stats
-  async stats(branchId?: number) {
+  // No single owner-dashboard endpoint exists; combine workshop and billing stats.
+  // Only what the user's dashboard shows is fetched (Roles & Access › Dashboard), and one
+  // call failing (no permission) doesn't blank the others.
+  async stats(branchId: number | undefined, show: (block: string) => boolean) {
     const params = { branch_id: branchId }
-    const [workshop, billing, jobCards, payments] = await Promise.all([
-      apiClient.get<ApiResponse<WorkshopDashboardStats>>('/workshop/dashboard/stats', { params }),
-      apiClient.get<ApiResponse<BillingDashboardStats>>('/billing/dashboard', { params }),
-      apiClient.get<PaginatedResponse<JobCard>>('/workshop/job-cards', { params: { ...params, per_page: 5 } }),
-      apiClient.get<PaginatedResponse<Payment>>('/billing/payments', { params: { ...params, per_page: 5 } }),
+    const need = {
+      workshop: show('jobs_in_progress') || show('status_chart') || show('bill_queues'),
+      billing: show('todays_collection') || show('billing_till_date') || show('total_outstanding'),
+      jobs: show('recent_jobs'),
+      payments: show('recent_payments'),
+    }
+    const none = Promise.resolve(null)
+    const [workshop, billing, jobCards, payments] = await Promise.allSettled([
+      need.workshop ? apiClient.get<ApiResponse<WorkshopDashboardStats>>('/workshop/dashboard/stats', { params }) : none,
+      need.billing ? apiClient.get<ApiResponse<BillingDashboardStats>>('/billing/dashboard', { params }) : none,
+      need.jobs ? apiClient.get<PaginatedResponse<JobCard>>('/workshop/job-cards', { params: { ...params, per_page: 5 } }) : none,
+      need.payments ? apiClient.get<PaginatedResponse<Payment>>('/billing/payments', { params: { ...params, per_page: 5 } }) : none,
     ])
-    const w = workshop.data.data
-    const b = billing.data.data
+    const ok = <T,>(r: PromiseSettledResult<T | null>): T | null => (r.status === 'fulfilled' ? r.value : null)
+    const w = ok(workshop)?.data.data
+    const b = ok(billing)?.data.data
 
     const stats: DashboardStats = {
-      jobs_in_progress: w.jobs_in_progress,
-      daily_collection: Number(b.today.collection),
-      billing_till_date: Number(b.month_to_date.total_billing),
-      total_outstanding: Number(b.outstanding.total),
-      jobs_by_status: w.by_status,
-      recent_job_cards: jobCards.data.data,
-      recent_payments: payments.data.data,
+      jobs_in_progress: w?.jobs_in_progress ?? 0,
+      daily_collection: Number(b?.today.collection ?? 0),
+      billing_till_date: Number(b?.month_to_date.total_billing ?? 0),
+      total_outstanding: Number(b?.outstanding.total ?? 0),
+      jobs_by_status: w?.by_status ?? ({} as DashboardStats['jobs_by_status']),
+      bills_to_make: w?.bills_to_make,
+      bills_to_approve: w?.bills_to_approve,
+      recent_job_cards: ok(jobCards)?.data.data ?? [],
+      recent_payments: ok(payments)?.data.data ?? [],
     }
     return stats
   },

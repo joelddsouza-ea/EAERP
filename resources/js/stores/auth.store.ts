@@ -27,6 +27,9 @@ export const useAuthStore = defineStore('auth', () => {
   /** Optional module switched on (e.g. 'purchases': GRN, stock, supplier dues) */
   const hasFeature = (name: 'purchases' | 'accounts' | 'crm' | 'hr' | 'customer_app' | 'fleet') => !!user.value?.features?.[name]
 
+  /** Roles & Access › Dashboard (older saved sessions without the list see everything until refreshed) */
+  const showsDashboardBlock = (key: string) => !user.value?.dashboard_blocks || user.value.dashboard_blocks.includes(key)
+
   // Actions
   async function login(credentials: LoginRequest) {
     loading.value = true
@@ -169,6 +172,7 @@ export const useAuthStore = defineStore('auth', () => {
     hasAnyRole,
     hasBranchAccess,
     hasFeature,
+    showsDashboardBlock,
     initialize,
   }
 })

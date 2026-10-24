@@ -63,6 +63,8 @@ class AuthController extends ApiController
                     'is_primary' => (bool) $b->pivot->is_primary,
                 ]),
                 'primary_branch_id' => $user->primaryBranch()?->id,
+            // Roles & Access › Dashboard
+            'dashboard_blocks' => $user->dashboardBlocks(),
                 'features' => self::features(),
             ],
             'token' => $token->plainTextToken,
@@ -112,6 +114,8 @@ class AuthController extends ApiController
                 'is_primary' => (bool) $b->pivot->is_primary,
             ]),
             'primary_branch_id' => $user->primaryBranch()?->id,
+            // Roles & Access › Dashboard
+            'dashboard_blocks' => $user->dashboardBlocks(),
             'features' => self::features(),
         ]);
     }

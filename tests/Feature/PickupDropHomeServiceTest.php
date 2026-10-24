@@ -234,12 +234,15 @@ class PickupDropHomeServiceTest extends TestCase
         $job->refresh();
         $this->assertSame('vehicle_collected', $job->status);
         $this->assertSame(42000, $job->km_reading);
-        $this->assertSame('done', $job->intake_trial_status);
-        $this->assertStringContainsString('Brakes squeal', $job->intake_trial_notes);
-        $this->assertSame($this->driver->id, $job->intake_trial_by);
+        // The driver's photos are the intake, but the trial drive is the advisor's, at the workshop
+        $this->assertNull($job->intake_trial_status);
+        $this->assertStringContainsString('Brakes squeal', $pickup->fresh()->notes);
 
-        // At the workshop: intake already complete, the job goes straight on to work
         $this->as($this->driver)->postJson("/api/v1/workshop/trips/{$pickup->id}/reach-workshop")->assertOk()->assertJsonPath('data.status', 'done');
+        $job->refresh();
+        $this->assertSame('intake_in_progress', $job->status);
+        // No new photos needed: the advisor records the trial drive and work starts
+        $this->as($this->advisor)->putJson("/api/v1/workshop/job-cards/{$job->id}/intake/trial", ['status' => 'done'])->assertOk();
         $job->refresh();
         $this->assertSame('work_in_progress', $job->status);
         $this->assertNotNull($job->time_in);
@@ -247,7 +250,7 @@ class PickupDropHomeServiceTest extends TestCase
 
         // The customer's gallery shows the pickup photos under arrival
         $this->as($this->advisor)->getJson("/api/v1/workshop/job-cards/{$job->id}/intake")->assertOk()
-            ->assertJsonPath('data.trial.by', 'Driver One');
+            ->assertJsonPath('data.trial.by', $this->advisor->name);
     }
 
     public function test_drop_needs_the_gate_pass_and_four_photos(): void

@@ -143,12 +143,11 @@ class WorkspaceService
             $cards[] = ['key' => 'approval', 'title' => 'Jobs waiting for customer approval', 'count' => $approval, 'tone' => $approval ? 'action' : 'ok', 'to' => '/job-cards?status=awaiting_approval'];
             $cards[] = ['key' => 'ready', 'title' => 'Ready for delivery (bill & hand over)', 'count' => $ready, 'tone' => $ready ? 'action' : 'ok', 'to' => '/job-cards?status=ready_for_delivery'];
         }
-        // Back office: jobs the advisor sent for the final bill that have no bill yet
+        // Back office: jobs the advisor sent for the bill (from the final QC on), and drafts to approve
         if ($user->hasRole('backoffice') && $user->hasPermission('billing.proforma.manage')) {
-            $bills = JobCard::where('status', JobCardStatus::ReadyForDelivery->value)->whereNotNull('billing_requested_at')
-                ->whereNotIn('id', Invoice::withoutGlobalScopes()->whereNotNull('job_card_id')->where('status', '!=', 'cancelled')->select('job_card_id'))
-                ->count();
-            $cards[] = ['key' => 'bills', 'title' => 'Bills to make (sent by advisors)', 'count' => $bills, 'tone' => $bills ? 'action' : 'ok', 'to' => '/job-cards?status=ready_for_delivery'];
+            [$toMake, $toApprove] = self::billQueues();
+            $cards[] = ['key' => 'bills', 'title' => 'Bills to make (sent by advisors)', 'count' => $toMake, 'tone' => $toMake ? 'urgent' : 'ok', 'to' => '/job-cards?billing=requested'];
+            $cards[] = ['key' => 'bills_draft', 'title' => 'Bills to approve (drafts)', 'count' => $toApprove, 'tone' => $toApprove ? 'action' : 'ok', 'to' => '/job-cards?billing=draft'];
         }
         if (Modules::hr() && $user->hasPermission('hr.leave.approve')) {
             $leave = LeaveRequest::where('status', LeaveRequest::PENDING)->when(!$user->isOwner(), fn ($q) => $q->whereIn('branch_id', $user->getAccessibleBranchIds()))->count();
@@ -164,5 +163,18 @@ class WorkspaceService
         }
 
         return ['date' => $today, 'cards' => $cards];
+    }
+
+    /**
+     * Jobs sent for the bill without one yet, and draft bills not yet approved.
+     *
+     * @return array{0: int, 1: int}
+     */
+    public static function billQueues(): array
+    {
+        return [
+            JobCard::billing('requested')->count(),
+            JobCard::billing('draft')->count(),
+        ];
     }
 }

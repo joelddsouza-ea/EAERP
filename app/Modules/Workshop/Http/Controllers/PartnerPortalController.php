@@ -4,7 +4,10 @@ namespace App\Modules\Workshop\Http\Controllers;
 
 use App\Core\Http\Controllers\Api\ApiController;
 use App\Modules\Workshop\Http\Controllers\Concerns\ValidatesMediaUpload;
+use App\Modules\Workshop\Http\Resources\JobSheetItemResource;
+use App\Modules\Workshop\Models\JobCardChecklistItem;
 use App\Modules\Workshop\Models\JobOutsideWork;
+use App\Modules\Workshop\Services\JobSheetService;
 use App\Modules\Workshop\Services\JobSheetException;
 use App\Modules\Workshop\Services\OutsideWorkService;
 use Illuminate\Http\JsonResponse;
@@ -37,7 +40,43 @@ class PartnerPortalController extends ApiController
     {
         $this->own($request, $work);
 
-        return $this->success($this->works->present($work, true));
+        return $this->success($this->works->present($work, true) + [
+            // The washing points to fill, with the photos / videos each needs (master settings)
+            'items' => JobSheetItemResource::collection($this->works->partnerItems($work))->resolve($request),
+        ]);
+    }
+
+    public function uploadItemMedia(Request $request, JobOutsideWork $work, JobCardChecklistItem $item, JobSheetService $sheets): JsonResponse
+    {
+        $this->own($request, $work);
+        $this->validateMediaUpload($request);
+
+        try {
+            $sheets->asPartner($work, $item, fn () => $sheets->attachMedia(
+                $item, $request->file('file'), $request->user(), $request->file('poster'), $request->only(['duration_seconds', 'description', 'captured_at']),
+            ));
+        } catch (JobSheetException $e) {
+            return $this->error($e->getMessage(), $e->status, $e->errors);
+        }
+
+        return $this->created((new JobSheetItemResource($item->fresh('media')))->resolve($request), 'Uploaded');
+    }
+
+    public function updateItem(Request $request, JobOutsideWork $work, JobCardChecklistItem $item, JobSheetService $sheets): JsonResponse
+    {
+        $this->own($request, $work);
+        $data = $request->validate([
+            'status' => 'sometimes|in:pending,done,not_applicable',
+            'remarks' => 'nullable|string|max:1000',
+        ]);
+
+        try {
+            $updated = $sheets->asPartner($work, $item, fn () => $sheets->updateItem($item, $data, $request->user()));
+        } catch (JobSheetException $e) {
+            return $this->error($e->getMessage(), $e->status, $e->errors);
+        }
+
+        return $this->success((new JobSheetItemResource($updated->fresh('media')))->resolve($request), 'Saved');
     }
 
     public function uploadMedia(Request $request, JobOutsideWork $work): JsonResponse

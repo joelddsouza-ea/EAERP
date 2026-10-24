@@ -318,10 +318,12 @@ watch(customerSearch, (value) => {
 
           <!-- Vehicle Info -->
           <Input
-            v-model="form.registration_no"
+            :model-value="form.registration_no"
             label="Registration Number"
             :error="errors.registration_no"
+            autocapitalize="characters"
             required
+            @update:model-value="(v: string | number) => (form.registration_no = String(v).toUpperCase())"
           />
 
           <Select

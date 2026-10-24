@@ -103,6 +103,8 @@ class EstimateService
                 'description' => $data['description'],
                 'quantity' => $data['quantity'] ?? 1,
                 'rate' => $data['rate'] ?? 0,
+                'gst_inclusive' => $data['gst_inclusive'] ?? true,
+                'tax_rate' => $data['tax_rate'] ?? 18,
                 'sort_order' => max($base, (int) $estimate->lines()->where('section', $section)->where('kind', '!=', Line::KIND_LABOUR_BALANCE)->max('sort_order')) + 1,
                 'approval_status' => $isPlanExtra ? Line::INCLUDED : Line::PENDING,
                 'job_card_additional_job_id' => $data['job_card_additional_job_id'] ?? null,
@@ -142,7 +144,7 @@ class EstimateService
 
             $this->applyMargin($line, $data);
             $line->fill($data);
-            $amountChanged = round((float) $line->quantity * (float) $line->rate, 2) !== (float) $line->getOriginal('amount');
+            $amountChanged = $line->customerAmount() !== (float) $line->getOriginal('amount');
 
             // A decided line that changes must be approved again
             if ($line->isAdditional() && in_array($line->approval_status, [Line::APPROVED, Line::DECLINED], true)

@@ -20,6 +20,7 @@ import Badge from '@/components/ui/Badge.vue'
 import Modal from '@/components/ui/Modal.vue'
 import Spinner from '@/components/ui/Spinner.vue'
 import BookingDialog from '@/components/crm/BookingDialog.vue'
+import CarPicker from '@/components/vehicle/CarPicker.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -152,11 +153,15 @@ const editOpen = ref(false)
 const edit = ref<Record<string, any>>({})
 function openEdit() {
   const l = lead.value!
-  edit.value = { name: l.name, email: l.email, city: l.city, car_text: l.car_text, registration_no: l.registration_no, category_id: l.category_id, fuel_type: l.fuel_type, interest: l.interest, package_id: l.package_id, requirement: l.requirement, temperature: l.temperature }
+  edit.value = {
+    name: l.name, email: l.email, city: l.city, registration_no: l.registration_no, interest: l.interest, package_id: l.package_id, requirement: l.requirement, temperature: l.temperature,
+    car: { make_id: l.make_id ?? null, model_id: l.model_id ?? null, category_id: l.category_id, fuel_type: l.fuel_type },
+  }
   editOpen.value = true
 }
 async function saveEdit() {
-  if (await act(() => crmApi.updateLead(id.value, edit.value))) editOpen.value = false
+  const { car, ...rest } = edit.value
+  if (await act(() => crmApi.updateLead(id.value, { ...rest, ...car }))) editOpen.value = false
 }
 const assignTo = ref<number | null>(null)
 async function reassign() {
@@ -383,12 +388,9 @@ const isClosed = computed(() => lead.value && ['won', 'lost'].includes(lead.valu
       <div class="grid grid-cols-2 gap-3 text-sm">
         <div><label class="label">Name</label><input v-model="edit.name" class="input" /></div>
         <div><label class="label">Email</label><input v-model="edit.email" class="input" /></div>
-        <div><label class="label">Car</label><input v-model="edit.car_text" class="input" /></div>
-        <div><label class="label">Car number</label><input v-model="edit.registration_no" class="input uppercase" /></div>
-        <div>
-          <label class="label">Car type</label>
-          <select v-model="edit.category_id" class="input"><option :value="null">—</option><option v-for="c in options?.categories" :key="c.id" :value="c.id">{{ c.name }}</option></select>
-        </div>
+        <div><label class="label">Car number</label><input :value="edit.registration_no" class="input uppercase" @input="edit.registration_no = ($event.target as HTMLInputElement).value.toUpperCase()" /></div>
+        <div class="col-span-2"><CarPicker v-model="edit.car" /></div>
+        <p v-if="lead?.car_text" class="col-span-2 text-xs text-gray-500">From the enquiry: "{{ lead.car_text }}"</p>
         <div><label class="label">Area</label><input v-model="edit.city" class="input" /></div>
         <div>
           <label class="label">Wants</label>

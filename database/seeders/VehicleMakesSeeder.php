@@ -18,7 +18,7 @@ class VehicleMakesSeeder extends Seeder
                 'Alto' => 'hatchback',
                 'Swift' => 'hatchback',
                 'Wagon R' => 'hatchback',
-                'Baleno' => 'premium-hatchback',
+                'Baleno' => 'sedan-compact-suv',
                 'Dzire' => 'sedan-compact-suv',
                 'Ciaz' => 'sedan-compact-suv',
                 'Brezza' => 'sedan-compact-suv',
@@ -28,7 +28,7 @@ class VehicleMakesSeeder extends Seeder
             ],
             'Hyundai' => [
                 'Grand i10' => 'hatchback',
-                'i20' => 'premium-hatchback',
+                'i20' => 'sedan-compact-suv',
                 'Verna' => 'sedan-compact-suv',
                 'Venue' => 'sedan-compact-suv',
                 'Creta' => 'sedan-compact-suv',
@@ -36,14 +36,14 @@ class VehicleMakesSeeder extends Seeder
                 'Tucson' => 'premium-suv',
             ],
             'Honda' => [
-                'Jazz' => 'premium-hatchback',
+                'Jazz' => 'sedan-compact-suv',
                 'Amaze' => 'sedan-compact-suv',
                 'City' => 'sedan-compact-suv',
                 'Elevate' => 'sedan-compact-suv',
             ],
             'Tata' => [
                 'Tiago' => 'hatchback',
-                'Altroz' => 'premium-hatchback',
+                'Altroz' => 'sedan-compact-suv',
                 'Nexon' => 'sedan-compact-suv',
                 'Harrier' => 'suv-muv',
                 'Safari' => 'suv-muv',
@@ -55,7 +55,7 @@ class VehicleMakesSeeder extends Seeder
                 'Thar' => 'suv-muv',
             ],
             'Toyota' => [
-                'Glanza' => 'premium-hatchback',
+                'Glanza' => 'sedan-compact-suv',
                 'Urban Cruiser' => 'sedan-compact-suv',
                 'Innova' => 'suv-muv',
                 'Innova Crysta' => 'suv-muv',
@@ -68,7 +68,7 @@ class VehicleMakesSeeder extends Seeder
                 'Carens' => 'suv-muv',
             ],
             'Volkswagen' => [
-                'Polo' => 'premium-hatchback',
+                'Polo' => 'sedan-compact-suv',
                 'Virtus' => 'sedan-compact-suv',
                 'Taigun' => 'sedan-compact-suv',
             ],

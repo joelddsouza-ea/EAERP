@@ -93,7 +93,8 @@ class PublicJobController extends ApiController
             'gallery' => app(CustomerGalleryService::class)->build($jobCard),
             'version' => $this->pageVersion($jobCard),
             'report' => $report->released_at ? $this->reports->build($jobCard, forCustomer: true) : null,
-            'bill' => $this->customerBill($jobCard),
+            // Prepared during the final QC, shown to the customer once the car is ready
+            'bill' => $jobCard->status === JobCardStatus::QcPending->value ? null : $this->customerBill($jobCard),
             // Driver / home technician on the way (live position while the trip is en route)
             'driver' => app(\App\Modules\CustomerApp\Services\CustomerPortalService::class)->liveDriver($jobCard),
             // A fleet driver's own link: their approval limit and the lines the owner decided

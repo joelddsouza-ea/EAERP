@@ -42,7 +42,9 @@ const busy = ref(false)
 const days = computed(() => Array.from({ length: 10 }, (_, i) => {
   const d = new Date()
   d.setDate(d.getDate() + i + (new Date().getHours() >= 17 ? 1 : 0))
-  return { value: d.toISOString().slice(0, 10), label: i === 0 && new Date().getHours() < 17 ? 'Today' : d.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' }) }
+  // Local date (toISOString is UTC: the day before between midnight and 5:30 in India)
+  const value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  return { value, label: i === 0 && new Date().getHours() < 17 ? 'Today' : d.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' }) }
 }))
 
 const selectedPlan = computed(() => options.value?.plans.find((p) => p.id === choice.value?.planId) ?? null)

@@ -2,6 +2,7 @@
 
 namespace App\Modules\Workshop\Http\Requests;
 
+use App\Core\Rules\IndianMobile;
 use Illuminate\Foundation\Http\FormRequest;
 
 class CreateCustomerRequest extends FormRequest
@@ -15,8 +16,8 @@ class CreateCustomerRequest extends FormRequest
     {
         return [
             'name' => 'required|string|max:255',
-            'phone' => 'nullable|string|max:20',
-            'alt_phone' => 'nullable|string|max:20',
+            'phone' => ['nullable', 'string', new IndianMobile()],
+            'alt_phone' => ['nullable', 'string', new IndianMobile()],
             'email' => 'nullable|email|max:255',
             'address' => 'nullable|string|max:500',
             'city' => 'nullable|string|max:100',
@@ -29,5 +30,17 @@ class CreateCustomerRequest extends FormRequest
             'notes' => 'nullable|string',
             'is_active' => 'boolean',
         ];
+    }
+
+    /**
+     * Mobile numbers are kept as 10 digits (+91 / 0 / spaces removed).
+     */
+    protected function prepareForValidation(): void
+    {
+        foreach (['phone', 'alt_phone'] as $field) {
+            if ($this->has($field)) {
+                $this->merge([$field => IndianMobile::clean($this->input($field))]);
+            }
+        }
     }
 }

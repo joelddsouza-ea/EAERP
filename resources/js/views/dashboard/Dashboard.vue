@@ -32,6 +32,10 @@ const branchStore = useBranchStore()
 const authStore = useAuthStore()
 const toast = useToast()
 
+// Roles & Access › Dashboard: the blocks this user's role(s) see
+const show = (block: string) => authStore.showsDashboardBlock(block)
+const statCount = computed(() => ['jobs_in_progress', 'todays_collection', 'billing_till_date', 'total_outstanding'].filter(show).length)
+
 const greeting = computed(() => {
   const h = new Date().getHours()
   return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening'
@@ -65,7 +69,7 @@ const stats = ref<DashboardStats>({
 // Owner / accounts: money position (posted by the accounts module)
 const money = ref<AccountsDashboard | null>(null)
 async function fetchMoney() {
-  if (!authStore.hasFeature('accounts') || !authStore.hasPermission('accounts.reports.view')) return
+  if (!show('money') || !authStore.hasFeature('accounts') || !authStore.hasPermission('accounts.reports.view')) return
   try {
     money.value = (await accountsApi.dashboard(branchStore.currentBranchId)).data.data
   } catch {
@@ -76,7 +80,7 @@ async function fetchMoney() {
 // CRM: today's leads and bookings
 const crm = ref<Record<string, number> | null>(null)
 async function fetchCrm() {
-  if (!authStore.hasFeature('crm') || !authStore.hasAnyPermission(['crm.reports.view', 'crm.leads.manage'])) return
+  if (!show('crm') || !authStore.hasFeature('crm') || !authStore.hasAnyPermission(['crm.reports.view', 'crm.leads.manage'])) return
   try {
     crm.value = (await crmApi.tiles(branchStore.currentBranchId)).data.data
   } catch {
@@ -89,7 +93,7 @@ async function fetchDashboardStats() {
   fetchMoney()
   fetchCrm()
   try {
-    stats.value = await dashboardApi.stats(branchStore.currentBranchId || undefined)
+    stats.value = await dashboardApi.stats(branchStore.currentBranchId || undefined, show)
   } catch (err) {
     toast.apiError(err, 'Failed to load dashboard data')
   } finally {
@@ -123,7 +127,7 @@ watch(() => branchStore.currentBranchId, fetchDashboardStats)
       <p class="relative mt-0.5 text-sm text-gray-300">
         {{ branchStore.currentBranch?.name ? `${branchStore.currentBranch.name} · ` : '' }}Here's how the workshop is doing today.
       </p>
-      <div v-if="quickActions.length" class="relative mt-4 flex gap-2 overflow-x-auto scrollbar-none -mx-1 px-1">
+      <div v-if="show('quick_actions') && quickActions.length" class="relative mt-4 flex gap-2 overflow-x-auto scrollbar-none -mx-1 px-1">
         <RouterLink
           v-for="a in quickActions"
           :key="a.to"
@@ -137,11 +141,17 @@ watch(() => branchStore.currentBranchId, fetchDashboardStats)
     </section>
 
     <!-- Stats: 2 × 2 on phones -->
-    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-5 mb-4 sm:mb-6">
-      <StatCard title="Jobs in progress" :value="stats.jobs_in_progress" :icon="ClipboardDocumentListIcon" color="amber" :loading="loading" />
-      <StatCard title="Today's collection" :value="formatCurrency(stats.daily_collection)" :icon="BanknotesIcon" color="green" :loading="loading" />
-      <StatCard title="Billing till date" :value="formatCurrency(stats.billing_till_date)" :icon="DocumentTextIcon" color="blue" :loading="loading" />
-      <StatCard title="Total outstanding" :value="formatCurrency(stats.total_outstanding)" :icon="ExclamationCircleIcon" color="red" :loading="loading" />
+    <div v-if="statCount" class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-5 mb-4 sm:mb-6">
+      <StatCard v-if="show('jobs_in_progress')" title="Jobs in progress" :value="stats.jobs_in_progress" :icon="ClipboardDocumentListIcon" color="amber" :loading="loading" />
+      <StatCard v-if="show('todays_collection')" title="Today's collection" :value="formatCurrency(stats.daily_collection)" :icon="BanknotesIcon" color="green" :loading="loading" />
+      <StatCard v-if="show('billing_till_date')" title="Billing till date" :value="formatCurrency(stats.billing_till_date)" :icon="DocumentTextIcon" color="blue" :loading="loading" />
+      <StatCard v-if="show('total_outstanding')" title="Total outstanding" :value="formatCurrency(stats.total_outstanding)" :icon="ExclamationCircleIcon" color="red" :loading="loading" />
+    </div>
+
+    <!-- Back office: bills the advisors sent, and drafts to approve -->
+    <div v-if="show('bill_queues') && stats.bills_to_make !== undefined" class="grid grid-cols-2 gap-3 sm:gap-5 mb-4 sm:mb-6">
+      <RouterLink to="/job-cards?billing=requested"><StatCard title="Bills to make" :value="stats.bills_to_make ?? 0" :icon="DocumentTextIcon" :color="stats.bills_to_make ? 'red' : 'green'" /></RouterLink>
+      <RouterLink to="/job-cards?billing=draft"><StatCard title="Bills to approve" :value="stats.bills_to_approve ?? 0" :icon="DocumentTextIcon" :color="stats.bills_to_approve ? 'amber' : 'green'" /></RouterLink>
     </div>
 
     <!-- CRM -->
@@ -161,9 +171,9 @@ watch(() => branchStore.currentBranchId, fetchDashboardStats)
     </div>
 
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
-      <JobsByStatusChart :data="stats.jobs_by_status" :loading="loading" />
-      <RecentJobCards :job-cards="stats.recent_job_cards" :loading="loading" />
-      <RecentPayments :payments="stats.recent_payments" :loading="loading" />
+      <JobsByStatusChart v-if="show('status_chart')" :data="stats.jobs_by_status" :loading="loading" />
+      <RecentJobCards v-if="show('recent_jobs')" :job-cards="stats.recent_job_cards" :loading="loading" />
+      <RecentPayments v-if="show('recent_payments')" :payments="stats.recent_payments" :loading="loading" />
     </div>
   </div>
 </template>

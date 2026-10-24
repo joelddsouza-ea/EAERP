@@ -27,6 +27,12 @@ class JobSheetItemResource extends JsonResource
             'na_allowed' => $this->na_allowed,
             'expected_answer' => $this->expected_answer,
             'is_required' => $this->is_required,
+            // Not for this car (spark plugs on a diesel): read-only N/A
+            'locked' => (bool) $this->locked,
+            // "If applicable / required / needed": another colour
+            'conditional' => (bool) $this->conditional,
+            // Flagged and handled on its Additional Issues line: counts as done
+            'handled_by_line' => $rules->handledByLine($this->resource),
             'is_adhoc' => $this->checklist_item_id === null,
             'media_shortfall' => $mediaLoaded ? $rules->mediaShortfall($this->resource) : null,
             'media' => JobCardMediaResource::collection($this->whenLoaded('media')),

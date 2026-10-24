@@ -29,6 +29,9 @@ Route::prefix('v1/user-admin')->middleware(['auth:sanctum', 'branch.context'])->
     Route::post('roles', [RoleController::class, 'store'])->middleware('permission:user-admin.roles.create');
     Route::match(['put', 'patch'], 'roles/{role}', [RoleController::class, 'update'])->middleware('permission:user-admin.roles.update');
     Route::post('roles/{role}/permissions', [RoleController::class, 'syncPermissions'])->middleware('permission:user-admin.roles.update');
+    // Which dashboard blocks the role sees
+    Route::get('dashboard-blocks', [RoleController::class, 'dashboardBlocks'])->middleware('permission:user-admin.roles.view');
+    Route::put('roles/{role}/dashboard', [RoleController::class, 'updateDashboard'])->middleware('permission:user-admin.roles.update');
     Route::delete('roles/{role}', [RoleController::class, 'destroy'])->middleware('permission:user-admin.roles.delete');
 
     // Branches (the list is also needed to place a user in branches)

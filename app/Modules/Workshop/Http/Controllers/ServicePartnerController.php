@@ -5,6 +5,7 @@ namespace App\Modules\Workshop\Http\Controllers;
 use App\Core\Http\Controllers\Api\ApiController;
 use App\Core\Models\Role;
 use App\Core\Models\User;
+use App\Core\Rules\IndianMobile;
 use App\Modules\UserAdmin\Services\UserService;
 use App\Modules\Workshop\Models\ServicePartner;
 use Illuminate\Http\JsonResponse;
@@ -66,8 +67,9 @@ class ServicePartnerController extends ApiController
         if ($partner->user_id) {
             return $this->error('This partner already has a login.', 422);
         }
+        $request->merge(['phone' => IndianMobile::clean($request->input('phone'))]);
         $data = $request->validate([
-            'phone' => ['required', 'string', 'max:20', Rule::unique('users', 'phone')],
+            'phone' => ['required', 'string', new IndianMobile(), Rule::unique('users', 'phone')],
             'password' => 'required|string|min:8',
         ]);
 
@@ -87,9 +89,11 @@ class ServicePartnerController extends ApiController
 
     private function input(Request $request): array
     {
+        $request->merge(['phone' => IndianMobile::clean($request->input('phone'))]);
+
         return $request->validate([
             'name' => 'required|string|max:120',
-            'phone' => 'nullable|string|max:20',
+            'phone' => ['nullable', 'string', new IndianMobile()],
             'kind' => 'required|string|in:' . implode(',', array_keys(ServicePartner::KINDS)),
             'branch_id' => 'nullable|integer|exists:branches,id',
             'is_active' => 'sometimes|boolean',

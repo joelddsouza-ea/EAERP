@@ -35,6 +35,10 @@ class JobSheetRuleEngine
         if ($item->status === JobCardChecklistItem::STATUS_NOT_APPLICABLE) {
             return null;
         }
+        // Flagged and handled on its Additional Issues line (fault and fitted-part photos are there)
+        if ($this->handledByLine($item)) {
+            return null;
+        }
 
         $required = max(1, (int) $item->min_media_count);
         $media = $item->media;
@@ -212,6 +216,14 @@ class JobSheetRuleEngine
         $flagged = $items->where('needs_attention', true)->pluck('id');
 
         return $flagged->diff($this->closedLineItemIds($items))->count();
+    }
+
+    /**
+     * This flagged activity's Additional Issues line is done, deferred or declined.
+     */
+    public function handledByLine(JobCardChecklistItem $item): bool
+    {
+        return $item->needs_attention && $this->closedLineItemIds(collect([$item]))->isNotEmpty();
     }
 
     /**

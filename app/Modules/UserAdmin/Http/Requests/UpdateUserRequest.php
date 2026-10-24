@@ -2,6 +2,7 @@
 
 namespace App\Modules\UserAdmin\Http\Requests;
 
+use App\Core\Rules\IndianMobile;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -33,7 +34,7 @@ class UpdateUserRequest extends FormRequest
             'phone' => [
                 'nullable',
                 'string',
-                'max:20',
+                new IndianMobile(),
                 Rule::unique('users', 'phone')->ignore($userId),
             ],
             'roles' => 'sometimes|array|min:1',
@@ -60,5 +61,17 @@ class UpdateUserRequest extends FormRequest
                 }
             }
         });
+    }
+
+    /**
+     * Mobile numbers are kept as 10 digits (+91 / 0 / spaces removed).
+     */
+    protected function prepareForValidation(): void
+    {
+        foreach (['phone'] as $field) {
+            if ($this->has($field)) {
+                $this->merge([$field => IndianMobile::clean($this->input($field))]);
+            }
+        }
     }
 }

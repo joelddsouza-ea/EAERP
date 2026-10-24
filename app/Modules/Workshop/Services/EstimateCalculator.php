@@ -27,7 +27,8 @@ class EstimateCalculator
                 continue;
             }
 
-            $amount = round((float) $line->quantity * (float) $line->rate, 2);
+            // GST included (a line priced before GST gets it added)
+            $amount = $line->customerAmount();
             if ((float) $line->amount !== $amount) {
                 $line->update(['amount' => $amount]);
             }

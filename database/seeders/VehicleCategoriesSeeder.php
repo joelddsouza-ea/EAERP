@@ -30,7 +30,6 @@ class VehicleCategoriesSeeder extends Seeder
             }
         }
 
-        // Merged into "Prem. Hatch / Sedan / Compact SUV" (see 2026_10_16_000001 migration)
-        VehicleCategory::where('slug', 'premium-hatchback')->update(['is_active' => false]);
+        // "Premium Hatchback" was merged into "Prem. Hatch / Sedan / Compact SUV" and removed (2026_12_06_000002)
     }
 }

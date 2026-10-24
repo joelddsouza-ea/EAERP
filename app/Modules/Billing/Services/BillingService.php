@@ -15,6 +15,7 @@ use App\Modules\Workshop\Enums\JobCardStatus;
 use App\Modules\Workshop\Models\CustomerMessage;
 use App\Modules\Workshop\Models\JobCard;
 use App\Modules\Workshop\Models\JobCardEstimate;
+use App\Modules\Workshop\Models\JobCardEstimateDecision;
 use App\Modules\Workshop\Models\JobCardEstimateLine as Line;
 use App\Modules\Workshop\Models\JobTrip;
 use App\Modules\Workshop\Models\ServicePackage;
@@ -360,9 +361,10 @@ class BillingService
             return 'Send the estimate to the customer first: the bill is made from it.';
         }
 
-        $billable = [JobCardStatus::ReadyForDelivery->value, JobCardStatus::Invoiced->value, JobCardStatus::GatePassGenerated->value];
+        // From the final QC on: back office prepares the bill while the advisor does the QC (owner, 2026-10-24)
+        $billable = [JobCardStatus::QcPending->value, JobCardStatus::ReadyForDelivery->value, JobCardStatus::Invoiced->value, JobCardStatus::GatePassGenerated->value];
         if (!in_array($jobCard->status, $billable, true)) {
-            return 'The final bill is made after the final QC, when the car is Ready for Delivery. Advances can be taken any time.';
+            return 'The final bill is made once the technician has submitted the job (final QC). Advances can be taken any time.';
         }
 
         $pending = $estimate->lines->where('approval_status', Line::PENDING)->count();
@@ -548,8 +550,8 @@ class BillingService
      */
     public function requestBill(JobCard $jobCard, User $user): void
     {
-        if ($jobCard->status !== JobCardStatus::ReadyForDelivery->value) {
-            throw new BillingException('Send the job for billing after the final QC (Ready for delivery).');
+        if (!in_array($jobCard->status, [JobCardStatus::QcPending->value, JobCardStatus::ReadyForDelivery->value], true)) {
+            throw new BillingException('Send the job for billing once the technician has submitted it (final QC).');
         }
         if ($this->currentBill($jobCard)) {
             throw new BillingException('The final bill has already been made.');
@@ -851,8 +853,9 @@ class BillingService
             'approved_at' => $bill->approved_at?->toIso8601String(),
             'closed_at' => $bill->closed_at?->toIso8601String(),
             'proforma_number' => $bill->proforma_id ? Invoice::withoutGlobalScopes()->whereKey($bill->proforma_id)->value('invoice_number') : null,
-            // The estimate was re-sent after this draft was made
-            'estimate_changed' => $bill->status === Invoice::DRAFT && $estimate && $bill->estimate_id !== $estimate->id,
+            // The estimate was re-sent, or a decision changed (advisor after a call), after this draft was made
+            'estimate_changed' => $bill->status === Invoice::DRAFT && $estimate && ($bill->estimate_id !== $estimate->id
+                || JobCardEstimateDecision::where('job_card_id', $bill->job_card_id)->where('created_at', '>', $bill->updated_at)->exists()),
         ];
     }
 
@@ -983,9 +986,10 @@ class BillingService
                 'description' => $line->description,
                 'quantity' => $whole ? 1 : $line->quantity,
                 'unit' => 'nos',
-                'unit_price' => $whole ? $amount : $line->rate,
+                'unit_price' => $whole ? $amount : $line->grossRate(),
                 'discount' => $share,
-                'tax_rate' => $rate,
+                // Additional parts / labour carry their own GST rate (plan lines: the inclusive rate)
+                'tax_rate' => $line->isAdditional() ? (float) ($line->tax_rate ?? $rate) : $rate,
                 'gst_inclusive' => true,
                 'gst_applicable' => true,
                 'sort_order' => $sort++,

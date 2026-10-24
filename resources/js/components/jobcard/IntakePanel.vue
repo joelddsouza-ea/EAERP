@@ -126,7 +126,7 @@ defineExpose({ reload: load })
     <div v-else-if="intake" class="space-y-6">
       <!-- Trial drive -->
       <section>
-        <h4 class="text-sm font-medium text-gray-700 mb-2">Trial drive (advisor, or the pickup driver)</h4>
+        <h4 class="text-sm font-medium text-gray-700 mb-2">Trial drive (advisor, at the workshop)</h4>
 
         <p v-if="intake.trial.status === 'done'" class="text-sm text-gray-700">
           Done<span v-if="intake.trial.by"> by {{ intake.trial.by }}</span>.
@@ -160,7 +160,8 @@ defineExpose({ reload: load })
       <section>
         <h4 class="text-sm font-medium text-gray-700 mb-1">Inventory photos & videos</h4>
         <p class="text-xs text-gray-500 mb-3">
-          All four sides, interior, odometer and valuables left in the car.
+          All four sides, interior, odometer and valuables left in the car. On a pickup the driver's photos and videos are the
+          intake: no need to take them again.
           <span :class="photosOk ? 'text-green-700' : 'text-amber-700'">
             Photos {{ intake.counts.photo }}/{{ intake.requirements.min_photos }}
           </span>

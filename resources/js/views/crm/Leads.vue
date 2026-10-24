@@ -5,6 +5,8 @@
  * import for ad exports.
  */
 import { ref, computed, onMounted, watch } from 'vue'
+import { cleanMobile } from '@/utils/phone'
+import CarPicker from '@/components/vehicle/CarPicker.vue'
 import { useRoute, useRouter } from 'vue-router'
 import { PhoneIcon, PlusIcon, ArrowUpTrayIcon } from '@heroicons/vue/24/outline'
 import { crmApi, STATUS_LABELS, STATUS_COLORS, TEMP_COLORS, relTime, type LeadRow, type LeadOptions, type LeadStatus } from '@/api/crm.api'
@@ -80,12 +82,17 @@ const columns = computed(() => BOARD.map((s) => ({ status: s, rows: rows.value.f
 // ------------------------------------------------------------- quick add
 const addOpen = ref(false)
 const busy = ref(false)
-const blank = () => ({ name: '', phone: '', car_text: '', registration_no: '', interest: 'scheduled', package_id: null as number | null, requirement: '', source: 'call', temperature: 'warm' })
+const blank = () => ({
+  name: '', phone: '', registration_no: '', interest: 'scheduled', package_id: null as number | null, requirement: '', source: 'call', temperature: 'warm',
+  // As on Add Vehicle: make → model → class → fuel
+  car: { make_id: null as number | null, model_id: null as number | null, category_id: null as number | null, fuel_type: null as string | null },
+})
 const form = ref(blank())
 async function add() {
   busy.value = true
   try {
-    const res = await crmApi.addLead({ ...form.value, branch_id: branchStore.currentBranchId })
+    const { car, ...rest } = form.value
+    const res = await crmApi.addLead({ ...rest, ...car, branch_id: branchStore.currentBranchId })
     toast.success(res.data.message ?? 'Lead added')
     addOpen.value = false
     router.push(`/crm/leads/${res.data.data.id}`)
@@ -277,11 +284,11 @@ const due = (r: LeadRow) => (r.status === 'new' && !r.first_contacted_at ? r.fir
     <Modal :open="addOpen" title="Add a lead" @close="addOpen = false">
       <div class="space-y-3 text-sm">
         <div class="grid grid-cols-2 gap-3">
-          <div><label class="label">Mobile *</label><input v-model="form.phone" type="tel" inputmode="tel" class="input" placeholder="98xxxxxxxx" /></div>
+          <div><label class="label">Mobile *</label><input :value="form.phone" type="tel" inputmode="numeric" maxlength="10" class="input" placeholder="10 digits" @input="form.phone = cleanMobile(($event.target as HTMLInputElement).value).slice(0, 10)" /></div>
           <div><label class="label">Name</label><input v-model="form.name" class="input" /></div>
-          <div><label class="label">Car</label><input v-model="form.car_text" class="input" placeholder="Swift diesel" /></div>
-          <div><label class="label">Car number</label><input v-model="form.registration_no" class="input uppercase" /></div>
+          <div class="col-span-2"><label class="label">Car number</label><input :value="form.registration_no" class="input uppercase" autocapitalize="characters" @input="form.registration_no = ($event.target as HTMLInputElement).value.toUpperCase()" /></div>
         </div>
+        <CarPicker v-model="form.car" />
         <div class="grid grid-cols-2 gap-3">
           <div>
             <label class="label">Came from</label>

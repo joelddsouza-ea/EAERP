@@ -42,6 +42,8 @@ class JobCardController extends ApiController
             ->when($request->status, fn($q, $status) =>
                 $q->whereIn('status', (array) $status)
             )
+            // Back office queues: sent for the bill / draft bills to approve
+            ->when($request->billing, fn ($q, $queue) => $q->billing((string) $queue))
             // My Jobs: the lead technician or a co-technician
             ->when($request->technician_id, fn($q, $id) =>
                 $q->where(fn ($w) => $w->where('technician_id', $id)->orWhereHas('technicians', fn ($t) => $t->whereKey($id)))
@@ -599,6 +601,11 @@ class JobCardController extends ApiController
                 ->groupBy('status')
                 ->pluck('count', 'status'),
         ];
+
+        // Back office / billing: the bill queues
+        if (request()->user()?->hasPermission('billing.proforma.manage')) {
+            [$stats['bills_to_make'], $stats['bills_to_approve']] = \App\Core\Services\WorkspaceService::billQueues();
+        }
 
         return $this->success($stats);
     }

@@ -241,6 +241,8 @@ return [
 
         // Job statuses in which the customer may still change approval decisions
         'decision_statuses' => ['intake_in_progress', 'awaiting_approval', 'work_in_progress', 'awaiting_parts'],
+        // The advisor (after a call) also at final QC and Ready for Delivery, until the bill is approved
+        'advisor_decision_statuses' => ['qc_pending', 'ready_for_delivery'],
 
         // Message template for each status the customer is told about (see lang/en/customer_messages.php)
         'status_templates' => [

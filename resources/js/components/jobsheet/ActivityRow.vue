@@ -45,14 +45,22 @@ const remarksOpen = ref(false)
 const remarksDraft = ref('')
 const pendingChange = ref<ItemUpdate | null>(null)
 
+// Points that don't apply to this car (spark plugs on a diesel) can't be changed
+const isReadonly = computed(() => props.readonly || !!props.item.locked)
+// Flagged and handled on its Additional Issues line (photos are there): counts as done
+const handled = computed(() => !!props.item.handled_by_line)
+
 const hint = computed(() => mediaHint(props.item))
 // N/A removes the photo/video requirement
 const needsMedia = computed(() => props.item.media_requirement !== 'none' && props.item.status !== 'not_applicable')
-const mediaShort = computed(() => needsMedia.value && !!props.item.media_shortfall)
+const mediaShort = computed(() => needsMedia.value && !!props.item.media_shortfall && !handled.value)
 
 const rowTone = computed(() => {
   if (props.item.status === 'not_done') return 'border-red-200 bg-red-50'
+  if (handled.value) return 'border-green-200 bg-green-50/50'
   if (props.item.needs_attention) return 'border-amber-200 bg-amber-50'
+  // "If applicable / required / needed" points in another colour while open
+  if (props.item.conditional && props.item.status === 'pending') return 'border-violet-300 bg-violet-50/60'
   if (props.item.status === 'done' && !(needsMedia.value && mediaShort.value)) return 'border-green-200 bg-green-50/50'
   if (props.item.status === 'not_applicable') return 'border-gray-200 bg-gray-50'
   return 'border-gray-200 bg-white'
@@ -293,8 +301,11 @@ async function deleteMedia(media: JobCardMedia) {
         <p class="text-sm font-medium text-gray-900">
           {{ item.item_name }}
           <span v-if="!item.is_required && item.input_type === 'tick'" class="text-xs font-normal text-gray-400">(optional)</span>
+          <span v-if="item.conditional" class="ml-1 rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-violet-700">If applicable</span>
+          <span v-if="item.locked" class="ml-1 rounded bg-gray-200 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-gray-600">Not on this car</span>
         </p>
-        <p v-if="hint && needsMedia && item.input_type === 'tick'" class="mt-0.5 text-xs" :class="mediaShort ? 'text-red-600' : 'text-green-700'">
+        <p v-if="handled" class="mt-0.5 text-xs text-green-700">Done via Additional Issues (photos and the fitted part are there).</p>
+        <p v-if="hint && needsMedia && !handled && item.input_type === 'tick'" class="mt-0.5 text-xs" :class="mediaShort ? 'text-red-600' : 'text-green-700'">
           <CameraIcon class="inline h-3.5 w-3.5 -mt-0.5" />
           {{ mediaShort ? hint : `${hint.replace(' required', '')} added` }}
         </p>
@@ -305,7 +316,7 @@ async function deleteMedia(media: JobCardMedia) {
       </div>
 
       <!-- Camera -->
-      <div v-if="!readonly && item.input_type !== 'yes_no'" class="shrink-0">
+      <div v-if="!isReadonly && item.input_type !== 'yes_no'" class="shrink-0">
         <MediaPicker ref="picker" variant="menu" :kinds="pickerKinds" :gallery="allowGallery" @change="onFileChosen" />
         <button
           type="button"
@@ -325,13 +336,13 @@ async function deleteMedia(media: JobCardMedia) {
       v-if="item.media.length"
       class="mt-2"
       :media="item.media"
-      :can-delete="!readonly"
+      :can-delete="!isReadonly"
       :job-card-id="item.expected_answer ? undefined : jobCardId"
       @delete="deleteMedia"
     />
 
     <!-- Controls by input type -->
-    <div v-if="!readonly" class="mt-3 flex flex-wrap gap-2">
+    <div v-if="!isReadonly" class="mt-3 flex flex-wrap gap-2">
       <template v-if="item.input_type === 'tick'">
         <button
           type="button"

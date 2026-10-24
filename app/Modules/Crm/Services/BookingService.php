@@ -51,9 +51,10 @@ class BookingService
             return collect();
         }
 
-        $slots = BookingSlot::where('is_active', true)->where('weekday', $day->dayOfWeek)->where('branch_id', $branchId)->orderBy('start_time')->get();
-        if ($slots->isEmpty()) {
-            $slots = BookingSlot::where('is_active', true)->where('weekday', $day->dayOfWeek)->whereNull('branch_id')->orderBy('start_time')->get();
+        $slots = $this->slotsFor($branchId, $day->dayOfWeek);
+        // A working day with no slots of its own (e.g. Sunday when the weekly off is Friday) runs on Monday's
+        if ($slots->isEmpty() && $day->dayOfWeek !== Carbon::MONDAY) {
+            $slots = $this->slotsFor($branchId, Carbon::MONDAY);
         }
 
         $booked = Booking::where('branch_id', $branchId)
@@ -76,6 +77,18 @@ class BookingService
                 'free' => $past ? 0 : max(0, $s->capacity - $taken),
             ];
         })->values();
+    }
+
+    /**
+     * The branch's own slots for a weekday, else the slots for every branch.
+     */
+    protected function slotsFor(int $branchId, int $weekday): Collection
+    {
+        $slots = BookingSlot::where('is_active', true)->where('weekday', $weekday)->where('branch_id', $branchId)->orderBy('start_time')->get();
+
+        return $slots->isNotEmpty()
+            ? $slots
+            : BookingSlot::where('is_active', true)->where('weekday', $weekday)->whereNull('branch_id')->orderBy('start_time')->get();
     }
 
     // ---------------------------------------------------------------- create

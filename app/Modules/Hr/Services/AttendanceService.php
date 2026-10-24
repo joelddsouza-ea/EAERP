@@ -387,7 +387,12 @@ class AttendanceService
 
     public function isWeeklyOff(Carbon $day, ?EmployeeProfile $profile, ?int $branchId): bool
     {
-        $off = $profile ? $profile->weeklyOff() : (int) (Branch::whereKey($branchId)->value('weekly_off_day') ?? 0);
+        // The employee's own off day, else their branch's (or the branch worked at when the profile has none)
+        $off = $profile?->weekly_off_day
+            ?? Branch::whereKey($profile?->branch_id ?? $branchId)->value('weekly_off_day')
+            ?? Branch::whereKey($branchId)->value('weekly_off_day')
+            ?? 0;
+        $off = (int) $off;
 
         return $day->dayOfWeek === $off;
     }

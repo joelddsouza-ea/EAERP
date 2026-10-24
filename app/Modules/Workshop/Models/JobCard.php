@@ -156,6 +156,23 @@ class JobCard extends BranchScopedModel
     }
 
     /**
+     * Back office queues: 'requested' (sent for the bill, no bill yet) or 'draft' (bill not approved yet).
+     */
+    public function scopeBilling($query, string $queue)
+    {
+        $bills = fn (array $statuses) => \App\Modules\Billing\Models\Invoice::withoutGlobalScopes()
+            ->whereNotNull('job_card_id')->whereIn('status', $statuses)->select('job_card_id');
+
+        return match ($queue) {
+            'requested' => $query->whereNotNull('billing_requested_at')
+                ->whereIn('status', ['qc_pending', 'ready_for_delivery'])
+                ->whereNotIn('id', $bills(['draft', 'approved', 'closed', 'converted', 'issued', 'partial', 'paid'])),
+            'draft' => $query->whereIn('id', $bills(['draft'])),
+            default => $query,
+        };
+    }
+
+    /**
      * Service advisor.
      */
     public function serviceAdvisor()

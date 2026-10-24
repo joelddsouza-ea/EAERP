@@ -4,6 +4,7 @@ namespace App\Modules\Workshop\Services;
 
 use App\Core\Models\User;
 use App\Modules\Workshop\Models\JobCard;
+use App\Modules\Workshop\Models\JobCardChecklistItem;
 use App\Modules\Workshop\Models\JobCardMedia;
 use App\Modules\Workshop\Models\JobOutsideWork;
 use App\Modules\Workshop\Models\ServicePartner;
@@ -82,7 +83,12 @@ class OutsideWorkService
         if ($work->status !== JobOutsideWork::SENT) {
             throw new JobSheetException('This work is not waiting for you.');
         }
-        if (!$work->media()->exists()) {
+        // The washing points of the job (Washing & Cleaning) must all be filled, with their photos / videos
+        $open = $this->partnerItems($work)->filter(fn (JobCardChecklistItem $i) => $i->status === JobCardChecklistItem::STATUS_PENDING);
+        if ($open->isNotEmpty()) {
+            throw new JobSheetException('Finish every point first: ' . $open->pluck('item_name')->implode(', ') . '.');
+        }
+        if ($this->partnerItems($work)->isEmpty() && !$work->media()->exists()) {
             throw new JobSheetException('Add at least one photo or video of the work first.');
         }
 
@@ -122,6 +128,20 @@ class OutsideWorkService
         });
 
         return $work;
+    }
+
+    /**
+     * The job-sheet points the partner fills (the Washing & Cleaning section of the job).
+     *
+     * @return \Illuminate\Support\Collection<int, JobCardChecklistItem>
+     */
+    public function partnerItems(JobOutsideWork $work): \Illuminate\Support\Collection
+    {
+        return JobCardChecklistItem::with('media')
+            ->whereHas('jobCardChecklist', fn ($q) => $q->where('job_card_id', $work->job_card_id))
+            ->where('outside_kind', $work->kind)
+            ->orderBy('sort_order')
+            ->get();
     }
 
     public function open(JobCard $jobCard, ?string $kind = null): ?JobOutsideWork

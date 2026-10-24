@@ -53,6 +53,9 @@ class JobCardEstimateLine extends Model
         'job_card_issue_id',
         'labour_service_id',
         'spare_part_request_id',
+        // Priced including GST (default) or excluding it (GST added on top)
+        'gst_inclusive',
+        'tax_rate',
         'unit_cost',
         'margin_pct',
     ];
@@ -61,6 +64,8 @@ class JobCardEstimateLine extends Model
         'quantity' => 'decimal:2',
         'rate' => 'decimal:2',
         'amount' => 'decimal:2',
+        'gst_inclusive' => 'boolean',
+        'tax_rate' => 'decimal:2',
         'unit_cost' => 'decimal:2',
         'margin_pct' => 'decimal:2',
         'sort_order' => 'integer',
@@ -105,5 +110,23 @@ class JobCardEstimateLine extends Model
     public function isAdditional(): bool
     {
         return $this->section === self::SECTION_ADDITIONAL;
+    }
+
+    /**
+     * Rate per unit as the customer pays it (GST included).
+     */
+    public function grossRate(): float
+    {
+        $rate = (float) $this->rate;
+
+        return $this->gst_inclusive === false ? round($rate * (1 + (float) $this->tax_rate / 100), 2) : $rate;
+    }
+
+    /**
+     * Quantity × rate, GST included.
+     */
+    public function customerAmount(): float
+    {
+        return round((float) $this->quantity * $this->grossRate(), 2);
     }
 }

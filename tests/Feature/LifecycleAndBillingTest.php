@@ -338,7 +338,7 @@ class LifecycleAndBillingTest extends TestCase
         $job = $this->jobWithApprovedEstimate();
         $url = $this->billing($job);
 
-        // Only after the final QC
+        // Not before the technician has submitted (final QC)
         $this->as($this->advisor)->postJson("{$url}/request")->assertStatus(422);
         $job->update(['status' => 'ready_for_delivery']);
         $this->as($this->tech)->postJson("{$url}/request")->assertForbidden();
@@ -368,6 +368,85 @@ class LifecycleAndBillingTest extends TestCase
         $this->assertSame('invoiced', $job->fresh()->status);
         $this->as($this->advisor)->postJson("{$url}/bills/{$bill['id']}/close", [])->assertForbidden();
         $this->as($this->advisor)->patchJson("{$url}/bills/{$bill['id']}/items/{$line['id']}", ['quantity' => 1])->assertOk();
+    }
+
+    public function test_bill_is_prepared_during_final_qc_and_reaches_the_customer_after_it(): void
+    {
+        $job = $this->jobWithApprovedEstimate();
+        $url = $this->billing($job);
+        $job->update(['status' => 'qc_pending']);
+
+        // The advisor sends it while doing the QC; back office sees it in its queue
+        $this->as($this->advisor)->postJson("{$url}/request")->assertOk();
+        $queue = $this->as($this->backoffice)->getJson('/api/v1/workshop/job-cards?billing=requested')->assertOk()->json('data');
+        $this->assertSame([$job->id], array_column($queue, 'id'));
+        $this->assertSame(1, $this->as($this->backoffice)->getJson('/api/v1/workshop/dashboard/stats')->json('data.bills_to_make'));
+
+        // Back office makes and approves the bill during the QC: the job waits for the QC
+        $bill = $this->as($this->backoffice)->postJson("{$url}/proforma")->assertCreated()->json('data.bill');
+        $this->assertSame([$job->id], array_column($this->as($this->backoffice)->getJson('/api/v1/workshop/job-cards?billing=draft')->json('data'), 'id'));
+        $this->as($this->backoffice)->postJson("{$url}/bills/{$bill['id']}/approve")->assertOk();
+        $this->assertSame('qc_pending', $job->fresh()->status);
+
+        // The customer doesn't see the bill until the car is ready
+        $token = CustomerLink::where('job_card_id', $job->id)->whereNull('revoked_at')->latest('id')->firstOrFail()->token;
+        $this->getJson("/api/v1/public/j/{$token}")->assertOk()->assertJsonPath('data.bill', null);
+
+        // QC passed: ready, then invoiced by itself, and the customer gets the bill
+        $job->forceFill(['status' => 'ready_for_delivery'])->save();
+        app(\App\Modules\Workshop\Services\JobLifecycleService::class)->sync($job->fresh());
+        $this->assertSame('invoiced', $job->fresh()->status);
+        $this->assertEquals(11845, $this->getJson("/api/v1/public/j/{$token}")->assertOk()->json('data.bill.total'));
+    }
+
+    public function test_a_line_priced_before_gst_has_gst_added_and_is_billed_at_its_rate(): void
+    {
+        $job = $this->newJob();
+        $job->update(['technician_id' => $this->tech->id]);
+        $this->completeIntake($job, $this->advisor->id);
+        $estimate = $this->as($this->advisor)->postJson($this->base($job) . '/estimates')->assertOk()->json('data');
+        $this->as($this->advisor)->postJson($this->base($job) . "/estimates/{$estimate['id']}/lines", [
+            'kind' => 'part', 'description' => 'Brake pads', 'quantity' => 1, 'rate' => 1000, 'gst_inclusive' => false, 'tax_rate' => 28,
+        ])->assertCreated();
+        $this->as($this->advisor)->postJson($this->base($job) . "/estimates/{$estimate['id']}/lines", [
+            'kind' => 'part', 'description' => 'Odd rate', 'quantity' => 1, 'rate' => 100, 'gst_inclusive' => false, 'tax_rate' => 7,
+        ])->assertStatus(422);
+        $line = \App\Modules\Workshop\Models\JobCardEstimateLine::where('description', 'Brake pads')->sole();
+        $this->assertEquals(1280, (float) $line->amount);
+
+        $sent = $this->as($this->advisor)->postJson($this->base($job) . "/estimates/{$estimate['id']}/send")->assertOk()->json('data');
+        $token = CustomerLink::where('job_card_id', $job->id)->whereNull('revoked_at')->latest('id')->firstOrFail()->token;
+        $this->postJson("/api/v1/public/j/{$token}/decisions", [
+            'decisions' => collect($sent['estimate']['additional_lines'])->map(fn ($l) => ['line_key' => $l['line_key'], 'decision' => 'approved'])->all(),
+        ])->assertOk();
+        \App\Modules\Workshop\Models\SparePartRequest::query()->update(['status' => 'received']);
+        $job->forceFill(['status' => 'ready_for_delivery'])->save();
+
+        $bill = $this->as($this->backoffice)->postJson($this->billing($job) . '/proforma')->assertCreated()->json('data.bill');
+        $pads = $this->line($bill, 'Brake pads');
+        $this->assertEquals(28, $pads['tax_rate']);
+        $this->assertEqualsWithDelta(1280, $pads['total'], 0.01);
+        $this->assertEqualsWithDelta(280, $pads['tax'], 0.01);
+    }
+
+    public function test_advisor_changes_a_decision_after_a_call_during_final_qc(): void
+    {
+        $job = $this->jobWithApprovedEstimate();
+        $job->update(['status' => 'qc_pending']);
+        $key = \App\Modules\Workshop\Models\JobCardEstimateLine::where('description', 'Wheel Alignment')->value('line_key');
+        $url = $this->base($job) . '/estimate-decisions';
+
+        // The customer link is closed now, but the advisor (after a call) can still change it
+        $data = $this->as($this->advisor)->postJson($url, ['decisions' => [['line_key' => $key, 'decision' => 'declined']], 'note' => 'Customer called back: skip alignment'])
+            ->assertOk()->json('data');
+        $this->assertStringContainsString('(was: Approved)', $data['message']['body']);
+        $this->assertStringContainsString('Estimate total now', $data['message']['body']);
+
+        // Once the bill is approved, decisions are closed
+        $job->update(['status' => 'ready_for_delivery']);
+        $bill = $this->as($this->backoffice)->postJson($this->billing($job) . '/proforma')->assertCreated()->json('data.bill');
+        $this->as($this->backoffice)->postJson($this->billing($job) . "/bills/{$bill['id']}/approve")->assertOk();
+        $this->as($this->advisor)->postJson($url, ['decisions' => [['line_key' => $key, 'decision' => 'approved']], 'note' => 'Changed mind'])->assertStatus(422);
     }
 
     public function test_gate_pass_before_full_payment_needs_an_owner_or_manager_and_a_reason(): void

@@ -1,5 +1,5 @@
 import apiClient from './client'
-import type { ApiResponse } from './types'
+import type { ApiResponse, JobSheetItem } from './types'
 
 // Outside partners (washing, wheel alignment & balancing), the partner's login, and staff
 // "Send update" requests that the advisor sends to the customer (owner feedback 2026-10-24)
@@ -23,6 +23,8 @@ export interface OutsideWork {
   media: { id: number; media_type: 'photo' | 'video'; url: string; thumbnail_url: string | null }[]
   /** wa.me link with the job for the partner's phone (staff only) */
   partner_whatsapp_url: string | null
+  /** Partner's view: the job-sheet points they fill (Washing & Cleaning) */
+  items?: JobSheetItem[]
 }
 
 export interface OutsideWorkState {
@@ -83,6 +85,11 @@ export const partnerApi = {
   uploadMedia: (id: number, file: Blob, fileName: string, meta = {}) =>
     apiClient.post<ApiResponse<OutsideWork>>(`/partner/works/${id}/media`, mediaForm(file, fileName, meta), upload),
   done: (id: number, note?: string | null) => apiClient.post<ApiResponse<OutsideWork>>(`/partner/works/${id}/done`, { note }),
+  /** The washing points: photos / videos as the masters ask, then done */
+  itemMedia: (id: number, itemId: number, file: Blob, fileName: string, meta = {}) =>
+    apiClient.post<ApiResponse<JobSheetItem>>(`/partner/works/${id}/items/${itemId}/media`, mediaForm(file, fileName, meta), upload),
+  updateItem: (id: number, itemId: number, data: { status: 'pending' | 'done' | 'not_applicable' }) =>
+    apiClient.patch<ApiResponse<JobSheetItem>>(`/partner/works/${id}/items/${itemId}`, data),
 }
 
 export const servicePartnersApi = {

@@ -169,6 +169,15 @@ onMounted(fetchJobCard)
         </div>
       </div>
 
+      <!-- Back office: the advisor asked for the bill (red until it is made and approved) -->
+      <div
+        v-if="jobCard.billing_requested_at && can('billing.proforma.manage') && ['qc_pending', 'ready_for_delivery'].includes(jobCard.status)"
+        class="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
+      >
+        <span class="font-medium">Bill requested by the advisor: recheck the lines, make and approve the bill.</span>
+        <a href="#billing" class="font-semibold underline">Go to the bill</a>
+      </div>
+
       <!-- 1. What to do next -->
       <Card class="mb-4 sm:mb-6">
         <div class="flex flex-wrap items-start gap-4">
@@ -319,6 +328,7 @@ onMounted(fetchJobCard)
           <!-- 10. Payments, final bill, gate pass, vehicle out -->
           <JobBillingCard
             v-if="can('billing.invoices.view') || can('billing.payments.create')"
+            id="billing"
             ref="billingCard"
             :job-card-id="jobCard.id"
             :job-status="jobCard.status"

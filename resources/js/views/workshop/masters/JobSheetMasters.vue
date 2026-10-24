@@ -564,6 +564,8 @@ onMounted(async () => {
                     <th v-if="section.items[0]?.input_type === 'yes_no'" class="px-3 py-2 text-left font-medium text-gray-500">Passing answer</th>
                     <th class="px-3 py-2 text-center font-medium text-gray-500">Required</th>
                     <th class="px-3 py-2 text-center font-medium text-gray-500" title="Not done on a home-service visit (body wash, wheel alignment…)">Workshop only</th>
+                    <th class="px-3 py-2 text-center font-medium text-gray-500" title="Spark plugs etc.: N/A and locked on a diesel or electric car">Petrol only</th>
+                    <th class="px-3 py-2 text-center font-medium text-gray-500" title="Shown in another colour on the job sheet">If applicable</th>
                     <th class="px-3 py-2 text-center font-medium text-gray-500">Active</th>
                     <th v-if="canEdit" class="px-3 py-2" />
                   </tr>
@@ -648,6 +650,24 @@ onMounted(async () => {
                         :checked="item.workshop_only"
                         :disabled="!canEdit"
                         @change="updateItem(section, item, { workshop_only: ($event.target as HTMLInputElement).checked })"
+                      />
+                    </td>
+                    <td class="px-3 py-2 text-center">
+                      <input
+                        type="checkbox"
+                        class="h-4 w-4 rounded border-gray-300"
+                        :checked="item.petrol_only"
+                        :disabled="!canEdit"
+                        @change="updateItem(section, item, { petrol_only: ($event.target as HTMLInputElement).checked })"
+                      />
+                    </td>
+                    <td class="px-3 py-2 text-center">
+                      <input
+                        type="checkbox"
+                        class="h-4 w-4 rounded border-gray-300"
+                        :checked="item.conditional"
+                        :disabled="!canEdit"
+                        @change="updateItem(section, item, { conditional: ($event.target as HTMLInputElement).checked })"
                       />
                     </td>
                     <td class="px-3 py-2 text-center">

@@ -177,4 +177,12 @@ class Lead extends Model
 
         return trim(($car ?: 'car') . ($reg ? " ({$reg})" : ''));
     }
+
+    /**
+     * Registration numbers in capitals with single spaces ("mh 12 ab 1234" → "MH 12 AB 1234").
+     */
+    public function setRegistrationNoAttribute(?string $value): void
+    {
+        $this->attributes['registration_no'] = $value === null ? null : (strtoupper(trim(preg_replace('/\s+/', ' ', $value))) ?: null);
+    }
 }

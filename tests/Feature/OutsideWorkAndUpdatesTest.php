@@ -190,6 +190,18 @@ class OutsideWorkAndUpdatesTest extends TestCase
         $this->getJson("/api/v1/workshop/job-cards/{$job->id}")->assertForbidden();
         $this->postJson("/api/v1/partner/works/{$work['id']}/done")->assertStatus(422);
         $this->post("/api/v1/partner/works/{$work['id']}/media", ['file' => UploadedFile::fake()->image('wash.jpg', 200, 150)], ['Accept' => 'application/json'])->assertCreated();
+        // The partner fills the job's washing points (as on the technician's sheet), then Done
+        $items = $this->getJson("/api/v1/partner/works/{$work['id']}")->assertOk()->json('data.items');
+        $this->assertNotEmpty($items);
+        $this->postJson("/api/v1/partner/works/{$work['id']}/done")->assertStatus(422);
+        $other = $this->workSheet($job)->items()->whereNull('outside_kind')->firstOrFail();
+        $this->patchJson("/api/v1/partner/works/{$work['id']}/items/{$other->id}", ['status' => 'done'])->assertNotFound();
+        foreach ($items as $item) {
+            if ($item['media_requirement'] !== 'none') {
+                $this->post("/api/v1/partner/works/{$work['id']}/items/{$item['id']}/media", ['file' => UploadedFile::fake()->image('w.jpg', 200, 150)], ['Accept' => 'application/json'])->assertCreated();
+            }
+            $this->patchJson("/api/v1/partner/works/{$work['id']}/items/{$item['id']}", ['status' => 'done'])->assertOk()->assertJsonPath('data.status', 'done');
+        }
         $this->postJson("/api/v1/partner/works/{$work['id']}/done", ['note' => 'Washed'])->assertOk()->assertJsonPath('data.status', 'done');
         Sanctum::actingAs(User::where('phone', '9811100002')->firstOrFail());
         $this->getJson("/api/v1/partner/works/{$work['id']}")->assertNotFound();

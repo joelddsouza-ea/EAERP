@@ -93,7 +93,7 @@ class CustomersVehiclesSeeder extends Seeder
                 'pincode' => '400061',
                 'customer_type' => 'individual',
                 'vehicles' => [
-                    ['make' => 'Hyundai', 'model' => 'i20', 'reg' => 'MH02OP9012', 'year' => 2021, 'color' => 'Red', 'category' => 'premium-hatchback'],
+                    ['make' => 'Hyundai', 'model' => 'i20', 'reg' => 'MH02OP9012', 'year' => 2021, 'color' => 'Red', 'category' => 'sedan-compact-suv'],
                 ],
             ],
             [
@@ -149,7 +149,7 @@ class CustomersVehiclesSeeder extends Seeder
                 'pincode' => '400092',
                 'customer_type' => 'individual',
                 'vehicles' => [
-                    ['make' => 'Volkswagen', 'model' => 'Polo', 'reg' => 'MH05AB3456', 'year' => 2020, 'color' => 'Blue', 'category' => 'premium-hatchback'],
+                    ['make' => 'Volkswagen', 'model' => 'Polo', 'reg' => 'MH05AB3456', 'year' => 2020, 'color' => 'Blue', 'category' => 'sedan-compact-suv'],
                 ],
             ],
         ];

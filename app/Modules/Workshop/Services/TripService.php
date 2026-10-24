@@ -202,14 +202,11 @@ class TripService
         $notes = trim((string) ($data['notes'] ?? ''));
 
         return DB::transaction(function () use ($trip, $jobCard, $data, $user, $notes) {
-            // The drive to the workshop is the intake trial drive
+            // The driver's photos/videos and readings are the intake; the advisor still does the
+            // trial drive at the workshop and completes the intake (owner, 2026-10-24)
             $jobCard->update([
                 'km_reading' => $data['km_reading'],
                 'fuel_level' => $data['fuel_level'],
-                'intake_trial_status' => 'done',
-                'intake_trial_notes' => 'Driven to the workshop by ' . $user->name . ($notes !== '' ? ": {$notes}" : '.'),
-                'intake_trial_by' => $user->id,
-                'intake_trial_at' => now(),
             ]);
 
             $this->move($jobCard->fresh(), S::PickupEnRoute, S::VehicleCollected, $trip, $user);
@@ -236,7 +233,7 @@ class TripService
             $this->move($jobCard, S::VehicleCollected, S::IntakePending, $trip, $user);
         });
 
-        // Intake is already complete: the job goes on to work once a technician is on it
+        // Intake photos are done; the advisor's trial drive completes it, then work starts
         $this->lifecycle->sync($jobCard->fresh(), 'pickup');
 
         return $trip->fresh();

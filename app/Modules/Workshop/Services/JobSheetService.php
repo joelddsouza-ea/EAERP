@@ -41,6 +41,9 @@ class JobSheetService
     /** Remark on workshop-only activities of a home-service job */
     public const HOME_SKIP_REMARK = 'Workshop only: not done on a home visit.';
 
+    /** Remark on petrol-only points (spark plugs) of a diesel / electric car */
+    public const FUEL_SKIP_REMARK = 'Not on this car (no spark plugs).';
+
     public function __construct(
         protected JobSheetRuleEngine $rules,
         protected FileStorageService $files,
@@ -155,7 +158,7 @@ class JobSheetService
     public function isUntouched(JobCardChecklist $sheet): bool
     {
         return $sheet->status !== JobCardChecklist::STATUS_COMPLETED
-            && $sheet->items->every(fn ($i) => $i->remarks === self::HOME_SKIP_REMARK || $i->status === JobCardChecklistItem::STATUS_PENDING
+            && $sheet->items->every(fn ($i) => in_array($i->remarks, [self::HOME_SKIP_REMARK, self::FUEL_SKIP_REMARK], true) || $i->status === JobCardChecklistItem::STATUS_PENDING
                 && !$i->needs_attention
                 && $i->value === null
                 && empty($i->remarks)
@@ -176,6 +179,7 @@ class JobSheetService
             $rows = [];
             $now = now();
             $home = $jobCard->service_mode === JobCard::MODE_HOME;
+            $fuel = $jobCard->vehicle()->value('fuel_type');
 
             foreach ($template->sections as $section) {
                 foreach ($section->items as $item) {
@@ -184,11 +188,15 @@ class JobSheetService
                     }
                     // Home service: workshop-only activities (body wash, alignment…) are N/A from the start
                     $skip = $home && $item->workshop_only;
+                    // Diesel / electric: spark-plug points are N/A and locked
+                    $noFuel = $item->petrol_only && in_array($fuel, ChecklistItem::NO_SPARK_PLUG_FUELS, true);
                     $rows[] = [
                         'job_card_checklist_id' => $sheet->id,
                         'checklist_item_id' => $item->id,
-                        'status' => $skip ? JobCardChecklistItem::STATUS_NOT_APPLICABLE : JobCardChecklistItem::STATUS_PENDING,
-                        'remarks' => $skip ? self::HOME_SKIP_REMARK : null,
+                        'status' => $skip || $noFuel ? JobCardChecklistItem::STATUS_NOT_APPLICABLE : JobCardChecklistItem::STATUS_PENDING,
+                        'remarks' => $noFuel ? self::FUEL_SKIP_REMARK : ($skip ? self::HOME_SKIP_REMARK : null),
+                        'locked' => $noFuel,
+                        'conditional' => $item->conditional,
                         'section_name' => $section->name,
                         'outside_kind' => $section->outside_kind,
                         'item_name' => $item->item_name,
@@ -199,7 +207,7 @@ class JobSheetService
                         'expected_answer' => $item->expected_answer,
                         'is_required' => $item->is_required,
                         'sort_order' => $section->sort_order * 1000 + $item->sort_order,
-                        'is_completed' => $skip,
+                        'is_completed' => $skip || $noFuel,
                         'created_at' => $now,
                         'updated_at' => $now,
                     ];
@@ -227,6 +235,7 @@ class JobSheetService
     {
         $sheet = $item->jobCardChecklist;
         $this->assertEditable($sheet, $user);
+        $this->assertNotLocked($item);
         $item->loadMissing('media');
 
         $status = $data['status'] ?? $item->status;
@@ -348,6 +357,7 @@ class JobSheetService
     ): JobCardMedia {
         $sheet = $item->jobCardChecklist;
         $this->assertEditable($sheet, $user);
+        $this->assertNotLocked($item);
 
         $mediaType = str_starts_with((string) $file->getMimeType(), 'video/') ? JobCardMedia::TYPE_VIDEO : JobCardMedia::TYPE_PHOTO;
 
@@ -539,9 +549,47 @@ class JobSheetService
      *
      * @throws JobSheetException
      */
+    /** Set while an outside partner fills the points of the work sent to them */
+    protected ?JobOutsideWork $partnerWork = null;
+
+    /**
+     * Run a sheet change as the outside partner (washing): only the points of their kind
+     * (Washing & Cleaning), on the job sent to them, while the car is with them.
+     *
+     * @template T
+     * @param callable(): T $step
+     * @return T
+     */
+    public function asPartner(JobOutsideWork $work, JobCardChecklistItem $item, callable $step): mixed
+    {
+        $item->loadMissing('jobCardChecklist');
+        if ($work->status !== JobOutsideWork::SENT) {
+            throw new JobSheetException('This car is no longer with you.');
+        }
+        if ($item->jobCardChecklist?->job_card_id !== $work->job_card_id || $item->outside_kind !== $work->kind) {
+            throw new JobSheetException('That point is not part of your work on this car.', [], 404);
+        }
+
+        $this->partnerWork = $work;
+        try {
+            return $step();
+        } finally {
+            $this->partnerWork = null;
+        }
+    }
+
     public function assertEditable(JobCardChecklist $sheet, User $user, bool $supervisorOverride = false): void
     {
         $jobCard = $sheet->jobCard;
+
+        // The outside partner fills their own points (checked in asPartner)
+        if ($this->partnerWork) {
+            if ($sheet->isCompleted()) {
+                throw new JobSheetException('The technician has already submitted this job sheet.');
+            }
+
+            return;
+        }
 
         // Technician sheets are filled only by the assigned technician; advisors and managers
         // view them for progress (a manager may still submit with an override, and reopen)
@@ -643,6 +691,16 @@ class JobSheetService
         // The lead (job_cards.technician_id) or any co-technician on the job
         return ($jobCard->technician_id !== null && $jobCard->technician_id === $user->id)
             || $jobCard->technicians()->whereKey($user->id)->exists();
+    }
+
+    /**
+     * Points that don't apply to the car (spark plugs on a diesel) stay N/A.
+     */
+    protected function assertNotLocked(JobCardChecklistItem $item): void
+    {
+        if ($item->locked) {
+            throw new JobSheetException('This point does not apply to this car (fuel type).', [], 422);
+        }
     }
 
     public function isTechnicianOnly(User $user): bool

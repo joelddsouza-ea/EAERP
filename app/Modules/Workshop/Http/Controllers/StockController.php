@@ -138,7 +138,7 @@ class StockController extends ApiController
                 'quantity' => (float) $k->quantity,
             ])->values(),
             'packages' => ServicePackage::where('is_active', true)->orderBy('sort_order')->get(['id', 'name']),
-            'categories' => VehicleCategory::orderBy('id')->get(['id', 'name']),
+            'categories' => VehicleCategory::where('is_active', true)->orderBy('sort_order')->get(['id', 'name']),
             'items' => StockItem::active()->where('category', '!=', 'oil')->orderBy('name')->get(['id', 'name', 'unit']),
         ]);
     }

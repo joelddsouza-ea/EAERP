@@ -43,7 +43,7 @@ class EstimateDecisionService
         ?int $driverId = null,
     ): array {
         $estimate = $this->currentEstimate($jobCard);
-        $this->assertOpen($jobCard);
+        $this->assertOpen($jobCard, $via === Line::VIA_ADVISOR);
 
         $note = $note !== null ? trim($note) : null;
         if ($via === Line::VIA_ADVISOR && !$note) {
@@ -120,7 +120,8 @@ class EstimateDecisionService
             }
             $this->calculator->recalculate($estimate);
             $this->syncJobCard($jobCard, $estimate);
-            $this->parts->syncFromEstimate($jobCard, $estimate);
+            // The coordinator hears about parts newly approved, and parts no longer wanted (with the advisor's note)
+            $this->parts->syncFromEstimate($jobCard, $estimate, $via === Line::VIA_ADVISOR ? $note : null, array_column($changes, 'line_key'));
             // Declined lines go to the Observations list ("Customer not approved")
             $this->observations->syncDeclinedLines($jobCard, $estimate);
 
@@ -128,6 +129,7 @@ class EstimateDecisionService
                 $message = $this->messages->prepare($jobCard, 'decision_recorded', [
                     'advisor' => $user?->name ?? 'our service advisor',
                     'lines' => $this->decisionLines($changes),
+                    'total' => number_format((float) $estimate->fresh()->grand_total, 0),
                 ], $user);
 
                 JobCardEstimateDecision::whereIn('id', collect($audit)->pluck('id'))
@@ -238,10 +240,26 @@ class EstimateDecisionService
         return in_array($jobCard->status, config('workshop.customer_channel.decision_statuses', []), true);
     }
 
-    protected function assertOpen(JobCard $jobCard): void
+    /**
+     * The advisor may still change decisions after a call with the customer at final QC and
+     * Ready for Delivery, until the final bill is approved (owner, 2026-10-24).
+     */
+    public function advisorDecisionsOpen(JobCard $jobCard): bool
     {
-        if (!$this->decisionsOpen($jobCard)) {
-            throw new EstimateException('Approvals are closed for this job: work on the car has moved past this stage.');
+        if ($this->decisionsOpen($jobCard)) {
+            return true;
+        }
+
+        return in_array($jobCard->status, config('workshop.customer_channel.advisor_decision_statuses', []), true)
+            && !app(\App\Modules\Billing\Services\BillingService::class)->payableBill($jobCard);
+    }
+
+    protected function assertOpen(JobCard $jobCard, bool $byAdvisor = false): void
+    {
+        if (!($byAdvisor ? $this->advisorDecisionsOpen($jobCard) : $this->decisionsOpen($jobCard))) {
+            throw new EstimateException($byAdvisor
+                ? 'Approvals are closed for this job: the final bill has been approved.'
+                : 'Approvals are closed for this job: work on the car has moved past this stage.');
         }
     }
 
@@ -270,7 +288,11 @@ class EstimateDecisionService
         return collect($changes)->map(fn (array $c) => __('customer_messages.decision_line', [
             'description' => $c['description'],
             'amount' => number_format($c['amount'], 0),
-            'decision' => __('customer_messages.decision_' . $c['to']),
+            // A decision changed after a call says what it was before
+            'decision' => __('customer_messages.decision_' . $c['to'])
+                . (in_array($c['from'], [Line::APPROVED, Line::DECLINED], true)
+                    ? ' ' . __('customer_messages.decision_changed', ['from' => __('customer_messages.decision_' . $c['from'])])
+                    : ''),
         ]))->implode("\n");
     }
 }

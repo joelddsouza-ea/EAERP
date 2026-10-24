@@ -408,9 +408,9 @@ defineExpose({ reload: load })
         </p>
         <div class="mt-2 flex flex-wrap gap-2">
           <Button
-            v-if="can.request && jobStatus === 'ready_for_delivery' && !data.billing_requested"
+            v-if="can.request && ['qc_pending', 'ready_for_delivery'].includes(jobStatus) && !data.billing_requested"
             size="sm"
-            variant="secondary"
+            variant="danger"
             :loading="busy === 'request'"
             @click="act('request', () => jobBillingApi.requestBill(jobCardId))"
           >
@@ -536,7 +536,7 @@ defineExpose({ reload: load })
             :loading="busy === 'approve'"
             @click="act('approve', () => jobBillingApi.approve(jobCardId, bill!.id))"
           >
-            Approve &amp; send to customer
+            {{ jobStatus === 'qc_pending' ? 'Approve bill' : 'Approve & send to customer' }}
           </Button>
         </div>
 

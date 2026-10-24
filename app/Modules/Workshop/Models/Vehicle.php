@@ -128,4 +128,12 @@ class Vehicle extends BaseModel
               ->orWhereHas('model', fn($q) => $q->where('name', 'like', "%{$term}%"));
         });
     }
+
+    /**
+     * Registration numbers in capitals with single spaces ("mh 12 ab 1234" → "MH 12 AB 1234").
+     */
+    public function setRegistrationNoAttribute(?string $value): void
+    {
+        $this->attributes['registration_no'] = $value === null ? null : (strtoupper(trim(preg_replace('/\s+/', ' ', $value))) ?: null);
+    }
 }

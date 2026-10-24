@@ -43,6 +43,9 @@ export interface FleetReport {
 
 export interface FleetState {
   is_fleet: boolean
+  owner_name: string
+  /** Cabs the owner drives himself (no driver limit, one login) */
+  owner_cab_ids: number[]
   fleet_driver_limit: number | null
   default_limit: number
   limit: number
@@ -69,14 +72,14 @@ export const fleetApi = {
   settings: () => apiClient.get<ApiResponse<FleetSettings>>('/fleet/settings'),
   saveSettings: (data: Partial<FleetSettings>) => apiClient.put<ApiResponse<FleetSettings>>('/fleet/settings', data),
   show: (customerId: number) => apiClient.get<ApiResponse<FleetState>>(`/fleet/customers/${customerId}`),
-  update: (customerId: number, data: { is_fleet?: boolean; fleet_driver_limit?: number | null }) =>
+  update: (customerId: number, data: { is_fleet?: boolean; fleet_driver_limit?: number | null; owner_cab_ids?: number[] }) =>
     apiClient.put<ApiResponse<FleetState>>(`/fleet/customers/${customerId}`, data),
   addDriver: (customerId: number, data: DriverInput) => apiClient.post<ApiResponse<FleetDriver>>(`/fleet/customers/${customerId}/drivers`, data),
   updateDriver: (customerId: number, driverId: number, data: DriverInput) =>
     apiClient.put<ApiResponse<FleetDriver>>(`/fleet/customers/${customerId}/drivers/${driverId}`, data),
   signOutDriver: (customerId: number, driverId: number) => apiClient.post(`/fleet/customers/${customerId}/drivers/${driverId}/sign-out`),
   driversForJob: (customerId: number, vehicleId?: number | null) =>
-    apiClient.get<ApiResponse<{ id: number; name: string; phone: string; drives_this_cab: boolean }[]>>(`/fleet/customers/${customerId}/drivers`, { params: { vehicle_id: vehicleId || undefined } }),
+    apiClient.get<ApiResponse<{ drivers: { id: number; name: string; phone: string; drives_this_cab: boolean }[]; owner_drives: boolean; owner_name: string }>>(`/fleet/customers/${customerId}/drivers`, { params: { vehicle_id: vehicleId || undefined } }),
 
   reports: (status = 'active', customerId?: number) =>
     apiClient.get<ApiResponse<{ reports: FleetReport[]; counts: { open: number } }>>('/fleet/reports', { params: { status, customer_id: customerId } }),

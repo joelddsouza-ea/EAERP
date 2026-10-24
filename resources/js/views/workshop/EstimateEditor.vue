@@ -196,6 +196,9 @@ const lineForm = reactive({
   description: '',
   quantity: 1 as number | string,
   rate: '' as number | string,
+  // Price including GST (usual) or before GST with the rate added on top
+  gst_inclusive: true,
+  tax_rate: 18 as number,
   media_ids: [] as number[],
   job_card_additional_job_id: null as number | null,
   job_card_issue_id: null as number | null,
@@ -231,6 +234,8 @@ function openLineModal(prefill: Partial<typeof lineForm> = {}) {
     description: '',
     quantity: 1,
     rate: '',
+    gst_inclusive: true,
+    tax_rate: 18,
     media_ids: [],
     job_card_additional_job_id: null,
     job_card_issue_id: null,
@@ -289,6 +294,8 @@ async function submitLine() {
         description: lineForm.description.trim(),
         quantity: Number(lineForm.quantity) || 1,
         rate: Number(lineForm.rate) || 0,
+        gst_inclusive: lineForm.kind === 'plan_extra' ? true : lineForm.gst_inclusive,
+        tax_rate: Number(lineForm.tax_rate),
         media_ids: lineForm.media_ids,
         job_card_additional_job_id: lineForm.job_card_additional_job_id,
         job_card_issue_id: lineForm.job_card_issue_id,
@@ -511,7 +518,7 @@ onMounted(load)
           <PencilSquareIcon class="h-4 w-4 mr-1" /> Edit (new version)
         </Button>
         <Button
-          v-if="estimate.status === 'sent' && estimate.additional_lines.length && overview?.decisions_open && can('workshop.estimates.decide-on-behalf')"
+          v-if="estimate.status === 'sent' && estimate.additional_lines.length && (overview?.advisor_decisions_open ?? overview?.decisions_open) && can('workshop.estimates.decide-on-behalf')"
           variant="secondary"
           size="sm"
           @click="openDecisionModal"
@@ -802,8 +809,17 @@ onMounted(load)
                     title="Rate"
                     @change="(e) => saveLine(line, { rate: Number((e.target as HTMLInputElement).value) })"
                   />
+                  <button
+                    type="button"
+                    class="rounded px-1 text-xs"
+                    :class="line.gst_inclusive === false ? 'bg-amber-100 text-amber-800' : 'text-gray-500'"
+                    :title="line.gst_inclusive === false ? 'Rate is before GST: tap to make it GST-inclusive' : 'Rate includes GST: tap to price before GST'"
+                    @click="saveLine(line, { gst_inclusive: line.gst_inclusive === false })"
+                  >
+                    {{ line.gst_inclusive === false ? `+GST ${Number(line.tax_rate)}%` : 'incl. GST' }}
+                  </button>
                 </template>
-                <span v-else class="text-gray-500">{{ qty(line.quantity) }} × {{ money(line.rate) }}</span>
+                <span v-else class="text-gray-500">{{ qty(line.quantity) }} × {{ money(line.rate) }}<template v-if="line.gst_inclusive === false"> + GST {{ Number(line.tax_rate) }}%</template></span>
                 <span class="w-24 text-right font-medium">{{ money(line.amount) }}</span>
                 <button v-if="editable" class="text-gray-400 hover:text-red-600" title="Remove" @click="removeAdditionalLine(line)">
                   <TrashIcon class="h-4 w-4" />
@@ -996,7 +1012,18 @@ onMounted(load)
         </div>
         <div class="grid grid-cols-2 gap-3">
           <Input v-model="lineForm.quantity" label="Qty" type="number" />
-          <Input v-model="lineForm.rate" label="Rate (₹, incl. GST)" type="number" />
+          <Input v-model="lineForm.rate" :label="lineForm.gst_inclusive || lineForm.kind === 'plan_extra' ? 'Rate (₹, incl. GST)' : 'Rate (₹, before GST)'" type="number" />
+        </div>
+        <!-- Parts / labour: price including GST, or before GST with the rate added on top -->
+        <div v-if="lineForm.kind !== 'plan_extra'" class="flex flex-wrap items-center gap-3 text-sm">
+          <label class="flex items-center gap-1.5"><input v-model="lineForm.gst_inclusive" type="radio" :value="true" /> Including GST</label>
+          <label class="flex items-center gap-1.5"><input v-model="lineForm.gst_inclusive" type="radio" :value="false" /> Excluding GST</label>
+          <select v-model.number="lineForm.tax_rate" class="rounded-lg border-gray-300 py-1 text-sm" title="GST rate">
+            <option v-for="r in [0, 5, 12, 18, 28]" :key="r" :value="r">GST {{ r }}%</option>
+          </select>
+          <span v-if="!lineForm.gst_inclusive && Number(lineForm.rate) > 0" class="text-gray-600">
+            Customer pays ₹ {{ money(Number(lineForm.quantity || 1) * Number(lineForm.rate) * (1 + Number(lineForm.tax_rate) / 100)) }}
+          </span>
         </div>
         <div v-if="media.length && lineForm.kind !== 'plan_extra'">
           <p class="text-sm font-medium text-gray-700 mb-1">Photos / videos to show the customer</p>

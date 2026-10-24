@@ -14,6 +14,8 @@ class Role extends BaseModel
         'slug',
         'description',
         'is_system',
+        // Roles & Access › Dashboard: blocks this role sees (null = defaults)
+        'dashboard_blocks',
     ];
 
     /**
@@ -23,7 +25,45 @@ class Role extends BaseModel
      */
     protected $casts = [
         'is_system' => 'boolean',
+        'dashboard_blocks' => 'array',
     ];
+
+    /**
+     * Dashboard blocks, in the order shown.
+     */
+    public const DASHBOARD_BLOCKS = [
+        'quick_actions' => 'Quick action buttons',
+        'jobs_in_progress' => 'Jobs in progress',
+        'todays_collection' => "Today's collection",
+        'billing_till_date' => 'Billing till date',
+        'total_outstanding' => 'Total outstanding',
+        'bill_queues' => 'Bills to make / approve (back office)',
+        'crm' => 'CRM: leads, follow-ups, bookings',
+        'money' => 'Money: cash, bank, profit, staff-held',
+        'status_chart' => 'Jobs by stage (chart)',
+        'recent_jobs' => 'Recent job cards',
+        'recent_payments' => 'Recent payments',
+    ];
+
+    /**
+     * What this role sees on the dashboard: as set in Roles & Access, or the default —
+     * owner and managers everything, back office the money without CRM, everyone else their work.
+     *
+     * @return string[]
+     */
+    public function dashboardBlocks(): array
+    {
+        if (is_array($this->dashboard_blocks)) {
+            return array_values(array_intersect(array_keys(self::DASHBOARD_BLOCKS), $this->dashboard_blocks));
+        }
+
+        return match ($this->slug) {
+            self::OWNER, self::MANAGER, self::BODY_SHOP_MANAGER => array_keys(self::DASHBOARD_BLOCKS),
+            self::BACKOFFICE => ['quick_actions', 'bill_queues', 'todays_collection', 'billing_till_date', 'total_outstanding', 'money', 'recent_payments'],
+            self::MARKETING => ['quick_actions', 'crm'],
+            default => ['quick_actions', 'jobs_in_progress', 'recent_jobs'],
+        };
+    }
 
     /**
      * Default system roles.

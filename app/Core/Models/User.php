@@ -80,6 +80,19 @@ class User extends Authenticatable
     /**
      * Get all permissions for the user through their roles.
      */
+    /**
+     * Dashboard blocks across the user's roles (Roles & Access › Dashboard).
+     *
+     * @return string[]
+     */
+    public function dashboardBlocks(): array
+    {
+        $this->loadMissing('roles');
+        $blocks = $this->roles->flatMap(fn (Role $role) => $role->dashboardBlocks())->unique()->all();
+
+        return array_values(array_intersect(array_keys(Role::DASHBOARD_BLOCKS), $blocks));
+    }
+
     public function getAllPermissions(): array
     {
         // Strict mode: roles may be loaded without their permissions
